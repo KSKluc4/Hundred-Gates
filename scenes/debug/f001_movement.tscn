@@ -1,0 +1,125 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://src/entities/player/player.tscn" id="1"]
+[ext_resource type="Script" path="res://src/ui/debug/motor_debug_overlay.gd" id="2"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_512x16"]
+size = Vector2(512, 16)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_16x320"]
+size = Vector2(16, 320)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_32x32"]
+size = Vector2(32, 32)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_96x16"]
+size = Vector2(96, 16)
+
+[node name="F001Movement" type="Node2D"]
+
+[node name="World" type="Node2D" parent="."]
+
+[node name="NorthWall" type="StaticBody2D" parent="World"]
+position = Vector2(240, -8)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/NorthWall"]
+shape = SubResource("RectangleShape2D_512x16")
+
+[node name="Visual" type="ColorRect" parent="World/NorthWall"]
+offset_left = -256.0
+offset_top = -8.0
+offset_right = 256.0
+offset_bottom = 8.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="SouthWall" type="StaticBody2D" parent="World"]
+position = Vector2(240, 328)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/SouthWall"]
+shape = SubResource("RectangleShape2D_512x16")
+
+[node name="Visual" type="ColorRect" parent="World/SouthWall"]
+offset_left = -256.0
+offset_top = -8.0
+offset_right = 256.0
+offset_bottom = 8.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="WestWall" type="StaticBody2D" parent="World"]
+position = Vector2(-8, 160)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/WestWall"]
+shape = SubResource("RectangleShape2D_16x320")
+
+[node name="Visual" type="ColorRect" parent="World/WestWall"]
+offset_left = -8.0
+offset_top = -160.0
+offset_right = 8.0
+offset_bottom = 160.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="EastWall" type="StaticBody2D" parent="World"]
+position = Vector2(488, 160)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/EastWall"]
+shape = SubResource("RectangleShape2D_16x320")
+
+[node name="Visual" type="ColorRect" parent="World/EastWall"]
+offset_left = -8.0
+offset_top = -160.0
+offset_right = 8.0
+offset_bottom = 160.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="PillarA" type="StaticBody2D" parent="World"]
+position = Vector2(112, 96)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PillarA"]
+shape = SubResource("RectangleShape2D_32x32")
+
+[node name="Visual" type="ColorRect" parent="World/PillarA"]
+offset_left = -16.0
+offset_top = -16.0
+offset_right = 16.0
+offset_bottom = 16.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="PillarB" type="StaticBody2D" parent="World"]
+position = Vector2(112, 224)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PillarB"]
+shape = SubResource("RectangleShape2D_32x32")
+
+[node name="Visual" type="ColorRect" parent="World/PillarB"]
+offset_left = -16.0
+offset_top = -16.0
+offset_right = 16.0
+offset_bottom = 16.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="DiagonalWall" type="StaticBody2D" parent="World"]
+position = Vector2(368, 96)
+rotation = 0.785398
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/DiagonalWall"]
+shape = SubResource("RectangleShape2D_96x16")
+
+[node name="Visual" type="ColorRect" parent="World/DiagonalWall"]
+offset_left = -48.0
+offset_top = -8.0
+offset_right = 48.0
+offset_bottom = 8.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="Player" parent="." instance=ExtResource("1")]
+position = Vector2(240, 160)
+
+[node name="Camera2D" type="Camera2D" parent="Player"]
+
+[node name="MotorDebugOverlay" type="CanvasLayer" parent="." node_paths=PackedStringArray("player")]
+script = ExtResource("2")
+player = NodePath("../Player")
+
+[node name="Label" type="Label" parent="MotorDebugOverlay"]
+offset_left = 4.0
+offset_top = 4.0
