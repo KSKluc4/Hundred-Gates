@@ -7,7 +7,7 @@
 | ID | Feature | Status | Next actor | Blocked by |
 |---|---|---|---|---|
 | F-000 | Project setup & architecture skeleton | DONE | — | — |
-| F-001 | Warrior movement + dash | CODE_REVIEW | Auditor | — |
+| F-001 | Warrior movement + dash | CODE_REVIEW | Lucas | — (round 1 APPROVE_WITH_NOTES; CR-1: stale tint after restore) |
 
 ## Open questions waiting on Lucas
 - _none_

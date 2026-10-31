@@ -2,7 +2,7 @@
 id: F-001
 title: Warrior movement + dash
 status: CODE_REVIEW       # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor         # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas           # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-001, D-002, D-005]
@@ -655,23 +655,113 @@ Feel test scene: `scenes/debug/f001_movement.tscn` (editor: open it, F6; or
 
 ## 9. Code Review  ·  _Auditor_
 
-**Verdict:** `PENDING` <!-- APPROVE | APPROVE_WITH_NOTES | CHANGES_REQUESTED -->
-**Reviewed commit:** <hash>  ·  **Round:** 1
+**Verdict:** `APPROVE_WITH_NOTES`
+**Reviewed commit:** `588372e2f963f369f6a102f36a9ddc7b96533302` · **Round:** 1
+**Reviewed:** 2026-10-31
+**Comparison:** `main` (`f4f46470fa0d6d7627f00d32b8ce6ef036688a5e`)
+to `feature/F-001-warrior-movement-dash`, using the merge-base diff.
+
+No blocking findings. One reproducible presentation bug is recorded as CR-1.
 
 ### Checklist
-- [ ] Every AC in §5 met (state evidence per AC below)
-- [ ] No Rejected option from §3 implemented, even partially
-- [ ] All constraints in §4 and PROJECT.md respected
-- [ ] Every deviation in §8 is justified; no undocumented deviations
-- [ ] Assumptions in §8 are sane
+- [x] AC1–AC17 supported by the implementation and checks below; verification limits stated
+- [x] No Rejected option from §3 implemented
+- [x] No blocking constraint violation found in §4 or PROJECT.md
+- [x] DEV-1–DEV-6 justified; no undocumented implementation deviation found
+- [x] ASSUMPTION-1–ASSUMPTION-13 reviewed as reasonable, reversible choices for this feature
 
 ### AC evidence
-- AC1: ✅/❌ <where in the code / how verified>
+
+✅ indicates code/test evidence for the specified behavior; it does not claim the
+manual feel test or physical-controller testing was performed.
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC1 | ✅ | `PlayerMotor._integrate_movement()` / `_ramp_toward()` integrate target speed and displacement; submit clamps movement length. `tests/core/player/test_player_motor_movement.gd` checks all eight directions at 30/60/120 Hz, oversized input, and settled travel within 0.01 tiles. |
+| AC2 | ✅ | `PlayerInputMapper.apply_deadzone()` implements C14's radial remap once; PlayerInput reads raw axes. Mapper tests cover 0.1/0.2/0.5/1.0 raw magnitudes, radial direction, digital fallback, and the resulting settled motor speed at every rate. |
+| AC3 | ✅ | `_ramp_toward()` uses exact constant-acceleration displacement until the target, then constant velocity; zero times change velocity immediately. Movement tests verify accel/decel limits, the displacement oracle, zero times, and a reversal across rates. |
+| AC4 | ✅ | `Player._physics_process()` computes mouse world offset each physics tick; the mapper converts it to unit aim or zero inside the C16 radius; `_update_facing()` applies aim even during a dash. Mapper aim tests and motor movement tests cover these branches. |
+| AC5 | ✅ | `_apply_device_events()` preserves event order, noise thresholds, last qualifying joypad, and mouse/gamepad switching. Right-stick aim, move/last-facing fallback, keyboard non-switching, and camera-only changes are tested. Scene tests also route synthetic mouse/joypad-button events through PlayerInput. Physical sticks were not exercised. |
+| AC6 | ✅ | `_fire_dash()` selects and normalizes the current move input, else facing. Dash tests cover partial analog movement, facing-only dash, immediate DOWN dash after setup, and the buffer test checks direction at fire time. |
+| AC7 | ✅ | `_advance_dash()` clips each segment to the remaining duration and uses latched constant velocity. Dash tests check exact travel, intermediate speed and duration at all three rates. Wall-scene tests additionally confirm open-space displacement through actual physics, including 30/60/120 ticks/s. |
+| AC8 | ✅ | Player's circle body uses world-only collision and floating motion; `_physics_process()` calls move_and_slide and synchronizes its result. `tests/scenes/test_f001_walls.gd` checks straight/diagonal/angled-wall slides, zero overlap on each physics frame, and no wall jitter. The full-speed slide choice is disclosed in §8/Q4. |
+| AC9 | ✅ | `_fire_dash()` stores the exact 64-bit window; `_update_invulnerability()` implements tick overlap with the disclosed numerical guard. I-frame tests cover ordinary/tail ticks, exact window values, sub-tick windows/dashes/tails, very short windows, and change signals. |
+| AC10 | ✅ | `_end_dash()` resets velocity to zero before emitting dash_ended. Remaining time in the tick then uses normal acceleration. Tests record velocity at the end signal and verify post-dash displacement from rest, including a fractional end tick at every rate. |
+| AC11 | ✅ | `_end_dash()` starts cooldown at dash end; `_advance_normal()` consumes it exactly, allowing eligibility within the same tick. Buffer tests verify start timing, expiry, zero cooldown, and the full value on an exact boundary. |
+| AC12 | ✅ | submit records a press; `_run_phases()` tracks age through each segment, replaces the previous buffer, and re-checks eligibility. Buffer tests cover expiry, inclusive boundaries, replacement, presses during dash/cooldown, zero window, and direction at fire time. |
+| AC13 | ✅ | `tests/core/player/test_player_motor_timing.gd:12` and line 18 run the default and PR-8 data with the same mixed commands at 30/60/120 Hz. They check all five expected fire times and i-frame ends to 1 µs, and final positions within 0.2 tiles. Both passed. |
+| AC14 | ✅ | `to_dict()` / `from_dict()` preserve motor clock, velocity/position/facing, phase timers, buffer state and exact i-frame metadata. Timing tests compare every next-tick snapshot for 30 ticks after restoration mid-dash/i-frames/tail/cooldown/buffer. A scene test also checks body-position synchronization. Presentation resynchronization has the separate non-blocking defect CR-1. |
+| AC15 | ✅ | Motor, mapper and glue hold per-instance state. Timing tests compare a motor beside another independently driven motor against an isolated run; mapper tests verify mode independence between instances. |
+| AC16 | ✅ | `Player.reload_data():58–77` loads both resource files with cache ignored, validates both before mutation, and applies accepted data while preserving motor state. Lifecycle tests verify latching, live movement values, remaining cooldown and buffer age. Scene tests exercise F5, valid reload during dash/i-frames/cooldown/buffer, invalid and missing files, rejection during a dash, and atomic rejection when only one file is valid. |
+| AC17 | ✅ | Core, mapper, physics/reload scene and migrated F-000 input-map tests are present in the planned locations (with logged splits). Full `tools/test`: 130/130 tests, 698 assertions, exit 0. `tools/lint`: zero issues, 54 files formatted. Core purity and its 19-rule self-test both pass. |
+
+### Constraint, rejected-option, deviation and assumption audit
+
+- **Rejected options:** No all-in-body movement logic, custom core collision, decaying
+  dash impulse, roll/stamina/auto-aim system, or forbidden aiming/i-frame replacement
+  was introduced. The interval-overlap flag is the approved C8 rule, not full-dash i-frames.
+- **C1–C5/G1/G6–G8:** Physics uses delta; the motor is RefCounted with no Input/scene
+  dependencies; intents use plain-data commands; lifecycle writes match C18; snapshot
+  continuation is tested. The complete public mutating motor API remains the six
+  allowed methods. `get_iframe_window()` implements the §11 PR-10 clarification.
+- **C2/C7/G2/G9/D-005:** Movement/dash values reside in the Warrior resource and shared
+  combat Resource; Units is the conversion point. Scene geometry/collider dimensions
+  remain authored in pixels, as disclosed in ASSUMPTION-12/13. The two C16 thresholds
+  are the explicitly specified input rules and are logged in ASSUMPTION-5.
+- **C6/C8–C18/G3–G5:** Independence, timing/interval/buffer semantics, preserved bindings,
+  and validated reload are supported by the checks above. Resources use centralized
+  paths; the debug scene supplies isolation. No dependency/addon was added.
+- **DEV-1/2:** Test-file splits preserve the coverage map and are justified by the
+  public-method limit. **DEV-3:** Extra interval snapshot fields are needed for
+  lossless restoration. **DEV-4:** Vector conversion helpers preserve C7. **DEV-5:**
+  Glue inspection/restore/reload hooks support the overlay and tests without widening
+  the motor's mutation API. **DEV-6:** Named layers leave input mappings unchanged.
+- **Assumptions:** PackedFloat64Array windows, numerical guards, the rate-independent
+  slowdown rule, physical mouse motion, event-based device arbitration, raw stick
+  reads plus binding-derived digital input, lifecycle failure returns, and the
+  placeholder body/geometry are documented and locally reversible. The newest-window
+  return policy is accepted for this feature; hit processing remains out of scope.
+
+For the raw-stick event path, Godot 4.7.2 updates axis state before dispatching the
+event to scripts, consistent with PlayerInput's polling inside `_to_stick_event()`.
+[Godot 4.7.2 input dispatch source](https://github.com/godotengine/godot/blob/4.7.2-stable/core/input/input.cpp#L923).
 
 ### Findings
-### CR-1 🔴 <title>  ·  `path/to/file:line`
-<problem, why it matters, suggested fix>
-> **Builder reply:** <fixed in abc123 / disagree because …>
+
+### CR-1 — 🟡 Restoring a snapshot leaves the player's i-frame tint stale
+- **Location:** `src/entities/player/player.gd:80–83` (`restore_snapshot`) and
+  lines 92–93; `src/core/player/player_motor.gd:176` (`from_dict`).
+- **Problem:** restore_snapshot updates motor state and body position, while modulate
+  is updated only by invulnerability_changed. from_dict assigns the flag silently.
+  The next tick compares overlap with that restored flag, so it need not emit a
+  signal that would correct the old tint.
+- **Reproduction:** In the debug scene, save a vulnerable snapshot; submit DashCommand
+  and tick once at 60 Hz (cyan tint); restore the saved snapshot; tick again. A temporary
+  harness reproduced `is_invulnerable() == false` with `modulate == (0.4, 0.9, 1, 1)`
+  both immediately after restore and after the next tick, instead of Color.WHITE.
+- **Why it matters:** The player's tint can advertise invulnerability indefinitely
+  after restoring a vulnerable state, undermining the T9 visual indicator used to
+  assess dash timing. Motor gameplay state itself restores correctly.
+- **Suggested fix:** In the glue's restore path, synchronize the presentation from
+  the restored motor flag as well as the position. Add a scene regression covering
+  restoration from invulnerable to vulnerable and the reverse, including the next
+  tick, without changing the motor's approved signal/timing contract.
+
+### Verification scope
+
+Executed the full suite, lint/format checks, core purity/self-test, and the debug
+scene headless for 60 frames (exit 0, no errors). Expected push_error output from
+negative lifecycle/snapshot tests was explicitly matched by GUT; it was not an
+unexpected project error. CR-1 was reproduced in a temporary external script after
+autoload initialization; the branch's source and tests were not modified.
+
+The §5 visual feel test, physical mouse/gamepad use and Linux execution were not
+performed. Invalid reload has common phase-independent prevalidation; the scene
+suite's invalid cases do not enumerate every combination of invalid file and motor
+phase. The Builder's separate mutation campaign was not independently rerun.
+The uncommitted DECISIONS.md whitespace edit present during review was preserved
+and is outside the committed branch diff. Lucas retains the manual playtest, Q4's
+Combat follow-up and Gate B. This review leaves CODE_REVIEW and does not set DONE.
 
 ---
 
