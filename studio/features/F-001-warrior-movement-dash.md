@@ -1,7 +1,7 @@
 ---
 id: F-001
 title: Warrior movement + dash
-status: CODE_REVIEW       # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: DONE       # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Lucas           # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
@@ -780,3 +780,4 @@ Combat follow-up and Gate B. This review leaves CODE_REVIEW and does not set DON
 
 <Overrides, priorities, gut calls. Everyone obeys these.>
 - **2026-10-31 (PR-10):** T5's API list also includes `get_iframe_window()` exactly as defined in C8. C8 is authoritative. F-001 APPROVED.
+- **2026-10-31 (Gate B):** Playtested, feel approved. Q4: keep the full-distance wall slide. Auditor note (invulnerability tint after snapshot restore) carried to the next player feature. F-001 DONE.
