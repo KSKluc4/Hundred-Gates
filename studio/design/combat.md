@@ -36,6 +36,7 @@
 
 ### Rejected (do not implement)
 - **Rolling dodge** — slower and heavier than our near-instant movement; feels sluggish in a top-down dodge-centric game. *Tempting because:* classic action-RPG look.
+- **I-frames for the whole dash** — removes the vulnerable tail, so mashing dash becomes a safe answer to everything. *Tempting because:* feels generous and simple.
 - **Dash without i-frames** — every boss attack would have to be escapable by distance alone, which shrinks the pattern design space. *Tempting because:* feels "purer" and harder.
 - **Stamina for dodge** — a second resource that can make the dodge fail to come out, breaking principle 3. *Tempting because:* Souls-likes use it.
 - **Auto-aim** — removes positioning skill (pillar 2). *Tempting because:* easy on gamepad.
@@ -56,6 +57,9 @@
 - Cooldown starts when the dash ends.
 - A dash pressed during cooldown or an attack's active frames is **buffered** and fires as soon as allowed, if within the buffer window.
 - Can cancel the **recovery** of any attack. Cannot cancel windup or active frames.
+- When the dash ends, no dash momentum carries over: velocity continues from current movement input with normal accel.
+- During a dash, movement input is ignored; the direction is fixed at dash start. Facing still updates.
+- The dash is the `dodge` input action (F-000). There is no separate `dash` action.
 
 ### Sword attack chain
 - 3 hits. Each hit: **windup → active → recovery**. The hitbox exists only during active.
@@ -100,6 +104,7 @@ Template per boss:
 | `dash_iframe_duration` | 0.11 s (from dash start) | `data/classes/warrior.tres` |
 | `dash_cooldown` | 0.35 s | `data/classes/warrior.tres` |
 | `input_buffer_window` | 0.12 s | `data/tunables/player_combat.tres` |
+| `stick_deadzone` | 0.2 (0–1) | `data/tunables/player_combat.tres` |
 | `max_hp` | 100 | `data/classes/warrior.tres` |
 | `player_hurt_iframes` | 0.6 s | `data/tunables/player_combat.tres` |
 | `attack_chain_window` | 0.25 s | `data/classes/warrior.tres` |
