@@ -2,7 +2,7 @@
 id: F-002
 title: Studio autopilot (tools/studio)
 status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-003, D-004]
@@ -206,6 +206,15 @@ scripts (C19 env vars) in temporary git repos **with a temporary bare remote**.
 ---
 
 ## 7. Plan Review  ·  _Auditor_
+
+**Verdict:** `APPROVE_WITH_NOTES`
+**Reviewed:** 2026-10-31 · **Round:** 3 · **Reviewed revision:** `2296e96`
+
+**Current result:** PR-1–PR-13 are `✔ resolved`. PR-14's push controls, detection and
+acceptance coverage are specified; its remaining recovery wording is a 🟡 note below.
+No blocking findings remain. Keep `status: PLAN_REVIEW`, set `owner_now: Lucas` for Gate A.
+
+### Round 2 review (historical)
 
 **Verdict:** `CHANGES_REQUESTED`
 **Reviewed:** 2026-10-31 · **Round:** 2 · **Reviewed revision:** `129a026`
@@ -411,6 +420,10 @@ adds remote/conflict fixtures. The post-publication cleanup case remains open be
 
 > **Planner reply (Direction), round 2:** Accepted. C18: a `DONE` rerun is accepted while publication is unverified **or** either branch still exists; an already-missing branch counts as deleted. AC8 adds failures at each deletion.
 
+**Round 3 status:** ✔ resolved — C18 now permits retries after publication while
+either branch remains, treats missing branches as deleted, and AC8 covers both
+deletion failures. This closes the Round 2 cleanup issue.
+
 ### PR-9 🟡 Agent failure, interruption and timeout behavior is unspecified
 **Round 2 status:** ✔ resolved — C4/C15 specify process groups, timeout escalation,
 interruption handling, blocked state and lock lifetime; AC9 exercises the failure paths.
@@ -499,6 +512,10 @@ authorized at Gate A. The following findings concern the revised execution contr
 
 > **Planner reply (Direction), round 2:** Accepted — my rewrite lost it. New C21 defines "clean" and requires it before `run`, every agent step, every check and `approve`; accepted Builder steps must end clean (the Builder commits its work). C14 runs checks only on a clean tree at the feature HEAD. C18 now commits the Auditor's validated edits **before** running the checks and refuses any other dirty path. AC6 covers pre-existing edits, dirty Builder completion and dirty code at `done`.
 
+**Round 3 status:** ✔ resolved — C21 restores clean-tree boundaries and committed
+Builder completion. C14 checks that committed tree; C18 validates and commits the
+narrow review-edit exception before checks. AC6 covers the dirty-tree regressions.
+
 ### PR-12 🟡 Failed readiness checks have no defined representation in the round cap
 - **Location:** §4 C9/C10/C14; §5 AC6–AC7.
 - **Problem:** C9 counts completed Auditor rounds using markers written by the Auditor.
@@ -514,6 +531,10 @@ authorized at Gate A. The following findings concern the revised execution contr
   and assert the chosen cap and Lucas handoff.
 
 > **Planner reply (Direction), round 2:** Accepted. C10(b): each red check appends a tool-owned §10 row with `<!-- readiness-fail: N sha: … -->`; N counts consecutive failures since the last completed code review, durable in the file; the 3rd escalates to Lucas. Independent from the Auditor-owned review markers. AC6 covers repeated failures with a restart.
+
+**Round 3 status:** ✔ resolved — C10(b) defines tool-owned durable failure events,
+their reset boundary and third-failure escalation independently of Auditor rounds.
+AC6 includes repeated failures across a restart.
 
 ### PR-13 🟡 `--resume` has conflicting behavior for the Builder's allowed escalation
 - **Location:** §4 C5 action C and stop cases; C8; §6 T7/T9.
@@ -532,6 +553,10 @@ authorized at Gate A. The following findings concern the revised execution contr
 
 > **Planner reply (Direction), round 2:** Accepted. New C22: `run --resume` is the only continuation of `IN_PROGRESS` and takes precedence over the Lucas stop rule; preconditions (clean tree, feature branch, owner Builder, or owner Lucas with all blocking §10 rows answered); effect: the tool sets owner Builder, then action C with the same accepted outputs. AC9c covers escalation → answer → resume and the refusal case.
 
+**Round 3 status:** ✔ resolved — C5 explicitly admits IN_PROGRESS through C22, which
+defines precedence, branch/clean-tree/question preconditions and transfer to Builder.
+AC9c tests answered and unanswered escalation paths.
+
 ### PR-14 🟡 The remote-containment promise lacks a child-process push policy
 - **Location:** §4 C3/C8/C11/C19; §6 T4/T5/T9.
 - **Problem:** C3 makes run itself push-free and C11 concludes that rejected agent work
@@ -548,9 +573,52 @@ authorized at Gate A. The following findings concern the revised execution contr
 
 > **Planner reply (Direction), round 2:** Accepted — chose prevention plus detection. C3: children run with a git config override that makes `git push` to origin fail, no terminal prompts, and the CLIs' own push/network denial; the tool also snapshots `git ls-remote origin` before/after each step and rejects + blocks on any remote change, with exact remote-recovery instructions (the documented limit: an explicit-URL push can only be detected, not prevented). AC9b tests both against the bare remote.
 
+**Round 3 status:** Partially resolved — C3 and AC9b now specify the push controls,
+remote comparison, blocked outcome and recovery notification. The reply explicitly
+acknowledges the limit for explicit-URL pushes. Only the recovery wording below remains 🟡.
+
+**Round 3 remaining note:**
+- **Location:** §4 C3 and C11's final sentence; §5 AC9b/AC13.
+- **Problem:** C11 still says a local reset is “always enough” because run never pushes,
+  while C3 and the Round 2 reply now allow detection of a child push that has already
+  changed the remote and requires remote recovery. The recovery guarantee was not
+  qualified when the containment policy changed.
+- **Why it matters:** The Builder and Director receive conflicting descriptions of
+  what recovery involves after a rejected step. The specified detection behavior and
+  tests are adequate, but the unconditional local-only promise is inaccurate.
+- **Suggested fix:** Limit C11's local-reset statement to steps with an unchanged remote
+  snapshot. State the explicit-URL detection limit and the separate remote-recovery
+  path consistently in the Autopilot documentation required by AC13. Retain AC9b's
+  distinct blocked-push and detected-push cases.
+
 **Round 2 verdict:** `CHANGES_REQUESTED`. Nine previous findings are resolved; PR-8
 remains 🟡. PR-11 is the blocking finding; PR-12–PR-14 are 🟡. Set
 `status: PLAN_CHANGES`, `owner_now: Planner`; reply under the remaining findings.
+
+### Round 3 — Round 2 Planner reply and resolution check
+
+Checked the Round 2 replies under PR-8 and PR-11–PR-14 first, then read the whole
+revised feature against PROJECT.md, DECISIONS.md and the relevant role/department
+documents. Reviewed committed revision `2296e96` from a clean working tree. PR-1–PR-7
+and PR-9–PR-10 remain resolved; their findings are not re-raised.
+
+| Finding | Reply and revised-plan evidence | Round 3 result |
+|---|---|---|
+| PR-8 | Accepted; C18 permits post-publication cleanup retries and missing branches; AC8 covers each deletion failure. | ✔ resolved |
+| PR-11 | Accepted; C21 restores clean starts and committed Builder completion; C14/C18 check the committed revision after validated review edits; AC6 covers dirty states. | ✔ resolved |
+| PR-12 | Accepted; C10(b) adds persistent readiness-failure markers and independent escalation; AC6 verifies restart durability. | ✔ resolved |
+| PR-13 | Accepted; C5/C22 define explicit resume precedence and ownership effects; AC9c exercises the escalation/answer/resume path. | ✔ resolved |
+| PR-14 | Accepted; C3/AC9b specify child-push controls and remote-change detection. C11 retains an unconditional local-reset claim. | Partially resolved — 🟡 wording note |
+
+The Director-facing outcome, explicit scope and local-orchestrator choice remain
+coherent with the project's phase and accepted decisions. The role-document exceptions
+are explicit in §1/T9. The revised ACs now cover the blocking clean-tree issue as well
+as the new recovery, readiness-counter and resume contracts. No new findings are added.
+This is plan approval evidence; implementation and runtime behavior remain for Mode B.
+
+**Round 3 verdict:** `APPROVE_WITH_NOTES`. No 🔴 findings remain. PR-14 has the single
+🟡 wording note above. Keep `status: PLAN_REVIEW`, set `owner_now: Lucas`; only Lucas
+may approve Gate A and set `APPROVED`.
 
 ---
 
