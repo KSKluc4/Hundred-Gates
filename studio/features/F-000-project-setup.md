@@ -353,7 +353,7 @@ the feature and accept D-003/D-004 at Gate A.
 - [x] T5 — b31d884
 - [x] T6 — ca7214e
 - [x] T7 — d51a853, e34c071
-- [ ] T8
+- [x] T8 — dbc6535
 - [ ] T9
 
 ### Deviations from plan
