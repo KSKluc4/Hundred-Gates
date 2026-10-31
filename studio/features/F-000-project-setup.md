@@ -345,7 +345,7 @@ the feature and accept D-003/D-004 at Gate A.
 **Started:** 2026-10-31  ·  **Branch:** `feature/F-000-project-setup`
 
 ### Progress
-- [ ] T0
+- [x] T0 — afd0879
 - [ ] T1
 - [ ] T2
 - [ ] T3
