@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Runs gdlint and gdformat --check on src/ and tests/ (D-004).
+set -euo pipefail
+
+# shellcheck source=tools/_godot.sh
+source "$(dirname "${BASH_SOURCE[0]}")/_godot.sh"
+cd "$PROJECT_ROOT"
+
+if [ ! -x .venv/bin/gdlint ]; then
+	echo "error: .venv not found. Run tools/setup first." >&2
+	exit 1
+fi
+
+.venv/bin/gdlint src tests
+.venv/bin/gdformat --check src tests

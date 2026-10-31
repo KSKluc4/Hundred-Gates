@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# G6 guard for src/core/ (F-000 Decision E). Text-based: a guard, not a proof.
+#
+#   tools/check_core_purity              checks the real src/core/
+#   tools/check_core_purity --self-test  proves every C2 rule trips on its fixture
+set -euo pipefail
+
+# shellcheck source=tools/_godot.sh
+source "$(dirname "${BASH_SOURCE[0]}")/_godot.sh"
+
+CORE_DIR="$PROJECT_ROOT/src/core"
+FIXTURE_DIR="$PROJECT_ROOT/tests/fixtures/core_purity"
+
+# F-000/C2: the allowlist and forbidden tokens.
+ALLOWED_BASES="RefCounted Resource"
+# Matched as whole words, so `Control` does not trip on `PlayerController`.
+WORD_TOKENS=(
+	Node2D Node3D CanvasItem Control Sprite2D AnimatedSprite2D AnimationPlayer
+	Texture Texture2D PackedScene "extends Node"
+)
+# Matched literally, anywhere in the file.
+LITERAL_TOKENS=('get_tree(' 'get_node(' '$' '.tscn' 'res://assets/' 'res://scenes/')
+# Rules with no token: non-allowlisted `extends`, missing `extends`.
+EXTENDS_RULE_COUNT=2
+
+core_class_names() {
+	find "$1" -name '*.gd' -exec sed -nE \
+		's/^class_name[[:space:]]+([A-Za-z0-9_]+).*/\1/p' {} +
+}
+
+# Prints the script's base class, or nothing if it has no `extends`.
+base_class_of() {
+	sed -nE \
+		's/^(class_name[[:space:]]+[A-Za-z0-9_]+[[:space:]]+)?extends[[:space:]]+([^[:space:]#]+).*/\2/p' \
+		"$1"
+}
+
+# Prints one "<rule>" line per violation in the file. Prints nothing if clean.
+violations_in() {
+	local file="$1" allowed=" $2 " base token
+	base="$(base_class_of "$file")"
+	if [ -z "$base" ]; then
+		echo "missing extends"
+	elif [[ "$allowed" != *" $base "* ]]; then
+		echo "extends outside allowlist"
+	fi
+	for token in "${WORD_TOKENS[@]}"; do
+		if grep -Eq "(^|[^A-Za-z0-9_])$token([^A-Za-z0-9_]|\$)" "$file"; then
+			echo "forbidden token: $token"
+		fi
+	done
+	for token in "${LITERAL_TOKENS[@]}"; do
+		if grep -Fq -- "$token" "$file"; then
+			echo "forbidden token: $token"
+		fi
+	done
+}
+
+check_dir() {
+	local dir="$1" allowed file rule status=0
+	allowed="$ALLOWED_BASES $(core_class_names "$dir" | tr '\n' ' ')"
+	while IFS= read -r file; do
+		while IFS= read -r rule; do
+			echo "${file#"$PROJECT_ROOT"/}: $rule" >&2
+			status=1
+		done < <(violations_in "$file" "$allowed")
+	done < <(find "$dir" -name '*.gd' | sort)
+	return "$status"
+}
+
+self_test() {
+	local file result status=0 rules_hit=""
+	local rule_count=$((EXTENDS_RULE_COUNT + ${#WORD_TOKENS[@]} + ${#LITERAL_TOKENS[@]}))
+
+	for file in "$FIXTURE_DIR"/bad_*.gd; do
+		result="$(violations_in "$file" "$ALLOWED_BASES")"
+		if [ -z "$result" ]; then
+			echo "FAIL ${file##*/}: passed, expected a violation" >&2
+			status=1
+		elif [ "$(printf '%s\n' "$result" | wc -l)" -ne 1 ]; then
+			echo "FAIL ${file##*/}: expected one violation, got: $result" >&2
+			status=1
+		else
+			rules_hit+="$result"$'\n'
+		fi
+	done
+
+	local distinct_hits
+	distinct_hits="$(printf '%s' "$rules_hit" | sort -u | wc -l)"
+	if [ "$distinct_hits" -ne "$rule_count" ]; then
+		echo "FAIL fixtures trip $distinct_hits rules, C2 has $rule_count" >&2
+		status=1
+	fi
+
+	if ! check_dir "$FIXTURE_DIR/good"; then
+		echo "FAIL good fixtures should pass" >&2
+		status=1
+	fi
+
+	if [ "$status" -eq 0 ]; then
+		echo "core purity self-test ok: $rule_count rules, each tripped by its own fixture"
+	fi
+	return "$status"
+}
+
+case "${1:-}" in
+	"")
+		check_dir "$CORE_DIR"
+		echo "core purity ok"
+		;;
+	--self-test)
+		self_test
+		;;
+	*)
+		echo "usage: tools/check_core_purity [--self-test]" >&2
+		exit 2
+		;;
+esac
