@@ -7,7 +7,7 @@
 | ID | Feature | Status | Next actor | Blocked by |
 |---|---|---|---|---|
 | F-000 | Project setup & architecture skeleton | DONE | — | — |
-| F-001 | Warrior movement + dash | IN_PROGRESS | Builder | — |
+| F-001 | Warrior movement + dash | CODE_REVIEW | Auditor | — |
 
 ## Open questions waiting on Lucas
 - _none_
