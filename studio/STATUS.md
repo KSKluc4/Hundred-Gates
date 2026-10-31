@@ -7,7 +7,7 @@
 | ID | Feature | Status | Next actor | Blocked by |
 |---|---|---|---|---|
 | F-000 | Project setup & architecture skeleton | DONE | — | — |
-| F-001 | Warrior movement + dash | PLAN_REVIEW | Auditor | — |
+| F-001 | Warrior movement + dash | PLAN_CHANGES | Planner | PR-1/PR-2: motor mutation and test coverage contracts conflict (F-001 §7) |
 
 ## Open questions waiting on Lucas
 - _none_

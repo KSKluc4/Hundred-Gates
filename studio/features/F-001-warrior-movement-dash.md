@@ -1,8 +1,8 @@
 ---
 id: F-001
 title: Warrior movement + dash
-status: PLAN_REVIEW            # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES           # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-001, D-002, D-005]
@@ -243,14 +243,126 @@ Small, ordered, each independently committable.
 
 ## 7. Plan Review  ·  _Auditor_
 
-**Verdict:** `PENDING` <!-- APPROVE | APPROVE_WITH_NOTES | CHANGES_REQUESTED -->
-**Reviewed:** YYYY-MM-DD
+**Verdict:** `CHANGES_REQUESTED`
+**Reviewed:** 2026-10-31 · **Round:** 1
+**Reviewed revision:** `a23f8fec43f8ce04680b4dc3306ef0f8a226a952`
 
-Findings (severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion):
+The test-room movement/aim/dash outcome serves pillar 2, with clear scope exclusions.
+The class/resource split follows D-005, and the chosen architecture and rejected
+alternatives have specific reasons. No unflagged contradiction with combat.md's
+movement/dash decisions was found. CX1 and enemy collision can remain deferred as
+stated. Approval is blocked by the conflicting mutation and test contracts below.
 
-### PR-1 🔴 <title>
-<What's wrong, where, why it matters, what you'd suggest.>
-> **Planner reply:** <accepted / rejected + reason / changed §X>
+### PR-1 — 🔴 C4 forbids mutations required by the chosen architecture
+- **Location:** §3 Chosen; §4 C4/C5/C13; §5 AC14/AC16; §6 T5/T8/T9.
+- **Problem:** C4 says motor state changes only through commands and `tick(delta)`.
+  T8 nevertheless writes position through `set_position_px()` every tick, T9 calls
+  `apply_data()` to replace data, and AC14 requires `from_dict()` to restore state.
+  These are explicitly required writes outside the two allowed entry points.
+- **Why it matters:** The Builder cannot follow both C4 and the required API; any
+  otherwise-correct implementation can trigger the automatic constraint failure.
+  This is also the first motor/command contract that later features will copy.
+- **Suggested fix:** Restrict C4's command-only rule to player intentions, and list
+  the authorized glue/lifecycle operations and their allowed effects. Define who
+  advances position in open-space core tests versus the scene, when body position
+  overrides motor position, and how a restored motor initializes the body before
+  the next tick. State the snapshot boundary and include all retained intentions,
+  dash direction, and pending commands needed for identical continuation (or require
+  an empty command queue at that boundary). Keep physics resolution outside core.
+
+### PR-2 — 🔴 AC17 demands core-only coverage that T6 explicitly excludes
+- **Location:** §5 AC4/AC5/AC8/AC17; §6 T6/T7/T9; §3 Chosen/Rejected.
+- **Problem:** AC17 requires AC1–AC15 to be tested at core level, which includes
+  wall collision (AC8) and device arbitration/mouse world-position conversion
+  (AC4/AC5). The architecture puts those responsibilities outside the motor. T6
+  expressly makes AC8 manual-only, and gives no test task for AC4/AC5's input reader.
+- **Why it matters:** The stated acceptance coverage cannot be delivered by the
+  planned tests without bringing input/physics into core or recreating rejected
+  collision logic. Aim adapter bugs would otherwise be left to the feel test.
+- **Suggested fix:** Replace the blanket AC17 claim with an explicit coverage map:
+  pure motor tests for movement/dash/timers/facing commands/serialization; input-reader
+  tests for actual device-to-command behavior; and a physics scene test for walls,
+  or an explicit manual-only AC8 exception. Update T6/T7/T9 to match that choice.
+
+### PR-3 — 🟡 Timing boundaries and the numeric test oracle are underspecified
+- **Location:** §4 C1/C8–C10; §5 tolerance statement and AC1/AC3/AC7/AC9–AC13; §6 T5/T6/T8.
+- **Problem:** The plan does not define command/timer ordering within a tick, what
+  happens to the part of a tick after dash/cooldown expiry, or which speed/rate sets
+  “one tick of travel”. A 0.15 s dash spans 4.5 ticks at 30 Hz, so whole-tick rounding
+  needs a stated policy. “Accounting for accel” also leaves AC1's expected distance
+  undefined: ideal linear acceleration at the defaults covers 4.875 tiles in the
+  first second from rest, rather than 5.0.
+- **Why it matters:** Different reasonable implementations disagree about first-tick
+  invulnerability, buffer expiry, dash distance, and repeated-dash cadence. A single
+  dash can fit the tolerance while repeated rounding accumulates beyond AC13.
+- **Suggested fix:** Define the tick timeline, including same-tick input ordering,
+  exact-boundary buffer eligibility, timer overshoot, and partial-dash movement fed
+  to the physics glue. Specify a numerical tolerance and observation times shared
+  by tests at all three rates. Measure AC1 at settled speed or give the acceleration
+  integral/discretization oracle. Include repeated dash/cooldown cycles with durations
+  not divisible by the tick interval, not just an isolated dash. The glue must account
+  for [move_and_slide using the physics step's delta](https://docs.godotengine.org/en/stable/classes/class_characterbody2d.html#class-characterbody2d-method-move-and-slide).
+
+### PR-4 — 🟡 “Last used device” and initial/zero aim have no deterministic rule
+- **Location:** §5 AC4–AC6; §6 T4/T5/T7.
+- **Problem:** AC4 refers to the last used *aim* device while AC5 refers to the last
+  used device generally. It is unclear whether keyboard movement, a pad button,
+  left-stick movement, right-stick noise, or only actual aiming switches mode.
+  No initial mode/facing or rule for the mouse exactly on the player is specified.
+- **Why it matters:** A controller can lose aim priority to incidental mouse events,
+  or keyboard movement can select an unintended fallback. An immediate stationary
+  dash also needs a valid nonzero facing before the first aim input.
+- **Suggested fix:** Define qualifying events, noise thresholds, same-tick priority,
+  initial mode/facing, and the coincident-mouse fallback. Explicitly distinguish
+  physical mouse activity from a changing mouse world vector caused by the follow
+  camera/player moving. Add adapter tests for switching both ways, inactive/noisy
+  devices, moving while aiming, and a stationary dash immediately after setup.
+
+### PR-5 — 🟡 Analog magnitude and the authoritative deadzone need one contract
+- **Location:** §2 Input map; §5 AC2/AC16; §6 T3/T4/T7; F-000 action deadzones.
+- **Problem:** AC2 does not say whether m is raw stick magnitude or a value already
+  remapped through the deadzone. T4 says MoveCommand is already deadzoned, while T7
+  also fixes aim action deadzones at 0.2 and player_combat.tres owns stick_deadzone.
+  The input reader's use of these two sources, including after F5, is unspecified.
+  [Godot's get_vector implementation](https://github.com/godotengine/godot/blob/master/core/input/input.cpp)
+  remaps magnitudes above its deadzone: raw 0.5 with deadzone 0.2 becomes 0.375.
+- **Why it matters:** `move_speed × 0.5` and `move_speed × 0.375` are different AC2
+  outcomes, and applying another threshold can discard otherwise-valid analog input.
+  The tunable could also change in the resource without changing actual input behavior.
+- **Suggested fix:** Define raw-to-command magnitude mathematically, including radial
+  versus per-axis thresholding and the equality boundary. Choose one authoritative
+  runtime deadzone from the resource and specify how both sticks use it without double
+  filtering or changing F-000's bindings. Test representative raw magnitudes and a
+  deadzone hot-reload through the input reader, not just constructed MoveCommands.
+
+### PR-6 — 🟡 Hot-reload lacks valid-data and active-phase semantics
+- **Location:** §4 C2/C8/C13; §5 AC16; §6 T2/T5/T9.
+- **Problem:** No allowed ranges or invalid-load policy are defined for editable
+  movement/dash data. `dash_duration = 0` makes distance/duration undefined, and
+  `dash_iframe_duration >= dash_duration` removes the required vulnerable tail.
+  Even valid edits have an ambiguous effect mid-dash: changing duration after a dash
+  starts can mean recomputing expiry from elapsed time or preserving its old remaining
+  timer. AC16 requires immediate data application and preserved state without resolving this.
+- **Why it matters:** The explicit tuning workflow can produce division errors or
+  violate a non-negotiable dodge rule. Two implementations can preserve the same
+  timers while giving different speed/i-frame/cooldown behavior after reload.
+- **Suggested fix:** Specify valid ranges/cross-field invariants (retaining the explicit
+  zero accel/decel case) and atomic behavior for invalid resources or failed disk loads.
+  Define which active-phase values are latched until the next dash and which update
+  on the next tick, while keeping the promised state. Add automated valid/invalid
+  reload tests during dash, invulnerability, cooldown, and an active buffer.
+
+### PR-7 — 🟡 Adding the new actions requires an explicit F-000 test migration
+- **Location:** §2 Input map; §4 C12/“Must not break”; §6 T6/T7;
+  `tests/test_input_map.gd:7–16` and `_expected_bindings()`.
+- **Problem:** The existing test asserts that every non-ui action equals exactly
+  F-000's nine-action table. Adding aim_left/right/up/down and debug_reload_tunables
+  necessarily fails it, but no task includes extending this test or its expected table.
+- **Why it matters:** Following the listed input-map work leaves tools/test red;
+  deleting or weakening the old assertion would lose the promised binding protection.
+- **Suggested fix:** Include the existing input-map test in T7: extend the exact action
+  set and new binding/deadzone assertions while retaining every F-000 binding assertion.
+  Keep this regression migration distinct from the new motor-only tests.
 
 ---
 
