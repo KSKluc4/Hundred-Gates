@@ -6,7 +6,7 @@
 
 | ID | Feature | Status | Next actor | Blocked by |
 |---|---|---|---|---|
-| F-000 | Project setup & architecture skeleton | APPROVED | Builder | — |
+| F-000 | Project setup & architecture skeleton | IN_PROGRESS | Builder | — |
 
 ## Open questions waiting on Lucas
 - _none_
