@@ -8,6 +8,7 @@
 |---|---|---|---|---|
 | F-000 | Project setup & architecture skeleton | DONE | — | — |
 | F-001 | Warrior movement + dash | DONE | — | — |
+| F-002 | Studio autopilot (tools/studio) | PLAN_REVIEW | Auditor | — |
 
 ## Open questions waiting on Lucas
 - _none_
