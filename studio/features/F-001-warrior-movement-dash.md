@@ -1,8 +1,8 @@
 ---
 id: F-001
 title: Warrior movement + dash
-status: PLAN_REVIEW          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: APPROVED          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-001, D-002, D-005]
@@ -274,13 +274,13 @@ Small, ordered, each independently committable.
 
 ## 7. Plan Review  ·  _Auditor_
 
-**Verdict:** `CHANGES_REQUESTED`
-**Reviewed:** 2026-10-31 · **Round:** 2
-**Reviewed revision:** `112143dba13a3314ebb854bf8fdae152ad2ce3b2`
+**Verdict:** `APPROVE_WITH_NOTES`
+**Reviewed:** 2026-10-31 · **Round:** 3
+**Reviewed revision:** `a744ad1766b9dd5112fbd43b3ad2c0a3a9553709`
 
-**Current result:** PR-1–PR-7 are `✔ resolved` as specification gaps. Their Planner
-replies were checked first and are preserved below. The newly specified timing rules
-introduce two blocking contradictions, PR-8/PR-9, described after the resolution table.
+**Current result:** PR-1–PR-9 are `✔ resolved`. PR-8/PR-9's Planner replies were
+checked first and are preserved below. No blocking finding remains. One new
+non-blocking documentation note (PR-10) follows the Round 3 resolution check.
 
 **Round 1 assessment (historical):**
 
@@ -433,7 +433,7 @@ missing physics integration coverage; the original seven findings are not re-rai
 | PR-6 | C17 defines validation, atomic rejection, active-dash latching, and live-update rules; AC16/AC17 cover valid/invalid reload and state preservation. Short-window observability under the new C8/C15 policy is a separate defect in PR-9. | ✔ resolved |
 | PR-7 | T7 explicitly extends the exact action set by F5 while retaining every original F-000 binding/deadzone assertion. | ✔ resolved |
 
-### PR-8 — 🔴 C15 accumulates cooldown-to-dash rounding beyond AC13's tolerance
+### PR-8 — 🔴 C15 accumulates cooldown-to-dash rounding beyond AC13's tolerance — ✔ resolved (round 3)
 - **Location:** §4 C1/C15 (eligibility step c and phase advance step d); §5 timing
   tolerance and AC13; §6 T5/T6.
 - **Problem:** Eligibility is checked only at tick start. C15 carries the fractional
@@ -473,7 +473,7 @@ missing physics integration coverage; the original seven findings are not re-rai
 > requires your exact data set with expected fire times 0, 0.47, 0.94, 1.41, 1.88 s at
 > every rate (±1 µs), plus the default-data run; T6 must include it.
 
-### PR-9 — 🔴 Valid short i-frame windows make C8's post-tick rule contradictory
+### PR-9 — 🔴 Valid short i-frame windows make C8's post-tick rule contradictory — ✔ resolved (round 3)
 - **Location:** §4 C8/C15/C17; §5 AC9/AC16/AC17.
 - **Problem:** C17 accepts `dash_duration = 0.1 s` and `dash_iframe_duration = 0.01 s`.
   At 30 Hz, the firing tick advances dash elapsed to 1/30 s. C8 requires
@@ -499,9 +499,49 @@ missing physics integration coverage; the original seven findings are not re-rai
 > AC9 now names the three sub-tick cases (short window, whole dash in one tick, short tail).
 > design/combat.md updated to the same rule.
 
-**Round 2 verdict:** `CHANGES_REQUESTED`. Keep `owner_now: Planner` and
+**Round 2 verdict (historical):** `CHANGES_REQUESTED`. Keep `owner_now: Planner` and
 `status: PLAN_CHANGES`. Verification here checks the proposed contract mathematically;
 it does not claim that F-001 code or implementation tests have been run.
+
+### Round 3 — PR-8/PR-9 reply and resolution check
+
+Checked the replies under PR-8 and PR-9 first, then re-read the revised plan and
+combat.md against PROJECT.md and the accepted decisions. PR-1–PR-7 remain resolved.
+
+| Finding | Verified revision | Current status |
+|---|---|---|
+| PR-8 | C15 now consumes the tick in phase segments and re-evaluates buffered eligibility at cooldown expiry. Remaining time also integrates normal movement after dash end, and normal acceleration uses its exact integral. AC13/T6 require the concrete regression data and the default-data run. | ✔ resolved |
+| PR-9 | C8 defines an exact half-open i-frame window separately from the tick-overlap flag. AC9/T6 cover a sub-tick window, a whole sub-tick dash, and a sub-tick tail. combat.md explicitly matches the exact-time rule. | ✔ resolved |
+
+**Contract verification:** A standalone rational-arithmetic model of the new phase
+loop produced fire times `0, 0.47, 0.94, 1.41, 1.88 s` at 30/60/120 Hz for the PR-8
+data and identical DashCommands every 0.1 s. The default-data sequence likewise
+produced `0, 0.5, 1, 1.5, 2 s` at all three rates. Half-open interval overlap checks
+at 30 Hz confirmed that a 0.01 s i-frame window reports true for its firing tick
+and false for the following tick, including a whole dash shorter than one tick.
+A short-tail case also followed the explicit overlap rule without extending the
+underlying exact window. These checks validate the proposed contract, not an
+implementation of F-001. Implementation still must satisfy AC9/AC13/AC14.
+
+The goal, scope, pillar alignment, class/resources/commands architecture, rejected
+options, and coverage map remain coherent. The revised timing model leaves no
+blocking conflict with the department design doc or project constraints. T1–T10
+(including T9b) still provide an ordered implementation path; the new interval
+getter should be included in its API inventory as noted below.
+
+### PR-10 — 🟡 T5's exact API inventory omits the new required interval getter
+- **Location:** §4 C8; §5 AC9; §6 T5.
+- **Problem:** C8 and AC9 now require `get_iframe_window()`, but T5 still describes
+  the API as “exactly C4/C18 + getters” followed by the old list, which omits it.
+- **Why it matters:** The Builder's implementation checklist disagrees with the
+  acceptance contract about a public method needed by the new tests. The required
+  behavior itself is clear in C8, so this is a documentation note, not a blocker.
+- **Suggested fix:** Add `get_iframe_window()` to T5's getter inventory and reference
+  C8 for its motor-clock interval/empty-result semantics.
+
+**Round 3 verdict:** `APPROVE_WITH_NOTES`. Leave `status: PLAN_REVIEW`, set
+`owner_now: Lucas`; only Lucas sets APPROVED at Gate A. No source code or protected
+plan sections were edited by this review.
 
 ---
 
@@ -571,3 +611,4 @@ it does not claim that F-001 code or implementation tests have been run.
 ## 11. Director Notes  ·  _Lucas_
 
 <Overrides, priorities, gut calls. Everyone obeys these.>
+- **2026-10-31 (PR-10):** T5's API list also includes `get_iframe_window()` exactly as defined in C8. C8 is authoritative. F-001 APPROVED.
