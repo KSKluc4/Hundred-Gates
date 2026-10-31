@@ -2,7 +2,7 @@
 id: F-000
 title: Project setup & architecture skeleton
 status: IN_PROGRESS  # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder         # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas           # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [D-001, D-002]
@@ -354,12 +354,78 @@ the feature and accept D-003/D-004 at Gate A.
 - [x] T6 — ca7214e
 - [x] T7 — d51a853, e34c071
 - [x] T8 — dbc6535
-- [ ] T9
+- [x] T9 — e3b0054
+
+- [ ] `TODO(Lucas)` in `src/ui/debug_overlay.gd`: F3 toggle body (see DEV-1). Blocks CODE_REVIEW.
 
 ### Deviations from plan
+- **DEV-1:** `DebugOverlay._unhandled_input` (toggle half of AC4) is a `TODO(Lucas)` stub, not
+  implemented by the Builder. Reason: Lucas's learning-mode rule (he writes one small central
+  piece of each task). Impact: `tests/ui/test_debug_overlay.gd::test_toggle_press_flips_visibility_both_ways`
+  fails and `tools/test` exits 1 until he writes it, so status stays `IN_PROGRESS`. Everything else
+  was proved green with a temporary 2-line toggle in a throwaway clone, then discarded.
+- **DEV-2:** More tests than T7's "one sample test": `tests/test_input_map.gd` (AC6, exact table)
+  and `tests/ui/test_debug_overlay.gd` (AC4, AC5). Reason: those ACs had no automated proof.
+  Impact: none on scope; test code only.
+- **DEV-3:** `tests/fixtures/core_purity/good/` added next to the AC9 bad fixtures, and `--self-test`
+  also requires exactly one violation per bad fixture and all 19 C2 rules tripped. Reason: "every
+  fixture fails" alone is satisfied by a checker that rejects everything, or by a fixture failing
+  for the wrong rule. Impact: adding a C2 token now requires adding its fixture.
+- **DEV-4:** `tools/test` also fails if GUT logs `Ignoring script`. Reason: found while proving AC7:
+  a test script with a parse or compile error was skipped and GUT still exited 0. Impact: the check
+  matches GUT's log text, so re-verify it when updating GUT.
+
 ### Assumptions made (small, reversible)
+- **ASSUMPTION-1:** `config/version="0.1.0"`; the plan names no starting version.
+- **ASSUMPTION-2:** `window_width/height_override` 1280x720. A 640x360 window is tiny on a desktop,
+  and 2x shows the integer scaling. Base viewport stays 640x360 (Decision D).
+- **ASSUMPTION-3:** All keys bound by `physical_keycode`, so WASD keeps its position on any layout.
+- **ASSUMPTION-4:** Forward Plus renderer (Godot's default); the plan doesn't choose one.
+- **ASSUMPTION-5:** `gdscript/warnings/untyped_declaration=2` (error) enforces C4's static typing.
+  Addons are excluded by Godot's default setting.
+- **ASSUMPTION-6:** C2 tokens: identifier-like ones match as whole words (the list naming both
+  `Sprite2D` and `AnimatedSprite2D` implies this, and it keeps `PlayerController` legal); the rest
+  match literally. Comments are not stripped, so a forbidden token in a comment trips the check.
+- **ASSUMPTION-7:** C8: `$GODOT_BIN` set to a bad path is an error, no fallback. Otherwise a typo
+  would silently pick another Godot.
+- **ASSUMPTION-8:** C9: no export preset exists yet (no task creates one). `tools/.gdignore` hides
+  `tools/` from Godot, `.venv/` is a hidden gitignored folder, and `requirements-dev.txt` is not a
+  Godot resource. The first export feature must still check its preset excludes them.
+- **ASSUMPTION-9:** GUT's editor plugin is not enabled; D-003 only needs headless runs.
+- **ASSUMPTION-10:** `debug_toggle` reads input directly: it's a dev tool, not a player action (G8).
+- **ASSUMPTION-11:** Script default of `debug_overlay_visible_on_start` is `false`, `.tres` value is
+  `true`. Godot only writes non-default values, so the line stays visible in the `.tres`, and a
+  lost value hides the overlay rather than showing it.
+
 ### Things the Auditor should look at closely
+- **C5/AC10 on a clone with no `.godot/`:** `godot --headless --quit` before `tools/setup` exits 0
+  but prints `Could not find type "GameTunables"`, because the `class_name` cache doesn't exist yet.
+  After `tools/setup` it is clean. Opening the editor on such a clone is clean too (headless editor:
+  0 errors, 0 warnings). I read AC10 as running after setup (AC12 order). Say so if you read it differently.
+- **Not tested:** Linux (C7): scripts stick to `sed -E`, `grep -E/-F`, `find`, and run on macOS bash
+  3.2. Real gamepad: bindings are checked against the AC6 table only. The editor's GUI Output panel:
+  checked via `--headless --editor`.
+- **gdtoolkit 4.5.0 vs Godot 4.7:** it's the latest gdtoolkit, and parses all code here. Only
+  `gdtoolkit` is pinned, as D-004 says; its transitive deps are not.
+- **No TDD order for T5/T6:** the spec puts GUT at T7, so their tests came after the code. Each was
+  shown to catch a break by mutation: F3 rebound, and overlay ignoring the tunable.
+- `tools/test` re-runs `--import` each time so new `class_name`s resolve; this adds a little startup.
+
 ### How to test
+Prerequisite: finish the `TODO(Lucas)`. Until then `tools/test` reports 9/10 and exits 1.
+
+```sh
+tools/setup && tools/setup                  # idempotent; git status stays clean
+tools/test                                  # expect 10/10, exit 0
+tools/lint                                  # expect exit 0
+tools/check_core_purity                     # expect "core purity ok"
+tools/check_core_purity --self-test         # expect 19 rules tripped
+godot --headless --path . --quit            # expect exit 0, no errors
+```
+
+AC7 negative: add a `tests/test_x.gd` with `assert_true(false)` and run `tools/test` (exit 1); then
+give it a syntax error (exit 1). Manual: F5 shows the overlay at 2x, F3 hides/shows it; set
+`debug_overlay_visible_on_start` to false in the inspector, run again, overlay starts hidden.
 
 ---
 
