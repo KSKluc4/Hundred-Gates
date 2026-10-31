@@ -21,6 +21,27 @@ Planned (create when their phase starts — not before):
 | Backend | Phase 4 | Accounts, guilds, market, persistence |
 | Lore | When useful | World, tower story, NPC writing |
 
+## Who to call (the one rule)
+
+**Does it change how the game plays or feels?** → the department of that area (Combat now).
+**Anything else** (what to do next, priorities, decisions, architecture, tests, tooling,
+process, Auditor findings about code structure) → **Direction**.
+
+| Situation | Who |
+|---|---|
+| New idea, "what's next?", change of plan, new D-### | Direction |
+| Design a mechanic: numbers, dash, attacks, enemies, bosses | Combat |
+| Write a spec | The department that owns the area (combat → Combat) |
+| Spec written → 2-minute check before the Auditor | Direction |
+| Auditor finding about **gameplay** (values, behavior, feel) | Combat |
+| Auditor finding about **structure** (API, tests, input map, timing, tooling) | Direction |
+| Auditor approved the plan | Lucas (Gate A) |
+| Build | Claude Code |
+| Code review | Codex |
+| Play it | Lucas (Gate B) |
+
+Every Direction message ends with exactly one **Next step: who + exact line to send**.
+
 ## How to activate a department
 
 In a new chat inside the "2D de Jogo" Claude Project:
@@ -33,7 +54,8 @@ Você é o departamento de <Nome> do Hundred Gates. Lê studio/departments/<arqu
 ## Rules
 
 1. **One owner per feature.** Every feature file has `department:` in its header.
-   Only that department writes §1–§6.
+   That department writes §1–§6. **Exception:** Direction may edit §1–§6 for structure
+   findings (see table above) and signs its replies `Planner reply (Direction)`.
 2. **Cross-department needs go through §10 Open Questions**, tagged `→ <Department>`.
    Lucas carries the question to that department's chat and pastes the answer back.
 3. **Design docs are the source of truth for their area.** A spec that contradicts its
