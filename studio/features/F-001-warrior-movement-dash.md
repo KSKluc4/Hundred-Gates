@@ -1,8 +1,8 @@
 ---
 id: F-001
 title: Warrior movement + dash
-status: PLAN_REVIEW           # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-001, D-002, D-005]
@@ -270,8 +270,14 @@ Small, ordered, each independently committable.
 ## 7. Plan Review  ·  _Auditor_
 
 **Verdict:** `CHANGES_REQUESTED`
-**Reviewed:** 2026-10-31 · **Round:** 1
-**Reviewed revision:** `a23f8fec43f8ce04680b4dc3306ef0f8a226a952`
+**Reviewed:** 2026-10-31 · **Round:** 2
+**Reviewed revision:** `112143dba13a3314ebb854bf8fdae152ad2ce3b2`
+
+**Current result:** PR-1–PR-7 are `✔ resolved` as specification gaps. Their Planner
+replies were checked first and are preserved below. The newly specified timing rules
+introduce two blocking contradictions, PR-8/PR-9, described after the resolution table.
+
+**Round 1 assessment (historical):**
 
 The test-room movement/aim/dash outcome serves pillar 2, with clear scope exclusions.
 The class/resource split follows D-005, and the chosen architecture and rejected
@@ -279,7 +285,7 @@ alternatives have specific reasons. No unflagged contradiction with combat.md's
 movement/dash decisions was found. CX1 and enemy collision can remain deferred as
 stated. Approval is blocked by the conflicting mutation and test contracts below.
 
-### PR-1 — 🔴 C4 forbids mutations required by the chosen architecture
+### PR-1 — 🔴 C4 forbids mutations required by the chosen architecture — ✔ resolved (round 2)
 - **Location:** §3 Chosen; §4 C4/C5/C13; §5 AC14/AC16; §6 T5/T8/T9.
 - **Problem:** C4 says motor state changes only through commands and `tick(delta)`.
   T8 nevertheless writes position through `set_position_px()` every tick, T9 calls
@@ -298,7 +304,7 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
 
 > **Planner reply (Direction):** Accepted. C4 now limits *intentions* to commands and lists the exhaustive lifecycle API; C18 defines each call's effects (physics result authoritative in scene, motor integration in core tests, glue sets body from motor after restore). C5 fixes the snapshot boundary (between ticks, no pending commands, commands never retained) and its full contents, including dash direction and latched params.
 
-### PR-2 — 🔴 AC17 demands core-only coverage that T6 explicitly excludes
+### PR-2 — 🔴 AC17 demands core-only coverage that T6 explicitly excludes — ✔ resolved (round 2)
 - **Location:** §5 AC4/AC5/AC8/AC17; §6 T6/T7/T9; §3 Chosen/Rejected.
 - **Problem:** AC17 requires AC1–AC15 to be tested at core level, which includes
   wall collision (AC8) and device arbitration/mouse world-position conversion
@@ -314,7 +320,7 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
 
 > **Planner reply (Direction):** Accepted. §5 now has a coverage map (AC17): pure motor tests, pure input-mapper tests (new `PlayerInputMapper` + `InputSample`, §3), and an automated physics scene test for walls (AC8) and reload (T9b). T6/T7/T9/T9b updated.
 
-### PR-3 — 🟡 Timing boundaries and the numeric test oracle are underspecified
+### PR-3 — 🟡 Timing boundaries and the numeric test oracle are underspecified — ✔ resolved (round 2)
 - **Location:** §4 C1/C8–C10; §5 tolerance statement and AC1/AC3/AC7/AC9–AC13; §6 T5/T6/T8.
 - **Problem:** The plan does not define command/timer ordering within a tick, what
   happens to the part of a tick after dash/cooldown expiry, or which speed/rate sets
@@ -335,7 +341,7 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
 
 > **Planner reply (Direction):** Accepted. C15 defines the full tick timeline: input ordering, inclusive buffer boundary, exact-distance dash with clipped final-tick displacement, zero movement for the rest of that tick, overshoot carried into cooldown, and how the glue feeds displacement/delta to `move_and_slide()`. §5 defines numeric tolerances, 1/30 s sampling for all rates, the `move_toward` oracle (AC1 now measured at settled speed), and AC13 now runs 5 dash+cooldown cycles with non-divisible durations.
 
-### PR-4 — 🟡 “Last used device” and initial/zero aim have no deterministic rule
+### PR-4 — 🟡 “Last used device” and initial/zero aim have no deterministic rule — ✔ resolved (round 2)
 - **Location:** §5 AC4–AC6; §6 T4/T5/T7.
 - **Problem:** AC4 refers to the last used *aim* device while AC5 refers to the last
   used device generally. It is unclear whether keyboard movement, a pad button,
@@ -352,7 +358,7 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
 
 > **Planner reply (Direction):** Accepted. C16: initial mode MOUSE, initial facing DOWN, exact qualifying events for each mode (mouse motion ≥ 2 px or click; joypad button or stick above dz), keyboard never switches, camera-driven mouse world changes don't count, last event in a tick wins, mouse within 0.25 tiles → no aim. AC5/AC6 and the mapper tests cover switching, noise, moving while aiming and a dash right after setup.
 
-### PR-5 — 🟡 Analog magnitude and the authoritative deadzone need one contract
+### PR-5 — 🟡 Analog magnitude and the authoritative deadzone need one contract — ✔ resolved (round 2)
 - **Location:** §2 Input map; §5 AC2/AC16; §6 T3/T4/T7; F-000 action deadzones.
 - **Problem:** AC2 does not say whether m is raw stick magnitude or a value already
   remapped through the deadzone. T4 says MoveCommand is already deadzoned, while T7
@@ -371,7 +377,7 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
 
 > **Planner reply (Direction):** Accepted. C14: one radial formula for both sticks with Godot-style remap (raw 0.5, dz 0.2 → 0.375), equality boundary → zero, digital normalized, stick wins over digital when non-zero. The resource `stick_deadzone` is the only runtime filter; sticks are read as raw axes so nothing is filtered twice. `aim_*` actions removed — only `debug_reload_tunables` is new, F-000 bindings untouched. AC2 tests raw magnitudes; dz reload tested through the mapper.
 
-### PR-6 — 🟡 Hot-reload lacks valid-data and active-phase semantics
+### PR-6 — 🟡 Hot-reload lacks valid-data and active-phase semantics — ✔ resolved (round 2)
 - **Location:** §4 C2/C8/C13; §5 AC16; §6 T2/T5/T9.
 - **Problem:** No allowed ranges or invalid-load policy are defined for editable
   movement/dash data. `dash_duration = 0` makes distance/duration undefined, and
@@ -390,7 +396,7 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
 
 > **Planner reply (Direction):** Accepted. C17: valid ranges and cross-field invariant (0 < iframes < duration, zero accel/decel kept), atomic reload (all-or-nothing, rejection shown on overlay), invalid data refused at setup. Latching: dash distance/duration/i-frames latched at fire; remaining cooldown and buffer age kept; other values from next tick. AC16 tests valid and invalid reload during dash, i-frames, cooldown and buffer.
 
-### PR-7 — 🟡 Adding the new actions requires an explicit F-000 test migration
+### PR-7 — 🟡 Adding the new actions requires an explicit F-000 test migration — ✔ resolved (round 2)
 - **Location:** §2 Input map; §4 C12/“Must not break”; §6 T6/T7;
   `tests/test_input_map.gd:7–16` and `_expected_bindings()`.
 - **Problem:** The existing test asserts that every non-ui action equals exactly
@@ -403,6 +409,76 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
   Keep this regression migration distinct from the new motor-only tests.
 
 > **Planner reply (Direction):** Accepted. T7 now includes migrating `tests/test_input_map.gd`: extend the exact action set with `debug_reload_tunables` only and keep every F-000 assertion unchanged. Since `aim_*` actions were dropped (PR-5), the migration is one action.
+
+### Round 2 — Planner reply and resolution check
+
+Read every Planner reply first, then the complete revised feature, PROJECT.md,
+DECISIONS.md, STATUS.md, and combat.md. The player-facing goal, explicit exclusions,
+class data model, and rejected options remain appropriate. The new aim/deadzone
+rules are also reflected explicitly in combat.md. T9b now provides the previously
+missing physics integration coverage; the original seven findings are not re-raised.
+
+| Finding | Verified revision | Current status |
+|---|---|---|
+| PR-1 | C4/C18 distinguish intentions from lifecycle/synchronization writes. C5 specifies the between-ticks snapshot and per-tick command lifetime; C18 defines position authority and restore synchronization. | ✔ resolved |
+| PR-2 | AC17 separates pure motor, pure mapper, and physics scene coverage. T7 includes the mapper tests; T9b covers walls and end-to-end reload. | ✔ resolved |
+| PR-3 | C15 specifies ordering, movement integration, expiry/buffer rules, and physics displacement. §5 now gives numerical tolerances, a settled-speed AC1 oracle, common sample times, and repeated cycles. The correctness of the newly chosen policy is reviewed separately in PR-8/PR-9. | ✔ resolved — ambiguity addressed |
+| PR-4 | C16 specifies initial mode/facing, qualifying physical events, event ordering, device selection, and zero-aim fallback; AC4–AC6 and mapper coverage refer to it. | ✔ resolved |
+| PR-5 | C14 defines the radial formula, equality boundary, digital fallback, and single resource-owned deadzone; AC2 and AC17 cover raw samples/reload. Only F5 adds an action. | ✔ resolved |
+| PR-6 | C17 defines validation, atomic rejection, active-dash latching, and live-update rules; AC16/AC17 cover valid/invalid reload and state preservation. Short-window observability under the new C8/C15 policy is a separate defect in PR-9. | ✔ resolved |
+| PR-7 | T7 explicitly extends the exact action set by F5 while retaining every original F-000 binding/deadzone assertion. | ✔ resolved |
+
+### PR-8 — 🔴 C15 accumulates cooldown-to-dash rounding beyond AC13's tolerance
+- **Location:** §4 C1/C15 (eligibility step c and phase advance step d); §5 timing
+  tolerance and AC13; §6 T5/T6.
+- **Problem:** Eligibility is checked only at tick start. C15 carries the fractional
+  remainder of a dash-ending tick into cooldown, but does not carry cooldown expiry
+  within a later tick into the next buffered dash. Each new dash therefore restarts
+  on a rounded-up tick boundary. Repeated cycles accumulate that delay.
+- **Evidence:** With valid `dash_duration = 0.141 s`, `dash_cooldown = 0.329 s`,
+  `input_buffer_window = 0.12 s`, and identical DashCommands at absolute times
+  0.0, 0.1, 0.2, … seconds, the proposed timeline gives these starts (all requests
+  needed at eligibility remain fresh):
+
+  | Rate | Dash 1 | Dash 2 | Dash 3 | Dash 4 | Dash 5 |
+  |---|---|---|---|---|---|
+  | 30 Hz | 0.000000 | 0.500000 | 1.000000 | 1.500000 | 2.000000 |
+  | 60 Hz | 0.000000 | 0.483333 | 0.966667 | 1.450000 | 1.933333 |
+  | 120 Hz | 0.000000 | 0.475000 | 0.950000 | 1.425000 | 1.900000 |
+
+  These values were checked with a standalone rational-arithmetic model of C15,
+  including normal cooldown decrementing and its stated dash-end overshoot credit.
+- **Why it matters:** The fifth dash/i-frame window differs by 0.1 s between 30 and
+  120 Hz, exceeding AC13's 1/30 s timing tolerance. Common 1/30 s observation points
+  do not remove a delay spanning three such intervals. A Builder obeying C15 cannot
+  satisfy the required repeated-cycle behavior for this valid sequence.
+- **Suggested fix:** Preserve phase-time overshoot through cooldown-to-dash transitions
+  as well as dash-to-cooldown transitions, and define when buffered eligibility is
+  re-evaluated within the remaining interval. Specify the corresponding displacement
+  passed to physics. Add this concrete command sequence/data combination to T6 at
+  all three rates; do not rely only on defaults whose cycle total is exactly 0.5 s.
+
+### PR-9 — 🔴 Valid short i-frame windows make C8's post-tick rule contradictory
+- **Location:** §4 C8/C15/C17; §5 AC9/AC16/AC17.
+- **Problem:** C17 accepts `dash_duration = 0.1 s` and `dash_iframe_duration = 0.01 s`.
+  At 30 Hz, the firing tick advances dash elapsed to 1/30 s. C8 requires
+  `is_invulnerable()` to be true after the firing tick, but also requires expiry at
+  that same end-of-tick check because elapsed ≥ 0.01 s. The dash is still active,
+  so this is not just an already-ended dash case.
+- **Why it matters:** No post-tick boolean can satisfy both clauses for these valid,
+  reloadable values. Keeping it true breaks the expiry predicate; making it false
+  breaks the first-tick guarantee and leaves no sampled invulnerable phase. The
+  timing tolerance does not resolve two opposite requirements at the same observation.
+- **Suggested fix:** Define whether invulnerability describes a sampled instant or
+  intervals within a tick, and make the first-tick/expiry rules consistent with that
+  choice. Alternatively, add validation bounds tied to supported tick intervals that
+  guarantee the promised observable phases. Explicitly cover sub-tick i-frames,
+  a sub-tick whole dash, and a sub-tick vulnerable tail in AC9/C17 tests. Keep the
+  combat design's invulnerable start and vulnerable tail aligned with the chosen rule.
+
+**Round 2 verdict:** `CHANGES_REQUESTED`. Keep `owner_now: Planner` and
+`status: PLAN_CHANGES`. Verification here checks the proposed contract mathematically;
+it does not claim that F-001 code or implementation tests have been run.
 
 ---
 
