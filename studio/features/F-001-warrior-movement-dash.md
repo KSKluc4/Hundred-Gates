@@ -1,8 +1,8 @@
 ---
 id: F-001
 title: Warrior movement + dash
-status: PLAN_CHANGES          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_REVIEW          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-001, D-002, D-005]
@@ -150,14 +150,14 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 | C5 | Snapshot boundary: `to_dict()` / `from_dict()` are only valid **between ticks with no pending commands** (after `tick()` returns, before the next `submit()`). The snapshot contains: position, velocity, facing, motor state, dash direction, dash elapsed, latched dash params (C17), cooldown remaining, buffered dash flag + age, invulnerability flag. Round-trip loses nothing. Commands are per-tick and never retained, so no intention is stored. | G7 (PR-1) |
 | C6 | No global or static mutable state in the motor, mapper or glue. Two players in the same scene are fully independent. | D-002 (co-op) |
 | C7 | Values are stored in tiles and seconds. Tile → pixel conversion happens in one place (`Units.TILE_SIZE_PX`). | CX1 pending |
-| C8 | I-frames: `is_invulnerable()` is true after the `tick()` in which the dash fires, and stays true until dash elapsed time ≥ the latched `dash_iframe_duration` (checked at end of tick). The tail (after i-frames, before dash end) is **vulnerable**. | CQ3 |
+| C8 | **I-frames are an exact time interval** `I = [fire_time, fire_time + dash_iframe_duration)` on the motor clock (C15), using the latched duration. The tail of the dash after `I` ends is **vulnerable**. `is_invulnerable()` after a tick is true **iff `I` overlaps that tick's interval `[tick_start, tick_end)`** — so the tick a dash fires in always reports true, even for sub-tick windows, and a tick that only contains the tail reports false. `get_iframe_window()` returns `I` (motor-clock seconds, or empty) for exact checks by the future hit system. `invulnerability_changed` fires when the tick-end value changes. No validation bound depends on the tick rate. | CQ3 (PR-9) |
 | C9 | Dash cooldown starts **when the dash ends**, not when it starts. | design/combat.md |
 | C10 | During a dash, move input is ignored and the dash direction is fixed at fire time. Facing still updates. | design/combat.md |
 | C11 | No new addons or dependencies. | G4 |
 | C12 | F-000 input actions keep their names, bindings and deadzones. No `dash` action — the dash uses `dodge`. Only new action: `debug_reload_tunables` (F5). | F-000 must-not-break |
 | C13 | Hot-reload swaps data without resetting motor state (rules in C17). | AC16 |
 | C14 | **Stick contract (move and aim, one formula):** read the raw stick vector `r` (axes, clamped to length 1). `dz` = `PlayerCombatTunables.stick_deadzone`, radial. If `|r| <= dz` → zero. Else magnitude `m = (|r| − dz) / (1 − dz)`, direction `r / |r|`. Example: raw 0.5, dz 0.2 → 0.375. Digital (keys, D-pad): components ±1, normalized to length 1. Move = stick if its `m > 0`, else digital. The resource `dz` is the **only** runtime filter on stick magnitudes; the reader never uses action strengths for sticks, so nothing is filtered twice. A reloaded `dz` applies from the next tick. | PR-5 |
-| C15 | **Tick timeline** (one physics tick, `delta`): (1) the input node builds an `InputSample` and the mapper submits this tick's `MoveCommand` + `AimCommand` (always) and `DashCommand` (only on the tick `dodge` was pressed). (2) `motor.tick(delta)`: a. facing from this tick's aim/move (C16); b. a `DashCommand` this tick sets the buffer (age 0, replacing any older one); c. a buffered dash **fires** if state ≠ DASHING, cooldown remaining ≤ 0 and buffer age ≤ `input_buffer_window` (inclusive); direction = this tick's move input, else facing; d. advance the active phase by `delta`. A dash moves at `dash_distance / dash_duration` tiles/s for exactly the time left in the dash: in the tick it ends, displacement uses only the remaining time, so total dash distance is exact. The rest of that tick produces no movement and velocity is 0 (AC10). Overshoot (`delta` − time used) is subtracted from the new cooldown. e. outside a dash, velocity moves linearly toward `move_speed × m × dir` at rate `move_speed / accel_time` (or `/ decel_time` when slowing); time 0 = jump to target; position += velocity × delta. f. an unconsumed buffer ages by `delta` and is dropped once age > window. (3) glue sets `velocity = tick_displacement_px / delta`, calls `move_and_slide()` (which uses the physics step delta), then `motor.sync_position(global_position)`. | G1 (PR-3) |
+| C15 | **Tick timeline** (one physics tick, `delta`). The motor keeps a clock `time` (seconds since `setup()`, in the snapshot). (1) The input node builds an `InputSample`; the mapper submits this tick's `MoveCommand` + `AimCommand` (always) and `DashCommand` (only on the tick `dodge` was pressed). Commands apply for the whole tick. (2) `motor.tick(delta)`: a. facing from this tick's aim/move (C16); b. a `DashCommand` sets the buffer with press time = tick start (replacing any older one); c. **phase loop — consume `delta` in segments, never rounding to tick boundaries:** set `remaining = delta`; repeat while `remaining > 0`: if not dashing and a buffered dash is **eligible now** (cooldown remaining ≤ 0 and `time − press_time ≤ input_buffer_window`, inclusive) → **fire at this exact instant**: latch dash params, direction = this tick's move input else facing, start `I` (C8), clear buffer; if dashing → advance by `s = min(remaining, dash time left)` at speed `dash_distance / dash_duration`; if the dash ends inside the segment, velocity becomes 0 and cooldown starts with the full `dash_cooldown` at that instant; if not dashing → advance by `s = min(remaining, cooldown remaining if > 0 and a buffer is waiting, else remaining)` with normal movement (step d) and cooldown decreasing by `s`; then `time += s`, `remaining −= s`. A dash and its whole cooldown may start and end inside one tick. d. **Normal movement is integrated exactly**, not with Euler steps: velocity moves linearly toward `move_speed × m × dir` with constant acceleration `move_speed / accel_time` (or `/ decel_time` when slowing; time 0 = instant), and displacement over a segment is the exact integral (`v0·s + ½·a·s²` until the target is reached, then constant). e. a buffer whose age exceeds `input_buffer_window` at the end of the tick is dropped. f. the sum of all segment displacements is the tick displacement. (3) Glue sets `velocity = tick_displacement_px / delta`, calls `move_and_slide()` (which uses the physics step delta), then `motor.sync_position(global_position)`. | G1 (PR-3, PR-8) |
 | C16 | **Aim device rules.** Aim mode is `MOUSE` or `GAMEPAD`; initial mode `MOUSE`; initial facing `Vector2.DOWN` (never zero). Switch to `MOUSE` only on a physical mouse event: motion with relative length ≥ 2 px, or a mouse button press. Camera/player movement that changes the mouse's world position is **not** an event. Switch to `GAMEPAD` on any joypad button press, or either stick with raw `|r| > dz`. Keyboard input never switches mode. Several qualifying events in one tick: the last one received wins. `MOUSE` aim = direction from player to mouse world position; if that distance < 0.25 tiles → no aim (zero). `GAMEPAD` aim = right stick per C14 (zero below dz). Motor facing: aim non-zero → aim direction; else move non-zero → move direction; else keep last facing. The active joypad is the one that produced the last qualifying event (default: first connected). | PR-4 |
 | C17 | **Data validity and hot-reload.** Valid ranges: `move_speed` > 0; `move_accel_time`, `move_decel_time` ≥ 0; `dash_distance` > 0; `dash_duration` > 0; 0 < `dash_iframe_duration` < `dash_duration`; `dash_cooldown` ≥ 0; `input_buffer_window` ≥ 0; 0 ≤ `stick_deadzone` < 1. Each resource has `validate() -> PackedStringArray` (empty = valid). Reload is **atomic**: load both files ignoring cache; if either fails to load or validate, nothing changes and the overlay shows "reload rejected: <errors>". Invalid data at `setup()` is refused (`push_error`, motor stays in its previous state / not started). **Latching:** dash distance, duration and i-frame duration are latched when a dash fires; a mid-dash reload affects the next dash. Remaining cooldown and buffer age are kept as-is; new `dash_cooldown` applies to the next cooldown, new `input_buffer_window` from the next tick. Move speed/accel/decel and `stick_deadzone` apply from the next tick. | PR-6 |
 | C18 | **Lifecycle API effects (exhaustive).** `setup(class_data, tunables, start_position_tiles, initial_facing = Vector2.DOWN)`: validate, store data, reset all state. `apply_data(class_data, tunables)`: validate, replace data only (C17). `sync_position(position_px)`: overwrite position only — the physics result is authoritative in the scene; in core tests nobody calls it and the motor's own integration stands. `from_dict(d)`: replace state per C5; the glue then sets `global_position` from the motor before the next tick. `tick()` and `submit()` per C15. | PR-1 |
@@ -176,7 +176,7 @@ and 120 ticks/s and sample only at times that are multiples of 1/30 s. Position 
 **0.01 tiles** for dash distance (exact by C15) and settled-speed travel; **0.2 tiles** for
 any final position after mixed sequences (AC13); timing tolerance **one 30 Hz tick
 (1/30 s)** for state changes and invulnerability windows. Where acceleration matters,
-the oracle is C15 step e. (linear `move_toward`), never "ideal" continuous motion.
+the oracle is the exact piecewise-constant-acceleration kinematics of C15 step d (identical at every rate, since commands only change at 1/30 s multiples in tests).
 
 - [ ] AC1 — **Movement speed:** After velocity has settled at full speed (accel finished),
       holding a full-magnitude input for 1.0 s moves the Warrior `move_speed` tiles
@@ -201,9 +201,12 @@ the oracle is C15 step e. (linear `move_toward`), never "ideal" continuous motio
 - [ ] AC8 — **Dash and walls:** Dashing straight into a wall stops at the wall; dashing at
       45° into a wall slides along it. The Warrior's body never overlaps world geometry.
       (Automated scene test, T9b.)
-- [ ] AC9 — **I-frames:** Per C8: invulnerable from the fire tick until latched
-      `dash_iframe_duration` (± one 30 Hz tick), then vulnerable for the rest of the dash
-      and after.
+- [ ] AC9 — **I-frames:** Per C8: the window `I` is exact (`get_iframe_window()` matches
+      latched fire time and duration to float precision at every rate), the tick-end flag
+      follows the overlap rule, and the tail is vulnerable. Covered explicitly: a sub-tick
+      i-frame window (e.g. 0.01 s at 30 Hz → true after the fire tick, false after the next),
+      a sub-tick whole dash (fires and ends in one tick: flag true, state not DASHING, both
+      signals emitted), and a sub-tick vulnerable tail.
 - [ ] AC10 — **Dash end:** No dash momentum carries over: velocity is 0 at dash end and then
       follows normal accel from the current move input.
 - [ ] AC11 — **Cooldown:** A new dash can't fire until `dash_cooldown` after the previous
@@ -212,9 +215,11 @@ the oracle is C15 step e. (linear `move_toward`), never "ideal" continuous motio
       tick if its age ≤ `input_buffer_window` (inclusive), else it is dropped. A newer press
       replaces the older one. Direction is read at fire time.
 - [ ] AC13 — **Frame-rate independence:** A scripted sequence of moves, aim changes and
-      **5 consecutive dash + cooldown cycles** (with durations not divisible by the tick
-      interval) ends at the same position (± 0.2 tiles) with the same invulnerability
-      windows (± one 30 Hz tick) at 30, 60 and 120 ticks/s.
+      **5 consecutive dash + cooldown cycles** ends at the same position (± 0.2 tiles) with
+      dash fire times and i-frame windows equal (± 1 µs) at 30, 60 and 120 ticks/s. Runs at
+      least twice: with default data, and with `dash_duration = 0.141`, `dash_cooldown =
+      0.329`, `input_buffer_window = 0.12` and DashCommands every 0.1 s (Auditor PR-8 case:
+      expected fire times 0, 0.47, 0.94, 1.41, 1.88 s at every rate).
 - [ ] AC14 — **Serialization:** Snapshot (per C5) mid-dash, mid-i-frames, mid-cooldown and
       with a buffered dash; restore into a fresh motor; the next 30 ticks of both motors
       under the same commands are identical.
@@ -258,7 +263,7 @@ Small, ordered, each independently committable.
 | T3 | Data files + autoload | `data/classes/warrior.tres`, `data/tunables/player_combat.tres`, `src/autoload/tunables.gd` | Values from design/combat.md *Tunables index*. Add `Tunables.player_combat` (path constant + preload). |
 | T4 | Commands | `src/commands/command.gd` (base), `move_command.gd`, `aim_command.gd`, `dash_command.gd` | Plain data, extend `Command` (`RefCounted`). `MoveCommand(direction)` already mapped per C14. `AimCommand(direction)` unit vector or zero. |
 | T5 | `PlayerMotor` core | `src/core/player/player_motor.gd` | States `IDLE`, `MOVING`, `DASHING`. API exactly C4/C18 + getters `get_tick_displacement_px()`, `get_position_px()`, `get_facing()`, `get_state()`, `is_invulnerable()`, `get_cooldown_remaining()`, `has_buffered_dash()`, `to_dict()`. Tick per C15. Signals: `dash_started`, `dash_ended`, `invulnerability_changed(is_invulnerable)`. |
-| T6 | Core motor tests | `tests/core/player/test_player_motor.gd` (+ helpers) | Coverage per AC17 core list, at 30/60/120 Hz with the §5 oracle. |
+| T6 | Core motor tests | `tests/core/player/test_player_motor.gd` (+ helpers) | Coverage per AC17 core list, at 30/60/120 Hz with the §5 oracle. Must include the AC13 PR-8 data set and the three AC9 sub-tick cases. |
 | T7 | Input mapper + node + input map | `src/entities/player/input_sample.gd`, `player_input_mapper.gd`, `player_input.gd`; `project.godot`; `tests/test_input_map.gd`; `tests/entities/player/test_player_input_mapper.gd` | Mapper is pure (no `Input`), implements C14/C16. Node fills `InputSample` from `Input` and input events. Add only `debug_reload_tunables` (F5). **Migrate the F-000 input-map test:** extend the exact action set and assert the new binding, keeping every original F-000 assertion unchanged (PR-7). |
 | T8 | Player glue | `src/entities/player/player.gd` (`Player`, `CharacterBody2D`), `player.tscn` | Per tick exactly C15 step 3. `@export var class_data: ClassData` (default warrior). Placeholder circle + facing line. World collision layer only. Logic never reads visuals. |
 | T9 | Debug scene + overlay | `scenes/debug/f001_movement.tscn`, `src/ui/debug/motor_debug_overlay.gd` | Room ~30×20 tiles, walls, pillars, a 45° wall. Follow camera. Overlay: state, velocity (tiles/s), facing, aim mode, i-frame flag (+ player tint), cooldown, buffered dash, ticks/s, last reload result. F5 → atomic reload (C17). |
@@ -458,6 +463,16 @@ missing physics integration coverage; the original seven findings are not re-rai
   passed to physics. Add this concrete command sequence/data combination to T6 at
   all three rates; do not rely only on defaults whose cycle total is exactly 0.5 s.
 
+> **Planner reply (Direction):** Accepted. C15 step c is now a phase loop that consumes
+> `delta` in segments: a buffered dash fires at the exact instant cooldown expires inside
+> a tick, and a dash's end, cooldown and next dash can all happen within one tick. Fixing
+> this exposed two more rate-dependent drifts the old text had, both fixed: (1) the rest of
+> a dash-ending tick used to produce no movement — it now integrates normal movement from
+> velocity 0; (2) normal movement used per-tick Euler steps — step d now integrates
+> constant acceleration exactly. Motor clock `time` added to the snapshot. AC13 now
+> requires your exact data set with expected fire times 0, 0.47, 0.94, 1.41, 1.88 s at
+> every rate (±1 µs), plus the default-data run; T6 must include it.
+
 ### PR-9 — 🔴 Valid short i-frame windows make C8's post-tick rule contradictory
 - **Location:** §4 C8/C15/C17; §5 AC9/AC16/AC17.
 - **Problem:** C17 accepts `dash_duration = 0.1 s` and `dash_iframe_duration = 0.01 s`.
@@ -475,6 +490,14 @@ missing physics integration coverage; the original seven findings are not re-rai
   guarantee the promised observable phases. Explicitly cover sub-tick i-frames,
   a sub-tick whole dash, and a sub-tick vulnerable tail in AC9/C17 tests. Keep the
   combat design's invulnerable start and vulnerable tail aligned with the chosen rule.
+
+> **Planner reply (Direction):** Accepted — chose intervals, not sampled instants. C8: i-frames
+> are an exact window on the motor clock; `is_invulnerable()` after a tick = the window
+> overlaps that tick's `[start, end)`. The fire tick is therefore always true (even for
+> 0.01 s windows), a tail-only tick is false, and `get_iframe_window()` gives the exact
+> window for the future hit system. No tick-tied validation bounds, so C17 is unchanged.
+> AC9 now names the three sub-tick cases (short window, whole dash in one tick, short tail).
+> design/combat.md updated to the same rule.
 
 **Round 2 verdict:** `CHANGES_REQUESTED`. Keep `owner_now: Planner` and
 `status: PLAN_CHANGES`. Verification here checks the proposed contract mathematically;

@@ -55,7 +55,7 @@
 
 ### Dash (dodge)
 - Direction: current movement input; if none, the facing direction.
-- I-frames start at frame 0 and end before the dash ends — the dash tail is vulnerable.
+- I-frames are an exact time window starting the instant the dash fires and ending before the dash ends — the dash tail is vulnerable. Timing is exact in time, not rounded to frames (details: F-001 C8, C15).
 - Cooldown starts when the dash ends.
 - A dash pressed during cooldown or an attack's active frames is **buffered** and fires as soon as allowed, if within the buffer window.
 - Can cancel the **recovery** of any attack. Cannot cancel windup or active frames.
