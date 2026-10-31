@@ -20,6 +20,50 @@
 
 ---
 
+## D-006 — Death and re-entry (phases 1–2)
+- **Status:** ACCEPTED
+- **Date:** 2026-10-31 · **Decided by:** Lucas (proposed by Combat, promoted by Direction)
+- **Context:** Combat CQ6. How death works shapes floor design, item economy, saves and
+  co-op later, so it's a project-wide rule, not a combat detail.
+- **Chosen:** On death the character returns to town. Floors already cleared stay cleared.
+  Once a character has reached a floor's boss room, it may re-enter that floor directly at
+  the boss. Phase 1 keeps all loot. Progress is tracked **per character** (D-005).
+- **Rejected:**
+  - *Restart the whole floor on death* — trains the hallway, not the boss; slows learning
+    boss patterns (pillar 2). Tempting because it feels fair and is simple.
+  - *Permadeath (die in game = character deleted, SAO-style)* — with class-locked
+    characters (D-005) and 100 floors, one mistake would erase dozens of hours. Tempting
+    because it's the source theme and creates real tension. Could return later as an
+    optional hardcore mode.
+- **Consequences:** Save data (G7, phase 2) needs per-character "floors cleared" and
+  "boss rooms reached". Co-op (phase 3) needs a party re-entry rule. Items & Economy may
+  add loot/currency loss on death in phase 2 (Combat CX3).
+- **Revisit if:** The boss shortcut makes players skip dungeon content, or deaths stop
+  feeling like they matter.
+
+## D-005 — Class model: fixed class per character, bound to a weapon family
+- **Status:** ACCEPTED
+- **Date:** 2026-10-31 · **Decided by:** Lucas (options framed by Direction)
+- **Context:** Lucas wants multiple classes (warrior, healer, archer, assassin…). The class
+  model shapes combat, progression, saves and guild play, so it's decided before combat design.
+- **Chosen:** Each character has **one fixed class**, chosen at creation. Changing class means
+  creating a new character from scratch. Each class is **bound to its weapon family**
+  (warrior → sword, archer → bow…): the weapon defines the playstyle, but a character can only
+  equip weapons of its class family. Classes are **data** (`data/classes/*.tres`: weapon
+  family, base stats, skills) per G9 — adding a class means adding data + art, not rewriting
+  the player.
+- **Phasing:** P1 = one class. P2 = +2 solo-viable classes. P3 = healer/support, together with
+  co-op (a healer has no job solo). P4+ = more classes/specializations for guild raids.
+- **Rejected:**
+  - *Free weapon swap, weapon = class at any moment* — loses character identity and the
+    group-composition layer guilds need. Tempting because it's flexible and cheaper to build.
+  - *Hybrid: fixed role + free weapon within role* — two systems to design and balance at
+    once; too much for a one-person studio. Tempting because of build depth.
+- **Consequences:** Save system must support multiple character slots (G7, phase 2). Art and
+  animation cost multiplies per class. Every boss must be beatable solo by every
+  solo-viable class. A healer arriving in P3 means P1–P2 balance assumes no healing from allies.
+- **Revisit if:** Playtests show players abandoning characters because they want to switch class.
+
 ## D-004 — Lint/format tooling: gdtoolkit
 - **Status:** ACCEPTED
 - **Date:** 2026-10-31 · **Decided by:** Lucas (proposed by Planner, raised by Auditor in F-000 §7)

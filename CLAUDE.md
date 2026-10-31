@@ -13,6 +13,8 @@ This project runs as a small studio. Read `studio/README.md` once per session.
 2. Read the feature file you were pointed to — **the whole thing**, especially
    §3 Rejected options, §4 Constraints, §10 Open Questions, §11 Director Notes.
 3. Skim `studio/DECISIONS.md` for anything in `depends_on`.
+   Read the design doc of the feature's `department:` (e.g. `studio/design/combat.md`);
+   values and rules there are binding unless the spec explicitly overrides them.
 4. Check `status:` in the header.
    - Only start building if status is `APPROVED` or `CODE_CHANGES`.
    - Otherwise stop and tell Lucas the feature isn't ready for you.

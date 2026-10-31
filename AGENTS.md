@@ -28,6 +28,8 @@ Read `studio/PROJECT.md`, `studio/DECISIONS.md`, the feature file. Then check:
 3. **Options** — Were real alternatives considered? Are rejection reasons specific?
    Is there an obvious option nobody listed?
 4. **Constraints** — Conflicts with global constraints or existing D-### decisions?
+   Does the spec contradict its department's design doc in `studio/design/`?
+   An unflagged contradiction is 🔴.
 5. **Acceptance criteria** — Is each one testable and observable? Anything the goal
    needs that no AC covers?
 6. **Tasks** — Small, ordered, each committable? Hidden big task inside a small one?

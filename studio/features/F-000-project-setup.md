@@ -7,6 +7,7 @@ created: 2026-10-31
 updated: 2026-10-31
 depends_on: [D-001, D-002]
 pillars: []              # infrastructure — enables all pillars
+department: Direction      # infrastructure
 ---
 
 # F-000 — Project setup & architecture skeleton

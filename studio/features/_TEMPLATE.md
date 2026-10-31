@@ -7,6 +7,7 @@ created: YYYY-MM-DD
 updated: YYYY-MM-DD
 depends_on: []           # e.g. [F-002, D-004]
 pillars: []              # which PROJECT.md pillars this serves
+department: Direction      # owning department (studio/departments/README.md)
 ---
 
 # F-XXX — <title>

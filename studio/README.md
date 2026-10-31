@@ -9,6 +9,18 @@ One human, three AI roles, one shared source of truth.
 | **Builder** | Claude Code | Implementation, implementation log, tests | Changes scope or re-opens rejected options silently |
 | **Auditor** | Codex | Plan reviews, code reviews, verdicts | Edits code or the plan's decisions directly |
 
+## Departments
+
+The Planner role is split into **departments** (Direction, Combat & Bosses, more as phases
+start). A department is a brief + a design doc, not a chat. Each feature has exactly one
+owning department (`department:` in its header). See `studio/departments/README.md`.
+
+```
+studio/departments/   → one brief per department + roster and rules
+studio/design/        → living design docs (source of truth per area)
+studio/prompts/project-instructions.md → Claude Project instructions (replaces planner.md)
+```
+
 ## The core rule: hand off files, never summaries
 
 Context gets lost when one agent summarizes for the next. So nobody summarizes.
