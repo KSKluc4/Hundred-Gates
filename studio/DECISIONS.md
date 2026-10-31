@@ -20,6 +20,41 @@
 
 ---
 
+## D-004 — Lint/format tooling: gdtoolkit
+- **Status:** ACCEPTED
+- **Date:** 2026-10-31 · **Decided by:** Lucas (proposed by Planner, raised by Auditor in F-000 §7)
+- **Context:** Two different agents write and review GDScript. Without enforced style,
+  diffs fill with formatting noise and naming drifts from GLOSSARY.md.
+- **Chosen:** gdtoolkit (`gdlint`, `gdformat`), 4.x line (matches Godot 4), exact version
+  pinned in `requirements-dev.txt`, installed into a project-local `.venv` by
+  `tools/setup`. Dev-only — never shipped with the game.
+- **Rejected:**
+  - *No linter, Godot editor warnings only* — catches typing issues but not formatting or
+    naming, and isn't a CLI pass/fail an agent can run. Tempting because zero setup.
+    (Editor warnings stay on anyway.)
+  - *Global `pip install` without venv* — pollutes system Python, versions drift between
+    Lucas's Mac and agent machines. Tempting because one command shorter.
+- **Consequences:** Python 3 required on dev machines (present on macOS with Xcode CLT).
+- **Revisit if:** gdtoolkit lags behind a Godot 4.x syntax we need, or is unmaintained.
+
+## D-003 — Test framework: GUT, vendored
+- **Status:** ACCEPTED
+- **Date:** 2026-10-31 · **Decided by:** Lucas (proposed by Planner, raised by Auditor in F-000 §7)
+- **Context:** `src/core/` logic (G6) must be unit-testable from day one, and agents need a
+  headless pass/fail signal.
+- **Chosen:** GUT (Godot Unit Test), release compatible with the pinned Godot 4 version,
+  vendored (committed) into `addons/gut/`. Version recorded in `README.md`. Run headless
+  via `tools/test`.
+- **Rejected:**
+  - *gdUnit4* — richer assertions and scene runner, C# support we don't need; more
+    surface than phase 1 needs. Tempting because of better scene testing.
+  - *No framework yet* — core code would accumulate untested. Tempting because "nothing
+    to test yet".
+  - *GUT as git submodule* — clone needs `--recursive`, agents and fresh clones forget it,
+    tests silently missing. Tempting because the repo stays smaller.
+- **Consequences:** Updating GUT = replacing the folder in a dedicated commit.
+- **Revisit if:** We need scene/input simulation tests GUT can't do cleanly.
+
 ## D-002 — Build in phases: offline first, online-ready architecture
 - **Status:** ACCEPTED
 - **Date:** 2026-10-31 · **Decided by:** Lucas (proposed by Planner)

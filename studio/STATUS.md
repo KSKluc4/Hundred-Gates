@@ -6,7 +6,7 @@
 
 | ID | Feature | Status | Next actor | Blocked by |
 |---|---|---|---|---|
-| F-000 | Project setup & architecture skeleton | PLAN_CHANGES | Planner | PR-1: dependency decision entries required (F-000 §7) |
+| F-000 | Project setup & architecture skeleton | APPROVED | Builder | — |
 
 ## Open questions waiting on Lucas
 - _none_
