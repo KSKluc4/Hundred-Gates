@@ -33,8 +33,8 @@
     boss patterns (pillar 2). Tempting because it feels fair and is simple.
   - *Permadeath (die in game = character deleted, SAO-style)* — with class-locked
     characters (D-005) and 100 floors, one mistake would erase dozens of hours. Tempting
-	because it's the source theme and creates real tension. Could return later as an
-	optional hardcore mode.
+    because it's the source theme and creates real tension. Could return later as an
+    optional hardcore mode.
 - **Consequences:** Save data (G7, phase 2) needs per-character "floors cleared" and
   "boss rooms reached". Co-op (phase 3) needs a party re-entry rule. Items & Economy may
   add loot/currency loss on death in phase 2 (Combat CX3).
@@ -56,9 +56,9 @@
   co-op (a healer has no job solo). P4+ = more classes/specializations for guild raids.
 - **Rejected:**
   - *Free weapon swap, weapon = class at any moment* — loses character identity and the
-	group-composition layer guilds need. Tempting because it's flexible and cheaper to build.
+    group-composition layer guilds need. Tempting because it's flexible and cheaper to build.
   - *Hybrid: fixed role + free weapon within role* — two systems to design and balance at
-	once; too much for a one-person studio. Tempting because of build depth.
+    once; too much for a one-person studio. Tempting because of build depth.
 - **Consequences:** Save system must support multiple character slots (G7, phase 2). Art and
   animation cost multiplies per class. Every boss must be beatable solo by every
   solo-viable class. A healer arriving in P3 means P1–P2 balance assumes no healing from allies.
@@ -74,10 +74,10 @@
   `tools/setup`. Dev-only — never shipped with the game.
 - **Rejected:**
   - *No linter, Godot editor warnings only* — catches typing issues but not formatting or
-	naming, and isn't a CLI pass/fail an agent can run. Tempting because zero setup.
+    naming, and isn't a CLI pass/fail an agent can run. Tempting because zero setup.
     (Editor warnings stay on anyway.)
   - *Global `pip install` without venv* — pollutes system Python, versions drift between
-	Lucas's Mac and agent machines. Tempting because one command shorter.
+    Lucas's Mac and agent machines. Tempting because one command shorter.
 - **Consequences:** Python 3 required on dev machines (present on macOS with Xcode CLT).
 - **Revisit if:** gdtoolkit lags behind a Godot 4.x syntax we need, or is unmaintained.
 
@@ -108,11 +108,11 @@
   but code follows G6–G9 from day one so co-op/online can be added without a rewrite.
 - **Rejected:**
   - *Online from day one* — netcode, servers and accounts would eat months before the
-	first fun fight exists; nothing to test if combat is good. Tempting because "it's
-	an online game, so start online".
+    first fun fight exists; nothing to test if combat is good. Tempting because "it's
+    an online game, so start online".
   - *Offline with no online prep* — fastest start, but adding multiplayer to logic
-	tangled with rendering and input usually means a full rewrite. Tempting because
-	G6–G9 feel like overhead in phase 1.
+    tangled with rendering and input usually means a full rewrite. Tempting because
+    G6–G9 feel like overhead in phase 1.
 - **Consequences:** Phase 1 is slightly slower (command layer, data files, serializable
   state). Engine choice (D-001) must have a viable multiplayer path.
 - **Revisit if:** Phase 1 combat isn't fun after 2 iterations — then the problem is the
