@@ -178,6 +178,8 @@ func test_real_device_events_switch_aim_mode_both_ways() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	assert_eq(_player.get_aim_mode(), mode.MOUSE, "real mouse motion")
+	var input: PlayerInput = _player.get_node("PlayerInput")
+	assert_eq(input._device_events.size(), 0, "events live for one tick")
 
 	button = InputEventJoypadButton.new()
 	button.button_index = JOY_BUTTON_BACK

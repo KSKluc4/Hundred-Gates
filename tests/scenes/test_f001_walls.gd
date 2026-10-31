@@ -51,6 +51,7 @@ func test_ac8_straight_dash_stops_at_the_wall_without_overlap() -> void:
 	assert_almost_eq(_player.global_position.x, EAST_FACE_X - _body_radius, 0.2)
 	assert_lte(_player.global_position.x, EAST_FACE_X - _body_radius)
 	assert_eq(_overlaps, 0)
+	assert_eq(_player.motor.get_position_px(), _player.global_position, "C18: physics wins")
 
 
 func test_ac8_no_jitter_while_walking_into_a_wall() -> void:
@@ -68,11 +69,10 @@ func test_ac8_diagonal_dash_into_a_flat_wall_slides_along_it() -> void:
 	await _spawn_at(start)
 	await _run_ticks(1, Vector2(1, 1).normalized(), true)
 	await _run_ticks(_dash_ticks() + SETTLE_TICKS)
-	# MOTION_MODE_FLOATING keeps speed on a slide, so it covers more than distance·cos45.
+	# MOTION_MODE_FLOATING keeps speed on a slide: the full distance, not distance·cos45.
 	var distance_px: float = Units.tiles_to_px(_player.class_data.dash_distance)
 	var slide_px: float = _player.global_position.y - start.y
-	assert_gt(slide_px, distance_px * cos(PI / 4.0))
-	assert_lte(slide_px, distance_px)
+	assert_almost_eq(slide_px, distance_px, 2.0)
 	assert_lte(_player.global_position.x, EAST_FACE_X - _body_radius)
 	assert_eq(_overlaps, 0)
 
