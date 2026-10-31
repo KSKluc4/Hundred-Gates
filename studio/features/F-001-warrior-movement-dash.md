@@ -550,10 +550,10 @@ plan sections were edited by this review.
 **Started:** 2026-10-31  ·  **Branch:** `feature/F-001-warrior-movement-dash`
 
 ### Progress
-- [ ] T1
-- [ ] T2
-- [ ] T3
-- [ ] T4
+- [x] T1 — 4adf703
+- [x] T2 — 5087308
+- [x] T3 — 83eda0d
+- [x] T4 — 7e2191e
 - [ ] T5
 - [ ] T6
 - [ ] T7

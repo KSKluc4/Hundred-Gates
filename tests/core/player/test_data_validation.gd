@@ -12,7 +12,6 @@ func test_each_class_data_bound_is_rejected() -> void:
 		["move_accel_time", -0.01],
 		["move_decel_time", -0.01],
 		["dash_distance", 0.0],
-		["dash_duration", 0.0],
 		["dash_iframe_duration", 0.0],
 		["dash_iframe_duration", 0.2],
 		["dash_iframe_duration", 0.3],
@@ -22,6 +21,12 @@ func test_each_class_data_bound_is_rejected() -> void:
 		var data: ClassData = _valid_class_data()
 		data.set(case[0], case[1])
 		assert_eq(data.validate().size(), 1, "%s = %s" % case)
+
+
+func test_zero_dash_duration_is_rejected() -> void:
+	var data: ClassData = _valid_class_data()
+	data.dash_duration = 0.0
+	assert_true(data.validate().has("dash_duration must be > 0"))
 
 
 func test_zero_accel_decel_and_cooldown_are_valid() -> void:
