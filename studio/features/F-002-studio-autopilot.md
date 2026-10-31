@@ -1,8 +1,8 @@
 ---
 id: F-002
 title: Studio autopilot (tools/studio)
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-003, D-004]
@@ -204,6 +204,14 @@ scripts (C19 env vars) in temporary git repos **with a temporary bare remote**.
 ## 7. Plan Review  ·  _Auditor_
 
 **Verdict:** `CHANGES_REQUESTED`
+**Reviewed:** 2026-10-31 · **Round:** 2 · **Reviewed revision:** `129a026`
+
+**Current result:** PR-1–PR-7 and PR-9–PR-10 are `✔ resolved`. PR-8 is partially
+resolved and remains a should-fix note. New PR-11 is blocking; PR-12–PR-14 are
+should-fix notes. See the Round 2 resolution check and findings below.
+
+### Round 1 review (historical)
+
 **Reviewed:** 2026-10-31 · **Round:** 1 · **Reviewed revision:** `f5dc0a0`
 
 The Director-facing infrastructure outcome and exclusions are clear. The chosen local
@@ -213,6 +221,9 @@ have concrete outputs, but the handoff contract and enforcement gaps below preve
 specified unattended workflow from being reliable. Six blocking findings remain.
 
 ### PR-1 🔴 The first Builder call cannot pass the branch precondition
+**Round 2 status:** ✔ resolved — C7 gives branch creation/checkout to the tool;
+AC2 starts on main without a feature branch.
+
 - **Location:** §4 C11; §5 AC3/AC9; §6 T2–T3.
 - **Problem:** `approve` commits, rebases and pushes on `main`. C11 then requires the
   feature branch before any Builder step, while explicitly assigning creation of that
@@ -229,6 +240,10 @@ specified unattended workflow from being reliable. Six blocking findings remain.
 > **Planner reply (Direction):** Accepted. C7: the tool creates/checks out `feature/F-XXX-<slug>` from `main` before the first action C; agents never switch branches. AC2 starts on `main` with `APPROVED` and no branch.
 
 ### PR-2 🔴 Automated Planner and resume calls conflict with the loaded role instructions
+**Round 2 status:** ✔ resolved — C8 and T9 define role precedence, in-place Planner
+editing and the explicit resume policy; AC11 covers the instruction updates. The
+remaining resume dispatch ambiguity introduced by that policy is recorded in PR-13.
+
 - **Location:** §4 C3/C14; §6 T4/T8; `CLAUDE.md` “Before any task” and “You must never”;
   `studio/departments/direction.md` “Output format”.
 - **Problem:** C3 dispatches a Builder for `IN_PROGRESS`, but `CLAUDE.md:18–20` permits
@@ -249,6 +264,9 @@ specified unattended workflow from being reliable. Six blocking findings remain.
 > **Planner reply (Direction):** Accepted. C8 adds a `STUDIO-ROLE` first line and a matching `CLAUDE.md` section so a Planner session isn't bound by Builder rules and edits files in place; briefs updated likewise (T9). `IN_PROGRESS` is never auto-resumed: it stops, and only `run --resume` (typed by Lucas) dispatches the Builder, which `CLAUDE.md` will allow. AC11 tests the role contracts.
 
 ### PR-3 🔴 Dispatch rules do not validate the transition an agent produces
+**Round 2 status:** ✔ resolved — C2/C5/C6 define accepted output transitions and
+consistency checks; AC3 rejects gate, owner, verdict, board and branch violations.
+
 - **Location:** §3 Chosen; §4 C2–C3/C6; §5 AC3–AC5.
 - **Problem:** C3 selects an agent from the input state, but no rule defines its allowed
   output states or validates status/owner/verdict/board consistency. For example, an
@@ -267,6 +285,10 @@ specified unattended workflow from being reliable. Six blocking findings remain.
 > **Planner reply (Direction):** Accepted. C5 is now input → agent → the only accepted outputs; C6 checks board/verdict/branch consistency before and after each step; C2 rejects any agent-produced `APPROVED`/`DONE` or §11 edit. AC3 covers each invalid transition.
 
 ### PR-4 🔴 `git status` cannot enforce lanes for changes an agent commits
+**Round 2 status:** ✔ resolved — C11 inspects new commits and all working-tree/index
+changes, preserves rejected history and blocks the feature; AC4 covers clean-tree
+committed violations. The new remote-containment claim is addressed separately in PR-14.
+
 - **Location:** §4 C4–C5/C11; §5 AC5; §6 T2.
 - **Problem:** C4 checks lanes against `git status`, while C5 expects the Builder to
   commit its own work and merely checks that the tree is clean. A Builder that commits
@@ -286,6 +308,9 @@ specified unattended workflow from being reliable. Six blocking findings remain.
 > **Planner reply (Direction):** Accepted. C11 inspects all new commits since the recorded start HEAD plus staged/unstaged/untracked, requires a same-branch fast-forward, and rejects whitespace-only changes too. Since history can't be un-committed retroactively, the tool never rewrites it: C3 makes `run` push-free, and the feature is blocked until Lucas fixes it locally and runs `unblock`. AC4 uses committed violations with a clean final tree.
 
 ### PR-5 🔴 File allowlists do not enforce section ownership or proposed-only decisions
+**Round 2 status:** ✔ resolved — C13 defines frontmatter, section, review-history,
+board-column and decision-entry restrictions, with positive/negative cases in AC5.
+
 - **Location:** §3 Chosen/Rejected; §4 C4; §6 T1–T2;
   `studio/README.md` “Section ownership”; `AGENTS.md` “Hard rules”.
 - **Problem:** Both the feature and STATUS files are allowlisted for the Auditor, so
@@ -306,6 +331,10 @@ specified unattended workflow from being reliable. Six blocking findings remain.
 > **Planner reply (Direction):** Accepted. C13 defines content lanes inside allowed files: allowed frontmatter fields, per-role sections, preserved-lines rule for review/reply sections, §10 append/answer-only, §11 gate-only, STATUS row columns, and DECISIONS entries byte-identical with new entries PROPOSED only. AC5 covers each.
 
 ### PR-6 🔴 Readiness checks can be bypassed on restart or after code changes
+**Round 2 status:** ✔ resolved — C14 checks before every code audit and in done;
+C18/AC6 reject later code commits and cover restart after failed checks. The removed
+clean-tree boundary creates a separate problem with which files are tested (PR-11).
+
 - **Location:** §4 C3/C9; §5 AC6/AC10; §9 “Reviewed commit” convention.
 - **Problem:** On a failed Builder check, C9 leaves `CODE_REVIEW` as written by the
   Builder. A second `run` starts directly with the Auditor under C3; C9 only runs
@@ -324,6 +353,10 @@ specified unattended workflow from being reliable. Six blocking findings remain.
 > **Planner reply (Direction):** Accepted. C14 runs the checks before every Mode B call (and in `done`) on the exact HEAD; red results route back to the Builder via `CODE_CHANGES`, so a restart can't reach the Auditor. C18 binds `done` to the reviewed commit, allowing only metadata-only commits after it. AC6 covers restart and post-review code commits.
 
 ### PR-7 🟡 Review-round counting lacks a shared schema and boundary rule
+**Round 2 status:** ✔ resolved — C9 defines authoritative markers, legacy/placeholder
+handling and the incrementing role; C10/AC7 distinguish a third approval from a third
+rejection. C14's additional counting rule is a separate ambiguity (PR-12).
+
 - **Location:** §4 C7; §5 AC4; §6 T1; `studio/features/_TEMPLATE.md` §7/§9;
   `AGENTS.md` Mode A/Mode B.
 - **Problem:** C7 counts `**Round:** N` markers in both reviews, but the shared plan
@@ -342,6 +375,9 @@ specified unattended workflow from being reliable. Six blocking findings remain.
 > **Planner reply (Direction):** Accepted. C9: machine marker `<!-- review-round: N verdict: X -->` written by the Auditor, numbered per section, PENDING/`**Round:**` ignored, legacy files = 0 rounds; C10: a 3rd `CHANGES_REQUESTED` escalates, a 3rd approval proceeds. Template and `AGENTS.md` updated in T9.
 
 ### PR-8 🟡 Gate helpers have no defined recovery after partial Git failure
+**Round 2 status:** Partially resolved — C17/C18 add resumable gate steps and AC8
+adds remote/conflict fixtures. The post-publication cleanup case remains open below.
+
 - **Location:** §5 AC9–AC10; §4 C13; §6 T2/T6.
 - **Problem:** `done` sets/commits DONE and pushes the feature before merging/pushing
   `main`. If the main push fails, the next `done` fails its CODE_REVIEW precondition,
@@ -358,7 +394,21 @@ specified unattended workflow from being reliable. Six blocking findings remain.
 
 > **Planner reply (Direction):** Accepted. C17/C18 define checkpointed, idempotent gate steps (rerun resumes), branch deletion only after `origin/main` is verified, exact recovery messages for push rejections and merge conflicts. AC8 uses a bare remote.
 
+**Round 2 remaining issue:**
+- **Location:** Revised §4 C18 steps 6–7 and its rerun precondition; §5 AC8.
+- **Problem:** A DONE rerun is accepted only while step 6 is unsatisfied. If publication
+  is verified and remote or local branch deletion then fails in step 7, step 6 is
+  already satisfied and the prescribed rerun is refused.
+- **Why it matters:** Cleanup cannot resume after a normal deletion/network failure,
+  despite the requirement that already completed gate steps be skipped on retry.
+- **Suggested fix:** Allow an authenticated gate operation to resume through incomplete
+  cleanup after publication, and define success when one or both branches are already
+  absent. Extend AC8 with failures at each deletion and a successful retry.
+
 ### PR-9 🟡 Agent failure, interruption and timeout behavior is unspecified
+**Round 2 status:** ✔ resolved — C4/C15 specify process groups, timeout escalation,
+interruption handling, blocked state and lock lifetime; AC9 exercises the failure paths.
+
 - **Location:** §2 CLI invocation; §4 C6–C8/C10/C12–C13; §6 T3/T6–T7.
 - **Problem:** The guards count returned steps, but there is no contract for a process
   that exits non-zero after editing files, cannot launch/authenticate, waits forever
@@ -376,6 +426,9 @@ specified unattended workflow from being reliable. Six blocking findings remain.
 > **Planner reply (Direction):** Accepted. C15: process groups, 90-min default timeout with TERM→KILL, Ctrl-C forwarded and waited for; any failure keeps edits and logs, commits nothing, dispatches nothing, blocks the feature. Lock records both PIDs (C4). AC9 covers non-zero-after-edit, hang and interrupt.
 
 ### PR-10 🟡 The lock excludes other commands that mutate the same tree
+**Round 2 status:** ✔ resolved — C4 applies the shared lock to run, approve, done and
+unblock; AC10 covers run/gate and gate/gate exclusion with read-only commands available.
+
 - **Location:** §4 C10; §5 AC7/AC9–AC10; §6 T6.
 - **Problem:** C10 and AC7 specify exclusion between two `run` calls only. `approve`
   and `done` also edit, commit and change branches, but their participation in that
@@ -391,6 +444,99 @@ specified unattended workflow from being reliable. Six blocking findings remain.
 
 **Handoff:** `status: PLAN_CHANGES`, `owner_now: Planner`. Resolve PR-1–PR-6 before
 Gate A; reply beneath each finding and retain this review history.
+
+### Round 2 — Planner reply and resolution check
+
+Checked all ten inline Planner replies first, then read the revised feature against
+PROJECT.md, DECISIONS.md and the role/department documents. This review is of the
+committed Planner revision `129a026`; the initial working tree was clean. The earlier
+re-audit of an unchanged checkout is superseded by this review of the actual revisions.
+
+| Finding | Reply and revised-plan evidence | Round 2 result |
+|---|---|---|
+| PR-1 | Accepted; C7 and AC2 provide the first feature branch before dispatch. | ✔ resolved |
+| PR-2 | Accepted; C8/T9/AC11 specify role entry points and instruction changes, including explicit IN_PROGRESS continuation. | ✔ resolved |
+| PR-3 | Accepted; C2/C5/C6 and AC3 enforce permitted outputs before the next dispatch. | ✔ resolved |
+| PR-4 | Accepted; C11/AC4 inspect committed paths and preserve evidence rather than rewriting history. | ✔ resolved |
+| PR-5 | Accepted; C13/AC5 add restrictions inside allowed files and preserve existing decisions. | ✔ resolved |
+| PR-6 | Accepted; C14/C18/AC6 address restart bypass and subsequent code commits. | ✔ resolved |
+| PR-7 | Accepted; C9/C10/T9/AC7 establish round markers and the third-result boundary. | ✔ resolved |
+| PR-8 | Accepted; C17/C18/AC8 cover earlier Git failures, but C18 excludes retries after publication verification. | Partially resolved — 🟡 open |
+| PR-9 | Accepted; C4/C15/AC9 define failure, timeout, interruption and child cleanup behavior. | ✔ resolved |
+| PR-10 | Accepted; C4/AC10 extend exclusion to every mutating command. | ✔ resolved |
+
+The goal, exclusions, alternatives and fit with the accepted project decisions remain
+sound. The role-document exceptions are explicitly included in scope for T9 and can be
+authorized at Gate A. The following findings concern the revised execution contract.
+
+### PR-11 🔴 The revised plan drops the clean-tree boundary needed to test an exact HEAD
+- **Location:** §4 C5–C7/C11/C14/C18; §5 AC2/AC6. The old clean-tree requirement and
+  dirty-tree AC are absent; only C17 explicitly requires a clean tree.
+- **Problem:** No rule now requires a clean tree before run/agent steps, a clean tree
+  after an accepted Builder step, or a tree containing only validated review edits
+  before done. C14 says checks run on the exact feature HEAD, but the existing check
+  scripts execute the working-tree files. For example, after an approving review a
+  dirty test/helper file can make checks pass in done while being excluded from its
+  explicit-path commits; the code published to main does not include that file.
+  C11's post-step path collection does not establish a clean baseline or make those
+  checks execute committed content.
+- **Why it matters:** The tool can report passing checks for a revision it never
+  actually tested, and pre-existing local edits can be absorbed into Builder commits.
+  This defeats the new readiness guarantee even when the reviewed commit is correct.
+- **Suggested fix:** Restore clean-tree preconditions for run and each agent step,
+  require accepted Builder work to be committed before checks, and define done's
+  narrow exception for uncommitted, content-validated review/board edits. Refuse other
+  dirty tracked/untracked paths before checking or committing. Alternatively run checks
+  in a verified checkout of the recorded revision. Add fixtures for pre-existing edits,
+  dirty Builder completion and dirty code/tests at done; none may be accepted or
+  published as checks passing on HEAD.
+
+### PR-12 🟡 Failed readiness checks have no defined representation in the round cap
+- **Location:** §4 C9/C10/C14; §5 AC6–AC7.
+- **Problem:** C9 counts completed Auditor rounds using markers written by the Auditor.
+  C14 says a failed readiness check counts toward the code-round cap, but creates only
+  a CODE_CHANGES transition and a question row, with no Auditor call or round marker.
+  Three Builder/check failures before the first code audit therefore leave the C9
+  round count at zero.
+- **Why it matters:** The Builder must invent a second persistent counter or silently
+  omit one of the promised limits; separate invocations can reset an inferred counter.
+- **Suggested fix:** Define the readiness-failure event, its durable count and how it
+  combines with completed reviews for escalation. Keep ownership of review markers
+  explicit. Test repeated red checks before any audit, with a restart between attempts,
+  and assert the chosen cap and Lucas handoff.
+
+### PR-13 🟡 `--resume` has conflicting behavior for the Builder's allowed escalation
+- **Location:** §4 C5 action C and stop cases; C8; §6 T7/T9.
+- **Problem:** The accepted Builder escalation is IN_PROGRESS with owner Lucas. The
+  stop rule stops every owner Lucas state, while its IN_PROGRESS exception says
+  `run --resume` selects action C; action C's listed input states omit IN_PROGRESS.
+  The plan does not say which rule wins or whether resume transfers ownership after
+  Lucas answers the blocking question.
+- **Why it matters:** The documented continuation command can keep stopping on the
+  normal escalation state, and a Builder cannot know whether to change ownership as
+  an assumption without contradicting the action table.
+- **Suggested fix:** Add an explicit resume input transition, its precedence over the
+  Lucas stop rule, question/clean-tree preconditions and ownership effects. Test the
+  accepted escalation → answered question → explicit resume → Builder path, as well as
+  ordinary run continuing to stop at Lucas.
+
+### PR-14 🟡 The remote-containment promise lacks a child-process push policy
+- **Location:** §4 C3/C8/C11/C19; §6 T4/T5/T9.
+- **Problem:** C3 makes run itself push-free and C11 concludes that rejected agent work
+  can always be fixed locally. Neither the role contract nor process permissions
+  explicitly prevent an invoked agent from pushing before its output is validated.
+  A fake child can commit an out-of-lane edit and push it to the temporary remote;
+  rejecting its output afterwards leaves that rejected commit on the remote.
+- **Why it matters:** The new guarantee that rejected steps never reach GitHub does
+  not follow from the specified controls, and local reset alone would not repair it.
+- **Suggested fix:** Specify and verify a no-push policy for child invocations, using
+  CLI permissions/isolation if prevention is the intended guarantee. Otherwise state
+  the limit of post-step detection and define remote-state recovery. Add a child-push
+  fixture against the bare remote to validate the chosen policy.
+
+**Round 2 verdict:** `CHANGES_REQUESTED`. Nine previous findings are resolved; PR-8
+remains 🟡. PR-11 is the blocking finding; PR-12–PR-14 are 🟡. Set
+`status: PLAN_CHANGES`, `owner_now: Planner`; reply under the remaining findings.
 
 ---
 
