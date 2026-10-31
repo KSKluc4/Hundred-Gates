@@ -1,8 +1,8 @@
 ---
 id: F-002
 title: Studio autopilot (tools/studio)
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
+status: APPROVED      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-003, D-004]
@@ -678,3 +678,4 @@ may approve Gate A and set `APPROVED`.
 ## 11. Director Notes  ·  _Lucas_
 
 <Overrides, priorities, gut calls. Everyone obeys these.>
+- **2026-10-31 (PR-14 note):** C11's "a local `git reset` is always enough" holds only when the remote did not change; if the C3 remote check detects a change, C3's remote-recovery path applies instead. T9 role-document edits are authorized. F-002 APPROVED.
