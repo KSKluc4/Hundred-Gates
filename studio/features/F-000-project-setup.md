@@ -1,8 +1,8 @@
 ---
 id: F-000
 title: Project setup & architecture skeleton
-status: IN_PROGRESS  # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Lucas           # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW  # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [D-001, D-002]
@@ -351,19 +351,15 @@ the feature and accept D-003/D-004 at Gate A.
 - [x] T3 — 015cb5d
 - [x] T4 — 5e9653d
 - [x] T5 — b31d884
-- [x] T6 — ca7214e
+- [x] T6 — ca7214e, 9803de2
 - [x] T7 — d51a853, e34c071
 - [x] T8 — dbc6535
 - [x] T9 — e3b0054
 
-- [ ] `TODO(Lucas)` in `src/ui/debug_overlay.gd`: F3 toggle body (see DEV-1). Blocks CODE_REVIEW.
-
 ### Deviations from plan
-- **DEV-1:** `DebugOverlay._unhandled_input` (toggle half of AC4) is a `TODO(Lucas)` stub, not
-  implemented by the Builder. Reason: Lucas's learning-mode rule (he writes one small central
-  piece of each task). Impact: `tests/ui/test_debug_overlay.gd::test_toggle_press_flips_visibility_both_ways`
-  fails and `tools/test` exits 1 until he writes it, so status stays `IN_PROGRESS`. Everything else
-  was proved green with a temporary 2-line toggle in a throwaway clone, then discarded.
+- **DEV-1:** `DebugOverlay._unhandled_input` (toggle half of AC4) was first left as a `TODO(Lucas)`
+  stub in ca7214e under Lucas's learning-mode rule. Lucas then said "modo rápido" and the Builder
+  implemented it in 9803de2. Impact: none now.
 - **DEV-2:** More tests than T7's "one sample test": `tests/test_input_map.gd` (AC6, exact table)
   and `tests/ui/test_debug_overlay.gd` (AC4, AC5). Reason: those ACs had no automated proof.
   Impact: none on scope; test code only.
@@ -374,6 +370,12 @@ the feature and accept D-003/D-004 at Gate A.
 - **DEV-4:** `tools/test` also fails if GUT logs `Ignoring script`. Reason: found while proving AC7:
   a test script with a parse or compile error was skipped and GUT still exited 0. Impact: the check
   matches GUT's log text, so re-verify it when updating GUT.
+
+- **DEV-5:** Added a "Do it yourself — no TODOs for Lucas" section to `CLAUDE.md` in 694f130, although
+  §4 lists that file under "Must not break". Reason: Lucas's direct instruction (2026-10-31). The
+  wording was written from that section title alone, because no source text reached the Builder;
+  Lucas may replace it. Applied to this repo's `CLAUDE.md` only, so `AGENTS.md`,
+  `~/CLAUDE.md` and `~/.claude/CLAUDE.md` are unchanged. Impact: Builder process only, no game code.
 
 ### Assumptions made (small, reversible)
 - **ASSUMPTION-1:** `config/version="0.1.0"`; the plan names no starting version.
@@ -412,8 +414,6 @@ the feature and accept D-003/D-004 at Gate A.
 - `tools/test` re-runs `--import` each time so new `class_name`s resolve; this adds a little startup.
 
 ### How to test
-Prerequisite: finish the `TODO(Lucas)`. Until then `tools/test` reports 9/10 and exits 1.
-
 ```sh
 tools/setup && tools/setup                  # idempotent; git status stays clean
 tools/test                                  # expect 10/10, exit 0
