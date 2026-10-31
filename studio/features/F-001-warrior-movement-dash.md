@@ -1,7 +1,7 @@
 ---
 id: F-001
 title: Warrior movement + dash
-status: APPROVED          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: IN_PROGRESS       # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Builder         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
@@ -547,10 +547,10 @@ plan sections were edited by this review.
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** YYYY-MM-DD  ·  **Branch:** `feature/F-001-warrior-movement-dash`
+**Started:** 2026-10-31  ·  **Branch:** `feature/F-001-warrior-movement-dash`
 
 ### Progress
-- [ ] T1 — 
+- [ ] T1
 - [ ] T2
 - [ ] T3
 - [ ] T4
@@ -559,6 +559,7 @@ plan sections were edited by this review.
 - [ ] T7
 - [ ] T8
 - [ ] T9
+- [ ] T9b
 - [ ] T10
 
 ### Deviations from plan
