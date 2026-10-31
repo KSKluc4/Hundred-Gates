@@ -92,9 +92,10 @@ func test_c17_mid_dash_reload_keeps_latched_values_and_affects_the_next_dash() -
 		new_data.dash_duration = 0.3
 		new_data.dash_iframe_duration = 0.2
 		motor.apply_data(new_data, Harness.rules())
+		assert_eq(motor.get_iframe_window(), window)
+		assert_eq(window[1], old_data.dash_iframe_duration)
 		Harness.run(motor, rate, 0.25)
 		assert_almost_eq(Harness.position_tiles(motor).x, old_data.dash_distance, 0.01)
-		assert_eq(window[1], old_data.dash_iframe_duration)
 		Harness.run(motor, rate, 0.3)
 		var start: float = Harness.position_tiles(motor).x
 		Harness.step(motor, rate, Vector2.RIGHT, Vector2.ZERO, true)

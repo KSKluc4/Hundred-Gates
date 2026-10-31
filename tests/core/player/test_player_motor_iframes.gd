@@ -93,3 +93,11 @@ func test_c8_changed_signal_fires_once_each_way() -> void:
 	Harness.step(motor, 60, Vector2.ZERO, Vector2.ZERO, true)
 	Harness.run(motor, 60, 0.3)
 	assert_signal_emit_count(motor, "invulnerability_changed", 2)
+
+
+func test_ac9_window_shorter_than_float_tolerance_still_reports_the_fire_tick() -> void:
+	var data: ClassData = Harness.warrior()
+	data.dash_iframe_duration = 0.0000000001
+	var motor: PlayerMotor = Harness.motor_with(data)
+	Harness.step(motor, 30, Vector2.ZERO, Vector2.ZERO, true)
+	assert_true(motor.is_invulnerable())
