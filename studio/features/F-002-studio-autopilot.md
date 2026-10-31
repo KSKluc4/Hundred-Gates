@@ -1,8 +1,8 @@
 ---
 id: F-002
 title: Studio autopilot (tools/studio)
-status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-003, D-004]
@@ -99,18 +99,18 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 |---|---|---|
 | C1 | Python 3 standard library only; no new dependencies; no edits to `src/`, `scenes/`, `data/`, `addons/`. | G4, scope |
 | C2 | **Nothing but a gate command ever produces `APPROVED` or `DONE`, or edits §11.** If an agent step produces either status or touches §11, the step is rejected (C5). | Gates are human (PR-3) |
-| C3 | **`run` never pushes.** Only `approve` and `done` push. A rejected step therefore never reaches GitHub and Lucas can inspect or reset it locally. | Containment (PR-4) |
+| C3 | **No pushes outside gates.** `run` never pushes; only `approve` and `done` push. Agent children are prevented too (PR-14): each call runs with env `GIT_CONFIG_COUNT/KEY/VALUE` overriding `remote.origin.pushurl` to an invalid URL (so `git push` fails), `GIT_TERMINAL_PROMPT=0`, and the CLI's own denial (Claude: `git push` disallowed; Codex: sandbox without network, or equivalent — exact flags in `README.md`). **Detection backstop:** the tool records `git ls-remote origin` before the step and compares after; any remote change rejects the step, blocks the feature, and the notification gives the exact remote recovery (the only case that needs a force-push by Lucas). | Containment (PR-14) |
 | C4 | **One shared lock** `.studio/lock` for every mutating command (`run`, `approve`, `done`, `unblock`), held from validation through completion or failure. It records the tool PID and the agent's process-group id. A lock is stale only if neither is alive; then it is cleared with a warning. `status`, `next`, `notify-test` take no lock. | PR-10, PR-9 |
 
 ### 4.2 Dispatch and transitions
 | ID | Constraint | Reason |
 |---|---|---|
-| C5 | **Action table — input → agent → the only accepted outputs.** Any other output (status, owner, verdict, board row, branch) rejects the step: nothing is committed, no further agent runs, the feature is marked blocked (C11), Lucas is notified. <br>**A. Plan audit:** `PLAN_REVIEW`+`Auditor`, on `main` → Codex Mode A → (`PLAN_CHANGES`, `Planner`) with new round verdict `CHANGES_REQUESTED`, or (`PLAN_REVIEW`, `Lucas`) with `APPROVE`/`APPROVE_WITH_NOTES`. <br>**B. Plan repair:** `PLAN_CHANGES`+`Planner`, on `main` → Claude as Planner (C8) → (`PLAN_REVIEW`, `Auditor`), or escalation (`PLAN_CHANGES`, `Lucas`) with a new blocking §10 row. <br>**C. Build / fix:** `APPROVED`+`Builder` or `CODE_CHANGES`+`Builder`, on the feature branch (C7) → Claude Code as Builder → (`CODE_REVIEW`, `Auditor`), or escalation (`IN_PROGRESS`, `Lucas`) with a new blocking §10 row. <br>**D. Code audit:** `CODE_REVIEW`+`Auditor`, on the feature branch, **only after checks pass (C14)** → Codex Mode B → (`CODE_CHANGES`, `Builder`) with `CHANGES_REQUESTED`, or (`CODE_REVIEW`, `Lucas`) with `APPROVE`/`APPROVE_WITH_NOTES`; the new round's "Reviewed commit" must equal the branch HEAD the Auditor was given. <br>**Stop and notify (no agent):** `owner_now: Lucas`, `DRAFT`, `DONE`, `PARKED`, `IN_PROGRESS` (unless `run --resume`, which Lucas types: then action C), unknown values, or a blocked feature. | PR-2, PR-3 |
+| C5 | **Action table — input → agent → the only accepted outputs.** Any other output (status, owner, verdict, board row, branch) rejects the step: nothing is committed, no further agent runs, the feature is marked blocked (C11), Lucas is notified. <br>**A. Plan audit:** `PLAN_REVIEW`+`Auditor`, on `main` → Codex Mode A → (`PLAN_CHANGES`, `Planner`) with new round verdict `CHANGES_REQUESTED`, or (`PLAN_REVIEW`, `Lucas`) with `APPROVE`/`APPROVE_WITH_NOTES`. <br>**B. Plan repair:** `PLAN_CHANGES`+`Planner`, on `main` → Claude as Planner (C8) → (`PLAN_REVIEW`, `Auditor`), or escalation (`PLAN_CHANGES`, `Lucas`) with a new blocking §10 row. <br>**C. Build / fix:** `APPROVED`+`Builder` or `CODE_CHANGES`+`Builder` (or `IN_PROGRESS` via C22 only), on the feature branch (C7) → Claude Code as Builder → (`CODE_REVIEW`, `Auditor`), or escalation (`IN_PROGRESS`, `Lucas`) with a new blocking §10 row. <br>**D. Code audit:** `CODE_REVIEW`+`Auditor`, on the feature branch, **only after checks pass (C14)** → Codex Mode B → (`CODE_CHANGES`, `Builder`) with `CHANGES_REQUESTED`, or (`CODE_REVIEW`, `Lucas`) with `APPROVE`/`APPROVE_WITH_NOTES`; the new round's "Reviewed commit" must equal the branch HEAD the Auditor was given. <br>**Stop and notify (no agent):** `owner_now: Lucas`, `DRAFT`, `DONE`, `PARKED`, `IN_PROGRESS` (only `run --resume` continues it — C22, which takes precedence over this stop rule), unknown values, or a blocked feature. | PR-2, PR-3 |
 | C6 | **Consistency check before and after every step:** frontmatter `status`/`owner_now` = the feature's row in `STATUS.md`; the latest round's verdict matches the status per C5; current branch as expected. A mismatch at start refuses to run. | PR-3 |
 | C7 | **Branches.** Before the first action C of a feature, the tool creates `feature/F-XXX-<slug>` (slug = feature file name) from the current `main` HEAD and checks it out; if it exists, it checks it out. Actions C and D run there; A and B on `main`. Agents must not create, switch or delete branches; any branch change rejects the step. `CLAUDE.md` is updated to say the branch is provided (T9). | PR-1 |
 | C8 | **Role entry points (PR-2).** Each call's prompt starts with a line `STUDIO-ROLE: <Builder|Planner:<Department>|Auditor:ModeA|Auditor:ModeB>` and points to the role files; nothing else about the feature (core rule: files, not summaries). `CLAUDE.md` gains a top section: when the prompt starts with `STUDIO-ROLE: Planner:…`, the session is that department, follows its brief and `studio/prompts/autopilot-planner.md`, **edits files in place**, and the Builder rules don't apply except "never set APPROVED/DONE". Department briefs gain the same in-place rule for automated sessions. Planner department for action B = the feature's `department:`; it answers structure findings too, signing replies `Planner reply (<Department>)` — Direction-specific routing stays a chat-time convention. | PR-2 |
 | C9 | **Round convention (PR-7).** Each completed review round starts with a machine line `<!-- review-round: N verdict: <VERDICT> -->` in §7 (plan) or §9 (code), written by the Auditor; N = previous max in that section + 1, starting at 1. `PENDING` placeholders and `**Round:**` text are ignored. Files without markers have 0 completed rounds. The template and `AGENTS.md` are updated (T9). | PR-7 |
-| C10 | **Caps.** Plan rounds and code rounds: max 3 completed each. When the 3rd completed round is `CHANGES_REQUESTED`, the tool does not dispatch the repair: it sets `owner_now: Lucas`, appends a §10 row, notifies. A 3rd round that approves proceeds normally. `run` performs at most `--max-steps` agent steps (default 8). Progress check: a step that leaves status and owner unchanged is rejected as stuck. | PR-7, cost |
+| C10 | **Caps.** (a) Plan rounds and code review rounds: max 3 completed each (C9 markers). When the 3rd completed round is `CHANGES_REQUESTED`, the tool doesn't dispatch the repair: sets `owner_now: Lucas`, appends a §10 row, notifies. A 3rd round that approves proceeds. (b) **Readiness failures (PR-12):** each red C14 result appends a tool-owned §10 row containing `<!-- readiness-fail: N sha: <sha> -->`; N counts failures since the last completed code review round (durable in the file, survives restarts). The 3rd consecutive failure escalates to Lucas instead of dispatching the Builder. The two counters are independent; review markers stay Auditor-owned. (c) `run` performs at most `--max-steps` agent steps (default 8). (d) Progress check: a step that leaves status and owner unchanged is rejected as stuck. | PR-7, PR-12, cost |
 
 ### 4.3 What an agent may change (checked after every step)
 | ID | Constraint | Reason |
@@ -122,13 +122,15 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 ### 4.4 Checks, failures, gates
 | ID | Constraint | Reason |
 |---|---|---|
-| C14 | **Readiness evidence (PR-6).** Before every action D and inside `done`, the tool itself runs `tools/test`, `tools/lint`, `tools/check_core_purity` on the exact feature-branch HEAD. Red → no Auditor call: the tool sets (`CODE_CHANGES`, `Builder`), appends a §10 row "checks red at <sha>: <summary>", commits it (tool commit, C16), and the next step dispatches the Builder (counts toward the code-round cap). A restart can't skip this because the check runs before D, not after C. | PR-6 |
+| C14 | **Readiness evidence (PR-6, PR-11).** Before every action D and inside `done`, the tool runs `tools/test`, `tools/lint`, `tools/check_core_purity` **on a clean tree (C21) whose HEAD is the feature HEAD**, so the files tested are exactly the committed revision. Red → no Auditor call: the tool sets (`CODE_CHANGES`, `Builder`), appends the C10(b) §10 row, commits it (C16), and the next step dispatches the Builder. A restart can't skip this because the check runs before D, not after C. | PR-6, PR-11 |
 | C15 | **Agent process failures (PR-9).** Each call runs in its own process group with a timeout (default 90 min, `--timeout`). Non-zero exit, launch/auth failure, timeout (SIGTERM to the group, SIGKILL after 30 s, then wait) or Ctrl-C on the tool (forwarded to the group, waited for) → the step is rejected like C5: edits kept, nothing committed, no further dispatch, lock released, feature blocked, notification with the log path. | PR-9 |
 | C16 | **Tool commits.** After an accepted Auditor or Planner step, and for its own writes (C10, C14), the tool stages explicit paths only (never `git add -A`) with messages like `F-XXX: Auditor plan review round N`. Builder commits are the Builder's. | Traceable history |
 | C17 | **`approve F-XXX [--note]`** — preconditions: not blocked; status `PLAN_REVIEW`, owner `Lucas`, latest §7 round approves; on `main`; tree clean. Steps (each skipped if already done, so a rerun resumes): 1. set `APPROVED`/`Builder`, row, optional §11 note, commit those two files; 2. `git pull --rebase`; 3. push. On failure: stop with the exact error and the same command as the recovery (`tools/studio approve F-XXX`). A rerun accepts status `APPROVED` while `origin/main` lacks the commit. | PR-8 |
-| C18 | **`done F-XXX [--note]`** — preconditions: not blocked; status `CODE_REVIEW`, owner `Lucas`, latest §9 round approves; its "Reviewed commit" = feature HEAD, except later commits that touch only the feature file / `STATUS.md`; C14 checks pass on that HEAD. Steps (each skipped if already done): 1. commit the Auditor's review if uncommitted (explicit paths); 2. set `DONE`, optional §11 note, commit; 3. push feature branch; 4. checkout `main`, `pull --rebase`, `merge --no-ff` (skip if `main` already contains the feature HEAD); 5. push `main`; 6. verify `origin/main` contains the feature HEAD; 7. only then delete remote and local branch (`-d`, never `-D`). Any failure stops with state untouched and prints the exact recovery (rerun, or for a merge conflict: the conflicting files and `git merge --abort`). A rerun accepts status `DONE` while step 6 isn't satisfied. | PR-6, PR-8 |
+| C18 | **`done F-XXX [--note]`** — preconditions: not blocked; status `CODE_REVIEW`, owner `Lucas`, latest §9 round approves; its "Reviewed commit" = feature HEAD, except later commits that touch only the feature file / `STATUS.md`; C14 checks pass on that HEAD (run at step 1b). Allowed dirty state at start: **only** the Auditor's uncommitted edits to the feature file and `STATUS.md`, validated with the Auditor lanes (C12, C13); anything else refuses. Steps (each skipped if already done): 1. commit those review edits (explicit paths) — the tree is now clean (C21); 1b. run C14 checks; 2. set `DONE`, optional §11 note, commit; 3. push feature branch; 4. checkout `main`, `pull --rebase`, `merge --no-ff` (skip if `main` already contains the feature HEAD); 5. push `main`; 6. verify `origin/main` contains the feature HEAD; 7. only then delete remote and local branch (`-d`, never `-D`). Any failure stops with state untouched and prints the exact recovery (rerun, or for a merge conflict: the conflicting files and `git merge --abort`). A rerun accepts status `DONE` while step 6 isn't satisfied **or** the local/remote feature branch still exists (PR-8); a branch that is already gone counts as deleted, so cleanup always resumes to success. | PR-6, PR-8 |
 | C19 | Logs: every agent call writes full output to `.studio/logs/F-XXX/<UTC>-<role>.log`; `.studio/` gitignored. Binaries from `$STUDIO_CLAUDE_BIN` / `$STUDIO_CODEX_BIN` (default `claude` / `codex`); exact non-interactive flags chosen by the Builder from `--help` and recorded in `README.md`. | Debuggable, testable |
 | C20 | Notifications: macOS `osascript` when available; plus `ntfy.sh` if `$STUDIO_NTFY_TOPIC` is set; failure never fails the command. Message = feature, what happened, **one exact next command**. | One next step |
+| C21 | **Clean tree (PR-11).** "Clean" = `git status --porcelain` empty except `.studio/` (gitignored files like `.godot/`, `.venv/` don't count). Required: before `run` starts, before every agent step, before every C14 check, and before `approve`; `done` only allows its narrow exception (C18). After an accepted **Builder** step the tree must be clean — the Builder commits its own work; leftovers reject the step (C11). After an Auditor/Planner step only lane-valid edits may be dirty, and the tool commits them (C16) before anything else runs. | PR-11 |
+| C22 | **Resume (PR-13).** `run --resume F-XXX` is the only way to continue `IN_PROGRESS`. Preconditions: clean tree, on the feature branch, and either `owner_now: Builder` (crash recovery) or `owner_now: Lucas` with **every blocking §10 row answered** (non-empty Answer). Effect: the tool sets `owner_now: Builder` (tool commit), then runs action C; its accepted outputs are the same as action C. Plain `run` on `IN_PROGRESS` always stops. | PR-13 |
 
 **Must not break:** `tools/test`, `tools/lint`, core purity, existing studio file formats,
 F-000/F-001 files (they have no round markers and are `DONE`; the tool never acts on them).
@@ -157,15 +159,17 @@ scripts (C19 env vars) in temporary git repos **with a temporary bare remote**.
       finding, edit §11, change another frontmatter field, or change an existing
       decision's status inside allowed files → rejected. A Planner adding a PROPOSED entry
       and replying under findings → accepted.
-- [ ] AC6 — **Readiness (PR-6):** red checks → no Auditor call, (`CODE_CHANGES`, `Builder`) +
+- [ ] AC6 — **Readiness (PR-6, PR-11, PR-12):** red checks → no Auditor call, (`CODE_CHANGES`, `Builder`) +
       §10 row, Builder dispatched next. Restart after a red result can't reach the
       Auditor. Approved review + a later code commit → `done` refuses; + a later
-      metadata-only commit → `done` proceeds.
+      metadata-only commit → `done` proceeds. Pre-existing dirty edits refuse `run`; a Builder that leaves uncommitted files is rejected; dirty code/test files at `done` refuse (checks never run on uncommitted content). Three consecutive red checks (with a restart between) escalate to Lucas.
 - [ ] AC7 — **Rounds (PR-7):** markers counted per C9; `PENDING` / `**Round:**` text ignored;
       3rd `CHANGES_REQUESTED` → escalation to Lucas; 3rd approval → proceeds.
 - [ ] AC8 — **Gate recovery (PR-8):** `approve` with a rejected push → rerun completes;
-      `done` with rejected feature push, rejected main push, and a merge conflict →
+      `done` with rejected feature push, rejected main push, a merge conflict, and a failure at each branch deletion (remote, local) →
       correct stop and message; reruns complete; branches deleted only after step 6.
+- [ ] AC9b — **No child pushes (PR-14):** a fake agent that runs `git push` fails against the bare remote; a fake that pushes to an explicit URL is detected by the remote comparison, rejected and blocked with recovery instructions.
+- [ ] AC9c — **Resume (PR-13):** Builder escalation (`IN_PROGRESS`, `Lucas`) → plain `run` stops → answer the §10 row → `run --resume` → owner set to Builder → action C. Unanswered blocking row → `--resume` refuses.
 - [ ] AC9 — **Agent failures (PR-9):** fake exits non-zero after a valid-looking edit; fake
       hangs past `--timeout`; tool interrupted mid-call → no commit, no dispatch, child
       group gone, lock released, feature blocked, log kept.
@@ -405,6 +409,8 @@ adds remote/conflict fixtures. The post-publication cleanup case remains open be
   cleanup after publication, and define success when one or both branches are already
   absent. Extend AC8 with failures at each deletion and a successful retry.
 
+> **Planner reply (Direction), round 2:** Accepted. C18: a `DONE` rerun is accepted while publication is unverified **or** either branch still exists; an already-missing branch counts as deleted. AC8 adds failures at each deletion.
+
 ### PR-9 🟡 Agent failure, interruption and timeout behavior is unspecified
 **Round 2 status:** ✔ resolved — C4/C15 specify process groups, timeout escalation,
 interruption handling, blocked state and lock lifetime; AC9 exercises the failure paths.
@@ -491,6 +497,8 @@ authorized at Gate A. The following findings concern the revised execution contr
   dirty Builder completion and dirty code/tests at done; none may be accepted or
   published as checks passing on HEAD.
 
+> **Planner reply (Direction), round 2:** Accepted — my rewrite lost it. New C21 defines "clean" and requires it before `run`, every agent step, every check and `approve`; accepted Builder steps must end clean (the Builder commits its work). C14 runs checks only on a clean tree at the feature HEAD. C18 now commits the Auditor's validated edits **before** running the checks and refuses any other dirty path. AC6 covers pre-existing edits, dirty Builder completion and dirty code at `done`.
+
 ### PR-12 🟡 Failed readiness checks have no defined representation in the round cap
 - **Location:** §4 C9/C10/C14; §5 AC6–AC7.
 - **Problem:** C9 counts completed Auditor rounds using markers written by the Auditor.
@@ -504,6 +512,8 @@ authorized at Gate A. The following findings concern the revised execution contr
   combines with completed reviews for escalation. Keep ownership of review markers
   explicit. Test repeated red checks before any audit, with a restart between attempts,
   and assert the chosen cap and Lucas handoff.
+
+> **Planner reply (Direction), round 2:** Accepted. C10(b): each red check appends a tool-owned §10 row with `<!-- readiness-fail: N sha: … -->`; N counts consecutive failures since the last completed code review, durable in the file; the 3rd escalates to Lucas. Independent from the Auditor-owned review markers. AC6 covers repeated failures with a restart.
 
 ### PR-13 🟡 `--resume` has conflicting behavior for the Builder's allowed escalation
 - **Location:** §4 C5 action C and stop cases; C8; §6 T7/T9.
@@ -520,6 +530,8 @@ authorized at Gate A. The following findings concern the revised execution contr
   accepted escalation → answered question → explicit resume → Builder path, as well as
   ordinary run continuing to stop at Lucas.
 
+> **Planner reply (Direction), round 2:** Accepted. New C22: `run --resume` is the only continuation of `IN_PROGRESS` and takes precedence over the Lucas stop rule; preconditions (clean tree, feature branch, owner Builder, or owner Lucas with all blocking §10 rows answered); effect: the tool sets owner Builder, then action C with the same accepted outputs. AC9c covers escalation → answer → resume and the refusal case.
+
 ### PR-14 🟡 The remote-containment promise lacks a child-process push policy
 - **Location:** §4 C3/C8/C11/C19; §6 T4/T5/T9.
 - **Problem:** C3 makes run itself push-free and C11 concludes that rejected agent work
@@ -533,6 +545,8 @@ authorized at Gate A. The following findings concern the revised execution contr
   CLI permissions/isolation if prevention is the intended guarantee. Otherwise state
   the limit of post-step detection and define remote-state recovery. Add a child-push
   fixture against the bare remote to validate the chosen policy.
+
+> **Planner reply (Direction), round 2:** Accepted — chose prevention plus detection. C3: children run with a git config override that makes `git push` to origin fail, no terminal prompts, and the CLIs' own push/network denial; the tool also snapshots `git ls-remote origin` before/after each step and rejects + blocks on any remote change, with exact remote-recovery instructions (the documented limit: an explicit-URL push can only be detected, not prevented). AC9b tests both against the bare remote.
 
 **Round 2 verdict:** `CHANGES_REQUESTED`. Nine previous findings are resolved; PR-8
 remains 🟡. PR-11 is the blocking finding; PR-12–PR-14 are 🟡. Set
