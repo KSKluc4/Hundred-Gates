@@ -49,6 +49,7 @@ func _expected_bindings() -> Dictionary:
 		"interact": [_key(KEY_E), _pad(JOY_BUTTON_Y)],
 		"pause": [_key(KEY_ESCAPE), _pad(JOY_BUTTON_START)],
 		"debug_toggle": [_key(KEY_F3)],
+		"debug_reload_tunables": [_key(KEY_F5)],
 	}
 
 
