@@ -14,6 +14,10 @@ config/name="Hundred Gates"
 config/version="0.1.0"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
+[autoload]
+
+Tunables="*res://src/autoload/tunables.gd"
+
 [debug]
 
 gdscript/warnings/untyped_declaration=2
