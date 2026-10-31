@@ -1,8 +1,8 @@
 ---
 id: F-000
 title: Project setup & architecture skeleton
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [D-001, D-002]
@@ -155,8 +155,64 @@ again → overlay hidden. Run `tools/test` and `tools/lint` → both green.
 
 ## 7. Plan Review  ·  _Auditor_
 
-**Verdict:** `PENDING` <!-- APPROVE | APPROVE_WITH_NOTES | CHANGES_REQUESTED -->
-**Reviewed:** YYYY-MM-DD
+**Verdict:** `CHANGES_REQUESTED`
+**Reviewed:** 2026-10-31
+
+The infrastructure goal is appropriately scoped: it enables all three pillars without
+adding gameplay or prematurely implementing commands, persistence, or networking.
+The alternatives have specific rejection reasons, and T1–T9 are reasonably ordered
+and committable. Approval is blocked by the dependency authorization gap below.
+
+### PR-1 — 🔴 Dependency additions lack the required project decisions
+- **Location:** §3 Decision A; §4 C3 and “Must not break”; §6 T7–T8;
+  `PROJECT.md` G4; `CLAUDE.md` “You must never”.
+- **Problem:** T7 adds GUT and T8 adds gdtoolkit, but `DECISIONS.md` contains only
+  D-001 and D-002, neither authorizing these dependencies. G4 requires a D-### entry
+  for every new third-party dependency, and the Builder instructions require Lucas's
+  approval of that entry. Calling gdtoolkit a dev tool does not create an exemption.
+  The plan also prohibits editing `DECISIONS.md` during implementation.
+- **Why it matters:** The Builder cannot complete T7–T8 while obeying the project
+  rules. Naming these tools in PROJECT.md or this feature does not satisfy the
+  explicit D-### approval requirement.
+- **Suggested fix:** Have the Planner prepare the dependency decision entries for
+  Lucas's approval before implementation, then reference their IDs in this plan.
+  Keep dependency authorization separate from the Builder's installation tasks.
+
+### PR-2 — 🟡 Purity acceptance is weaker than the required core architecture
+- **Location:** §4 C2; §5 AC9; §6 T8; `PROJECT.md` Folder conventions.
+- **Problem:** PROJECT.md limits `src/core/` to RefCounted/Resource logic, but C2
+  only bans selected presentation classes and references. For example, a core
+  script extending plain `Node` satisfies that blacklist while violating the
+  folder convention. AC9 only requires checking C2.
+- **Why it matters:** The advertised architecture check can pass code outside the
+  architecture it is meant to protect, giving later features a misleading baseline.
+- **Suggested fix:** Align C2 and AC9 with the RefCounted/Resource restriction,
+  specify whether project-defined base classes must be followed, and define
+  representative passing/failing fixtures and any intentionally unsupported cases.
+
+### PR-3 — 🟡 Fresh-clone tooling has no reproducible installation contract
+- **Location:** §1 outcome; §4 C6; §5 AC7–AC8 and AC11; §6 T7–T9.
+- **Problem:** Only Godot is required to have a recorded exact version. The plan
+  does not require recording the GUT release/source or gdtoolkit version, and AC11
+  documents how to run tools without requiring installation prerequisites or steps.
+- **Why it matters:** A new agent cannot reliably reproduce the validated toolchain
+  from the README, and different installations can produce different lint/test
+  results despite using the same project commit.
+- **Suggested fix:** Require the Builder to record a compatible GUT release/source
+  and pin gdtoolkit in a dev dependency file. Extend AC11 to cover the supported
+  Python prerequisite, isolated installation, and Godot executable discovery on
+  macOS/Linux. Verify the documented setup from a fresh clone.
+
+### PR-4 — 🟡 Gamepad bindings are required but unspecified
+- **Location:** §5 AC6; §6 T4.
+- **Problem:** T4 names keyboard/mouse bindings but no gamepad buttons, movement
+  axes or directions, D-pad policy, or analog deadzone. AC6 accepts any gamepad
+  binding for each action, including mappings that would be impractical to use.
+- **Why it matters:** The Builder must invent the controller scheme, and review has
+  no agreed mapping against which to verify it before F-001 consumes these actions.
+- **Suggested fix:** Add a per-action controller mapping and movement deadzone, or
+  explicitly authorize a documented provisional mapping as a reversible assumption
+  and require it to be listed in the README for manual verification.
 
 ---
 
