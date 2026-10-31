@@ -25,7 +25,7 @@ func after_each() -> void:
 
 
 func test_ac16_valid_reload_during_a_dash_and_i_frames_keeps_state() -> void:
-	_spawn()
+	await _spawn()
 	var start: Vector2 = _player.global_position
 	await _run_ticks(3, Vector2.RIGHT, true, 1)
 	assert_eq(_player.motor.get_state(), PlayerMotor.State.DASHING)
@@ -40,22 +40,24 @@ func test_ac16_valid_reload_during_a_dash_and_i_frames_keeps_state() -> void:
 	assert_eq(_player.motor.get_iframe_window(), window)
 	assert_string_contains(await _overlay_text(), "reload: ok")
 	await _run_ticks(30)
-	assert_almost_eq(_player.global_position.x, start.x + 48.0, 0.2, "latched old distance")
+	assert_almost_eq(
+		_player.global_position.x, start.x + Units.tiles_to_px(3.0), 0.2, "latched old distance"
+	)
 
 
 func test_ac16_valid_reload_changes_the_next_dash() -> void:
-	_spawn()
+	await _spawn()
 	_write_class_data("dash_distance", 6.0)
 	_press_reload()
 	var start: Vector2 = _player.global_position
 	await _run_ticks(1, Vector2.LEFT, true, 1)
 	await _run_ticks(40)
-	assert_almost_eq(_player.global_position.x, start.x - 96.0, 0.2)
+	assert_almost_eq(_player.global_position.x, start.x - Units.tiles_to_px(6.0), 0.2)
 	assert_eq(_player.class_data.dash_distance, 6.0)
 
 
 func test_ac16_reload_during_cooldown_keeps_the_remaining_time() -> void:
-	_spawn()
+	await _spawn()
 	await _run_ticks(12, Vector2.RIGHT, true, 1)
 	var remaining: float = _player.motor.get_cooldown_remaining()
 	assert_gt(remaining, 0.0)
@@ -67,7 +69,7 @@ func test_ac16_reload_during_cooldown_keeps_the_remaining_time() -> void:
 
 
 func test_ac16_reload_keeps_a_buffered_dash() -> void:
-	_spawn()
+	await _spawn()
 	await _run_ticks(25, Vector2.ZERO, true, 1)
 	await _run_ticks(1, Vector2.ZERO, true, 1)
 	assert_true(_player.motor.has_buffered_dash(), "pressed during cooldown")
@@ -75,10 +77,11 @@ func test_ac16_reload_keeps_a_buffered_dash() -> void:
 	_press_reload()
 	assert_true(_player.motor.has_buffered_dash())
 	assert_eq(Tunables.player_combat.stick_deadzone, 0.3, "the autoload follows the reload")
+	assert_eq(_player._tunables.stick_deadzone, 0.3, "the glue reads the new deadzone")
 
 
 func test_ac16_invalid_class_is_rejected_and_shown() -> void:
-	_spawn()
+	await _spawn()
 	_write_class_data("dash_iframe_duration", 0.5)
 	_press_reload()
 	assert_string_contains(await _overlay_text(), "reload rejected: dash_iframe_duration")
@@ -86,7 +89,7 @@ func test_ac16_invalid_class_is_rejected_and_shown() -> void:
 
 
 func test_ac16_rejection_during_a_dash_changes_nothing() -> void:
-	_spawn()
+	await _spawn()
 	var start: Vector2 = _player.global_position
 	await _run_ticks(3, Vector2.RIGHT, true, 1)
 	var snapshot: Dictionary = _player.motor.to_dict()
@@ -96,11 +99,11 @@ func test_ac16_rejection_during_a_dash_changes_nothing() -> void:
 	assert_false(errors.is_empty())
 	assert_eq_deep(_player.motor.to_dict(), snapshot)
 	await _run_ticks(30)
-	assert_almost_eq(_player.global_position.x, start.x + 48.0, 0.2)
+	assert_almost_eq(_player.global_position.x, start.x + Units.tiles_to_px(3.0), 0.2)
 
 
 func test_ac16_reload_is_atomic_across_both_files() -> void:
-	_spawn()
+	await _spawn()
 	var tunables_before: PlayerCombatTunables = Tunables.player_combat
 	_write_class_data("dash_distance", 6.0)
 	_write_tunables("stick_deadzone", 1.0)
@@ -111,14 +114,14 @@ func test_ac16_reload_is_atomic_across_both_files() -> void:
 
 
 func test_ac16_missing_file_is_rejected() -> void:
-	_spawn()
+	await _spawn()
 	DirAccess.remove_absolute(TEMP_TUNABLES_PATH)
 	_press_reload()
 	assert_string_contains(await _overlay_text(), "reload rejected: could not load")
 
 
 func test_real_keys_reach_the_motor() -> void:
-	_spawn()
+	await _spawn()
 	_player.input_enabled = true
 	var start: Vector2 = _player.global_position
 	_send_key(KEY_D, true)
@@ -133,6 +136,56 @@ func test_real_keys_reach_the_motor() -> void:
 	assert_eq(_player.motor.get_state(), PlayerMotor.State.IDLE, "release stops")
 
 
+func test_c14_stick_never_leaks_in_through_the_move_actions() -> void:
+	# move_right binds the left stick too. Only the mapper may read sticks, and no joypad
+	# is connected here, so a stick event must not move the player at all.
+	await _spawn()
+	_player.input_enabled = true
+	var start: Vector2 = _player.global_position
+	_send_axis(JOY_AXIS_LEFT_X, 0.8)
+	await wait_physics_frames(6)
+	assert_eq(_player.global_position.x, start.x)
+	_send_axis(JOY_AXIS_LEFT_X, 0.0)
+
+
+func test_real_device_events_switch_aim_mode_both_ways() -> void:
+	await _spawn()
+	_player.input_enabled = true
+	var mode: Dictionary = PlayerInputMapper.AimMode
+	assert_eq(_player.get_aim_mode(), mode.MOUSE)
+
+	var button: InputEventJoypadButton = InputEventJoypadButton.new()
+	button.button_index = JOY_BUTTON_BACK
+	button.pressed = true
+	Input.parse_input_event(button)
+	Input.flush_buffered_events()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	assert_eq(_player.get_aim_mode(), mode.GAMEPAD, "joypad button")
+
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.screen_relative = Vector2(1, 1)
+	Input.parse_input_event(motion)
+	Input.flush_buffered_events()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	assert_eq(_player.get_aim_mode(), mode.GAMEPAD, "1.4 px of jitter does not count")
+
+	motion = InputEventMouseMotion.new()
+	motion.screen_relative = Vector2(6, 0)
+	Input.parse_input_event(motion)
+	Input.flush_buffered_events()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	assert_eq(_player.get_aim_mode(), mode.MOUSE, "real mouse motion")
+
+	button = InputEventJoypadButton.new()
+	button.button_index = JOY_BUTTON_BACK
+	button.pressed = false
+	Input.parse_input_event(button)
+	Input.flush_buffered_events()
+
+
 func _spawn() -> void:
 	var scene: Node = SCENE.instantiate()
 	_player = scene.get_node("Player")
@@ -141,6 +194,7 @@ func _spawn() -> void:
 	_player.tunables_path = TEMP_TUNABLES_PATH
 	_player.input_enabled = false
 	add_child_autofree(scene)
+	await get_tree().physics_frame  # _run_ticks must start just before a Player tick.
 
 
 func _write_class_data(field: String, value: Variant) -> void:
@@ -165,7 +219,17 @@ func _press_reload() -> void:
 ## The overlay writes its text on the next process frame.
 func _overlay_text() -> String:
 	await wait_process_frames(1)
-	return _overlay_label.text
+	var text: String = _overlay_label.text
+	await get_tree().physics_frame
+	return text
+
+
+func _send_axis(axis: JoyAxis, value: float) -> void:
+	var event: InputEventJoypadMotion = InputEventJoypadMotion.new()
+	event.axis = axis
+	event.axis_value = value
+	Input.parse_input_event(event)
+	Input.flush_buffered_events()
 
 
 func _send_key(key: Key, pressed: bool) -> void:

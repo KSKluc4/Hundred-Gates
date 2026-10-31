@@ -11,10 +11,19 @@ const SETTLE_TICKS: int = 12
 var _player: Player
 var _body_radius: float
 var _overlaps: int
+var _ticks_per_second_before: int
+
+
+func before_each() -> void:
+	_ticks_per_second_before = Engine.physics_ticks_per_second
+
+
+func after_each() -> void:
+	Engine.physics_ticks_per_second = _ticks_per_second_before
 
 
 func test_open_space_dash_keeps_motor_travel_through_physics() -> void:
-	_spawn_at(Vector2(240, 160))
+	await _spawn_at(Vector2(240, 160))
 	var distance_px: float = Units.tiles_to_px(_player.class_data.dash_distance)
 	await _run_ticks(1, Vector2.DOWN, true)
 	await _run_ticks(_dash_ticks() + SETTLE_TICKS)
@@ -23,8 +32,20 @@ func test_open_space_dash_keeps_motor_travel_through_physics() -> void:
 	assert_eq(_player.motor.get_position_px(), _player.global_position)
 
 
+func test_c1_glue_keeps_dash_distance_at_every_tick_rate() -> void:
+	for rate: int in [30, 60, 120]:
+		Engine.physics_ticks_per_second = rate
+		await _spawn_at(Vector2(240, 160))
+		var distance_px: float = Units.tiles_to_px(_player.class_data.dash_distance)
+		await _run_ticks(1, Vector2.DOWN, true)
+		await _run_ticks(_dash_ticks() + SETTLE_TICKS)
+		var label: String = "%d ticks/s" % rate
+		var tolerance: float = Units.tiles_to_px(0.01)
+		assert_almost_eq(_player.global_position.y, 160.0 + distance_px, tolerance, label)
+
+
 func test_ac8_straight_dash_stops_at_the_wall_without_overlap() -> void:
-	_spawn_at(Vector2(EAST_FACE_X - 24.0, 160))
+	await _spawn_at(Vector2(EAST_FACE_X - 24.0, 160))
 	await _run_ticks(1, Vector2.RIGHT, true)
 	await _run_ticks(_dash_ticks() + SETTLE_TICKS)
 	assert_almost_eq(_player.global_position.x, EAST_FACE_X - _body_radius, 0.2)
@@ -33,7 +54,7 @@ func test_ac8_straight_dash_stops_at_the_wall_without_overlap() -> void:
 
 
 func test_ac8_no_jitter_while_walking_into_a_wall() -> void:
-	_spawn_at(Vector2(EAST_FACE_X - 12.0, 160))
+	await _spawn_at(Vector2(EAST_FACE_X - 12.0, 160))
 	await _run_ticks(30, Vector2.RIGHT)
 	var resting_x: float = _player.global_position.x
 	for _i: int in 20:
@@ -44,7 +65,7 @@ func test_ac8_no_jitter_while_walking_into_a_wall() -> void:
 
 func test_ac8_diagonal_dash_into_a_flat_wall_slides_along_it() -> void:
 	var start: Vector2 = Vector2(EAST_FACE_X - _radius_of_scene() - 1.0, 100)
-	_spawn_at(start)
+	await _spawn_at(start)
 	await _run_ticks(1, Vector2(1, 1).normalized(), true)
 	await _run_ticks(_dash_ticks() + SETTLE_TICKS)
 	# MOTION_MODE_FLOATING keeps speed on a slide, so it covers more than distance·cos45.
@@ -61,7 +82,7 @@ func test_ac8_straight_dash_into_a_45_degree_wall_slides_along_it() -> void:
 	var tangent: Vector2 = Vector2(1, 1).normalized()
 	var offset: float = DIAGONAL_WALL_HALF_THICKNESS + _radius_of_scene()
 	var start: Vector2 = DIAGONAL_WALL_CENTER + normal * (offset + 2.0)
-	_spawn_at(start)
+	await _spawn_at(start)
 	await _run_ticks(1, Vector2.RIGHT, true)
 	await _run_ticks(_dash_ticks() + SETTLE_TICKS)
 	var moved: Vector2 = _player.global_position - start
@@ -72,7 +93,7 @@ func test_ac8_straight_dash_into_a_45_degree_wall_slides_along_it() -> void:
 
 
 func test_restored_snapshot_moves_the_body_before_the_next_tick() -> void:
-	_spawn_at(Vector2(240, 160))
+	await _spawn_at(Vector2(240, 160))
 	await _run_ticks(10, Vector2.RIGHT)
 	var snapshot: Dictionary = _player.motor.to_dict()
 	var saved_position: Vector2 = _player.global_position
@@ -97,6 +118,7 @@ func _spawn_at(start: Vector2) -> void:
 	_body_radius = (_player.get_node("CollisionShape2D").shape as CircleShape2D).radius
 	_overlaps = 0
 	add_child_autofree(scene)
+	await get_tree().physics_frame  # _run_ticks must start just before a Player tick.
 
 
 func _dash_ticks() -> int:
