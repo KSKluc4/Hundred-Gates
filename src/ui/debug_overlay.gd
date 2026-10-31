@@ -17,11 +17,9 @@ func _process(_delta: float) -> void:
 		_label.text = _build_text()
 
 
-func _unhandled_input(_event: InputEvent) -> void:
-	# TODO(Lucas): inverta `visible` quando a ação TOGGLE_ACTION for pressionada.
-	# Dica: renomeie `_event` para `event` e use event.is_action_pressed(...).
-	# Teste: tools/test (test_debug_overlay.gd fica verde); F5 + F3 mostra/esconde.
-	pass
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed(TOGGLE_ACTION):
+		visible = not visible
 
 
 func _build_text() -> String:
