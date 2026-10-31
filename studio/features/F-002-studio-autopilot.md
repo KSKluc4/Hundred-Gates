@@ -1,8 +1,8 @@
 ---
 id: F-002
 title: Studio autopilot (tools/studio)
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-003, D-004]
@@ -173,14 +173,174 @@ using fake agent scripts (via C12 env vars) in a temporary git repo fixture.
 
 ## 7. Plan Review  ·  _Auditor_
 
-**Verdict:** `PENDING` <!-- APPROVE | APPROVE_WITH_NOTES | CHANGES_REQUESTED -->
-**Reviewed:** YYYY-MM-DD
+**Verdict:** `CHANGES_REQUESTED`
+**Reviewed:** 2026-10-31 · **Round:** 1 · **Reviewed revision:** `f5dc0a0`
 
-Findings (severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion):
+The Director-facing infrastructure outcome and exclusions are clear. The chosen local
+orchestrator and rejection reasons fit the studio's current scale. No conflict was found
+with the accepted D-001–D-006 decisions or Direction's project/design ownership. Tasks
+have concrete outputs, but the handoff contract and enforcement gaps below prevent the
+specified unattended workflow from being reliable. Six blocking findings remain.
 
-### PR-1 🔴 <title>
-<What's wrong, where, why it matters, what you'd suggest.>
-> **Planner reply:** <accepted / rejected + reason / changed §X>
+### PR-1 🔴 The first Builder call cannot pass the branch precondition
+- **Location:** §4 C11; §5 AC3/AC9; §6 T2–T3.
+- **Problem:** `approve` commits, rebases and pushes on `main`. C11 then requires the
+  feature branch before any Builder step, while explicitly assigning creation of that
+  branch to the Builder. A newly approved feature has no feature branch, so `run` must
+  refuse before it can invoke the agent that creates it.
+- **Why it matters:** The advertised Gate A → Builder → Auditor path fails on its first
+  normal invocation; a fake fixture with a pre-created branch would hide the failure.
+- **Suggested fix:** Define who creates/checks out the branch and when. Either let the
+  orchestrator create it before the first Builder call, or explicitly allow that first
+  call from `main` and require the expected branch afterwards. Distinguish initial build
+  from resume/fix calls. Add an AC3 fixture starting on `main`, with `APPROVED` and no
+  feature branch, that exercises the complete transition.
+
+### PR-2 🔴 Automated Planner and resume calls conflict with the loaded role instructions
+- **Location:** §4 C3/C14; §6 T4/T8; `CLAUDE.md` “Before any task” and “You must never”;
+  `studio/departments/direction.md` “Output format”.
+- **Problem:** C3 dispatches a Builder for `IN_PROGRESS`, but `CLAUDE.md:18–20` permits
+  starting only from `APPROVED` or `CODE_CHANGES`. It also dispatches Claude Code as a
+  Planner on `PLAN_CHANGES`, while the repository's automatically loaded `CLAUDE.md`
+  declares that session the Builder and forbids editing §1–§7. Direction's brief asks
+  for a Markdown block ready to paste, whereas this loop needs edits in the repository.
+  The pointer-only templates and tasks do not define how those conflicting contracts
+  are reconciled.
+- **Why it matters:** A role following the existing instructions can refuse a required
+  call or return a revised plan only in stdout, making the automated repair loop stop.
+  These are unflagged contradictions with the workflow the feature must preserve.
+- **Suggested fix:** Specify role-aware instruction entry points, the Planner's in-place
+  editing contract, and an explicit `IN_PROGRESS` resume policy. Include the necessary
+  instruction/documentation changes in scope, with clear precedence. Test the prompts
+  against the repository role contracts as well as testing fake status transitions.
+
+### PR-3 🔴 Dispatch rules do not validate the transition an agent produces
+- **Location:** §3 Chosen; §4 C2–C3/C6; §5 AC3–AC5.
+- **Problem:** C3 selects an agent from the input state, but no rule defines its allowed
+  output states or validates status/owner/verdict/board consistency. For example, an
+  Auditor can write `APPROVED`/`Builder` in the allowlisted feature and board files.
+  The state has progressed under C6, and C3 then selects the Builder without Lucas
+  running `approve`. C2 restricts the tool's own writes without specifying rejection
+  of gate states written by its subprocesses.
+- **Why it matters:** An implementation can satisfy the listed path checks and happy
+  path ACs while bypassing the human gate that §3 explicitly rejects automating.
+- **Suggested fix:** Add a per-action output-transition table and validate it before
+  committing or dispatching again. Reject agent-produced `APPROVED`/`DONE`, mismatched
+  owners, inconsistent verdicts and board rows, and unexpected branch changes. Define
+  permitted escalation to Lucas. Add fakes that attempt each invalid transition and
+  assert that no following agent or tool commit occurs.
+
+### PR-4 🔴 `git status` cannot enforce lanes for changes an agent commits
+- **Location:** §4 C4–C5/C11; §5 AC5; §6 T2.
+- **Problem:** C4 checks lanes against `git status`, while C5 expects the Builder to
+  commit its own work and merely checks that the tree is clean. A Builder that commits
+  an edit to `AGENTS.md` or `studio/DECISIONS.md` leaves a clean tree and passes that
+  check. An Auditor/Planner that unexpectedly commits its own changes has the same
+  blind spot. AC5 covers only violations left in the working tree.
+- **Why it matters:** The exact class of accidental committed change cited in §1 is
+  invisible after an agent commit; explicit-path staging by the orchestrator cannot
+  remove it from history.
+- **Suggested fix:** Record the starting branch/HEAD and inspect every new commit's
+  changed paths, plus staged, unstaged and untracked paths, before accepting the step.
+  Reject unexpected history/branch movement. Specify how a pre-existing violating
+  agent commit is reported and preserved: C4's promise to leave all violations
+  “uncommitted” cannot be met retroactively without rewriting history. Add fixtures
+  with committed violations, including whitespace-only edits and a clean final tree.
+
+### PR-5 🔴 File allowlists do not enforce section ownership or proposed-only decisions
+- **Location:** §3 Chosen/Rejected; §4 C4; §6 T1–T2;
+  `studio/README.md` “Section ownership”; `AGENTS.md` “Hard rules”.
+- **Problem:** Both the feature and STATUS files are allowlisted for the Auditor, so
+  changing §1–§6, §8 or Lucas's §11 passes C4. Builder access to the feature likewise
+  permits changing approved requirements or deleting findings. Planner access to
+  `DECISIONS.md` does not distinguish a new PROPOSED entry from rewriting an existing
+  ACCEPTED decision. No task or AC specifies validation at these finer boundaries.
+- **Why it matters:** The claimed protection against editing another role's section
+  still depends on agent obedience, the weakness used to reject agent orchestration
+  in §3. These edits can silently change what subsequent agents treat as authorized.
+- **Suggested fix:** Define permitted frontmatter fields, section edits, inline replies
+  and append-only regions per role, then validate protected content before accepting
+  the step. Preserve §11 outside explicit human gate commands and existing decision
+  entries outside authorized Director changes. Add fakes that alter protected sections,
+  delete earlier findings, and change an existing decision's status within otherwise
+  allowlisted files.
+
+### PR-6 🔴 Readiness checks can be bypassed on restart or after code changes
+- **Location:** §4 C3/C9; §5 AC6/AC10; §9 “Reviewed commit” convention.
+- **Problem:** On a failed Builder check, C9 leaves `CODE_REVIEW` as written by the
+  Builder. A second `run` starts directly with the Auditor under C3; C9 only runs
+  after a Builder step, so the failed check is never revisited. AC10 also accepts an
+  approving verdict without requiring passing checks for the code being merged or
+  verifying that its code still matches the review's recorded commit.
+- **Why it matters:** Restarting after a test failure, or adding a code commit after
+  an approving review, can advance unverified code to Gate B with valid-looking
+  status/owner/verdict fields.
+- **Suggested fix:** Define readiness evidence tied to a specific code revision, or
+  rerun required checks before every Mode B invocation and finalization. Require a
+  fresh review when code differs from the reviewed revision, while allowing explicitly
+  defined review/status metadata commits. Test failure → restart and approved review
+  → additional code commit → `done`; neither may bypass the missing evidence.
+
+### PR-7 🟡 Review-round counting lacks a shared schema and boundary rule
+- **Location:** §4 C7; §5 AC4; §6 T1; `studio/features/_TEMPLATE.md` §7/§9;
+  `AGENTS.md` Mode A/Mode B.
+- **Problem:** C7 counts `**Round:** N` markers in both reviews, but the shared plan
+  review template has no such marker and Mode A does not require incrementing one.
+  Conversely, the code template already contains Round 1 while its verdict is PENDING.
+  Historical review text can retain additional markers. “Hitting” three rounds also
+  leaves the timing of escalation relative to the third review's result unspecified.
+- **Why it matters:** The cap can be ineffective, count an unperformed review, or
+  override a successful final review depending on the parser and invocation order.
+- **Suggested fix:** Specify an authoritative current-round convention, initialization,
+  incrementing actor, treatment of PENDING/history and legacy files, and whether the
+  cap stops a further review after the third completed result. Include any required
+  role/template updates and tests for missing, historical and placeholder markers.
+  This review adds a local Round marker; that alone does not establish the shared rule.
+
+### PR-8 🟡 Gate helpers have no defined recovery after partial Git failure
+- **Location:** §5 AC9–AC10; §4 C13; §6 T2/T6.
+- **Problem:** `done` sets/commits DONE and pushes the feature before merging/pushing
+  `main`. If the main push fails, the next `done` fails its CODE_REVIEW precondition,
+  leaving publication and branch cleanup unfinished. `approve` can similarly leave
+  its gate state committed before a rebase/push failure. No recovery contract or
+  failure fixture covers these intermediate states.
+- **Why it matters:** The tool cannot supply a reliable next command for ordinary Git
+  failures, and a retry may refuse or repeat operations whose effects already landed.
+- **Suggested fix:** Define preconditions and checkpoints for each gate command,
+  checked failure ordering, preservation of conflict/dirty state, and an idempotent
+  resume command or exact documented recovery path. Test rebase/merge conflicts and
+  rejected feature/main pushes using a temporary bare remote; delete branches only
+  after confirmed publication to main.
+
+### PR-9 🟡 Agent failure, interruption and timeout behavior is unspecified
+- **Location:** §2 CLI invocation; §4 C6–C8/C10/C12–C13; §6 T3/T6–T7.
+- **Problem:** The guards count returned steps, but there is no contract for a process
+  that exits non-zero after editing files, cannot launch/authenticate, waits forever
+  for permission, or is interrupted while its child remains alive. Logs are required,
+  but the plan does not say whether partial output/state may be committed or advanced.
+- **Why it matters:** A changed header can look like progress despite invocation failure;
+  a hung child can hold the workflow indefinitely, and clearing its dead parent's PID
+  lock could allow a second agent onto the same tree.
+- **Suggested fix:** Define exit-code handling, a configurable timeout policy, child
+  termination/waiting and lock cleanup. Failed/interrupted calls should preserve logs
+  and edits, stop before committing/dispatching, and notify with the recovery action.
+  Add fake-agent fixtures for non-zero exit after a valid-looking edit and for a hung
+  or interrupted process. Record any deliberate absence of a timeout explicitly.
+
+### PR-10 🟡 The lock excludes other commands that mutate the same tree
+- **Location:** §4 C10; §5 AC7/AC9–AC10; §6 T6.
+- **Problem:** C10 and AC7 specify exclusion between two `run` calls only. `approve`
+  and `done` also edit, commit and change branches, but their participation in that
+  lock is not defined. A clean-tree check cannot prevent a concurrent change between
+  validation and mutation.
+- **Why it matters:** A gate helper can race an active agent or another gate helper
+  and invalidate the branch, state or files that the other operation just checked.
+- **Suggested fix:** Require one shared lock across every mutating command, covering
+  validation through completion/failure. Keep read-only commands available. Extend
+  AC7 to exercise run-versus-gate and gate-versus-gate exclusion.
+
+**Handoff:** `status: PLAN_CHANGES`, `owner_now: Planner`. Resolve PR-1–PR-6 before
+Gate A; reply beneath each finding and retain this review history.
 
 ---
 
