@@ -555,7 +555,7 @@ plan sections were edited by this review.
 - [x] T3 — 83eda0d
 - [x] T4 — 7e2191e
 - [x] T5 — a47fd0b
-- [ ] T6
+- [x] T6 — ed066b6, 5025106
 - [ ] T7
 - [ ] T8
 - [ ] T9
