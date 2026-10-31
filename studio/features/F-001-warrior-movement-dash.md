@@ -1,8 +1,8 @@
 ---
 id: F-001
 title: Warrior movement + dash
-status: PLAN_CHANGES           # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_REVIEW           # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-001, D-002, D-005]
@@ -61,8 +61,9 @@ What the Builder needs to know that isn't obvious from the code:
   - The core motor **never** reads the autoload: the glue passes both resources in.
   - **Input map:** F-000 already defines `move_up/down/left/right` (keys + left stick +
     D-pad) and `dodge` (Space + A). **Reuse them.** The dash is the `dodge` action (it is
-    the same verb; see GLOSSARY "Dash"). Only add `aim_left/right/up/down` (right stick)
-    and `debug_reload_tunables` (F5).
+    the same verb; see GLOSSARY "Dash"). The **only** new action is
+    `debug_reload_tunables` (F5). No `aim_*` actions: stick magnitudes are read as raw
+    axes and filtered once, by the input contract in §4 C14 (PR-5).
 - **Relevant prior decisions:**
   - D-001 — Godot 4.7.2, GDScript, static typing.
   - D-002 — offline now, online-ready architecture (G6–G9 apply in full).
@@ -90,9 +91,12 @@ What the Builder needs to know that isn't obvious from the code:
   - An input reader in `src/entities/player/` turns device input into **commands**
     (`MoveCommand`, `AimCommand`, `DashCommand`) each tick. The motor only ever receives
     commands (G8).
-  - `Player` (`CharacterBody2D`) is glue: each physics tick it feeds commands to the motor,
-    calls `motor.tick(delta)`, sets `velocity` from the motor, calls `move_and_slide()`,
-    then writes the resulting position back into the motor state.
+  - `Player` (`CharacterBody2D`) is glue. Exact per-tick order is §4 C15. In short:
+    commands → `motor.tick(delta)` → body velocity = motor's tick displacement / delta →
+    `move_and_slide()` → `motor.sync_position(body position)`.
+  - `PlayerInput` splits into a pure, testable mapper (`PlayerInputMapper`, takes an
+    `InputSample` of raw values, returns commands) and a thin node that fills the sample
+    from Godot's `Input`/events. Device rules: §4 C16.
   - Godot physics handles wall collision.
 - **Why chosen:** Satisfies G6 (logic separate from presentation), G7 (motor state is
   plain data), G8 (input → commands) with very little code. Physics stays in the engine
@@ -139,75 +143,96 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 
 | ID | Constraint | Reason |
 |---|---|---|
-| C1 | All timing and movement use `delta` and tick in `_physics_process`. Same inputs give the same result (within tolerance) at 30, 60 and 120 ticks/s. | G1 |
-| C2 | No movement/dash number in code. Every value comes from `data/classes/warrior.tres` or `data/tunables/player_combat.tres`. Fixed rules (e.g. "i-frames start at dash start") are behavior, not numbers. | G2, D-005 |
+| C1 | All timing and movement use `delta` and tick in `_physics_process`. Same inputs give the same result within the §5 tolerances at 30, 60 and 120 ticks/s. | G1 |
+| C2 | No movement/dash number in code. Every value comes from `data/classes/warrior.tres` or `data/tunables/player_combat.tres`. Fixed rules (e.g. "i-frames start at dash start") are behavior, not numbers. Validation bounds in C17 are rules, not tunables. | G2, D-005 |
 | C3 | `src/core/` scripts extend only `RefCounted` or `Resource`. They never call `Input`, never reference `Node`, sprites, animation or the scene tree. The core purity check from F-000 passes. | G6 |
-| C4 | The motor changes state **only** through commands and `tick(delta)`. Input handlers never call motor methods other than submitting commands. | G8 |
-| C5 | Motor state (position, velocity, facing, motor state, all timers, buffered dash) round-trips through `to_dict()` / `from_dict()` with no loss. | G7 |
-| C6 | No global or static mutable state in the motor. Two motors in the same scene must be fully independent. | D-002 (co-op) |
-| C7 | Values are stored in tiles and seconds. Tile → pixel conversion happens in one place (`TILE_SIZE_PX` constant). | CX1 pending |
-| C8 | I-frames start at the dash's first tick and last `dash_iframe_duration`. The dash tail (after i-frames end, before dash ends) is **vulnerable**. | CQ3 |
+| C4 | **Player intentions** (move, aim, dash) reach the motor **only** via `submit(command)`. The motor's complete public mutating API is exactly: `submit()`, `tick()`, `setup()`, `apply_data()`, `sync_position()`, `from_dict()` — each with the effects listed in C18 and nothing else. Input handlers only ever call `submit()`. | G8 (PR-1) |
+| C5 | Snapshot boundary: `to_dict()` / `from_dict()` are only valid **between ticks with no pending commands** (after `tick()` returns, before the next `submit()`). The snapshot contains: position, velocity, facing, motor state, dash direction, dash elapsed, latched dash params (C17), cooldown remaining, buffered dash flag + age, invulnerability flag. Round-trip loses nothing. Commands are per-tick and never retained, so no intention is stored. | G7 (PR-1) |
+| C6 | No global or static mutable state in the motor, mapper or glue. Two players in the same scene are fully independent. | D-002 (co-op) |
+| C7 | Values are stored in tiles and seconds. Tile → pixel conversion happens in one place (`Units.TILE_SIZE_PX`). | CX1 pending |
+| C8 | I-frames: `is_invulnerable()` is true after the `tick()` in which the dash fires, and stays true until dash elapsed time ≥ the latched `dash_iframe_duration` (checked at end of tick). The tail (after i-frames, before dash end) is **vulnerable**. | CQ3 |
 | C9 | Dash cooldown starts **when the dash ends**, not when it starts. | design/combat.md |
-| C10 | During a dash, movement input is ignored and the dash direction is fixed. | Readability: committed dodge |
+| C10 | During a dash, move input is ignored and the dash direction is fixed at fire time. Facing still updates. | design/combat.md |
 | C11 | No new addons or dependencies. | G4 |
-| C12 | F-000 input actions keep their names and bindings. No `dash` action — the dash uses `dodge`. | F-000 must-not-break |
-| C13 | Hot-reload swaps data without resetting motor state (position, timers, buffer survive). | AC16 |
+| C12 | F-000 input actions keep their names, bindings and deadzones. No `dash` action — the dash uses `dodge`. Only new action: `debug_reload_tunables` (F5). | F-000 must-not-break |
+| C13 | Hot-reload swaps data without resetting motor state (rules in C17). | AC16 |
+| C14 | **Stick contract (move and aim, one formula):** read the raw stick vector `r` (axes, clamped to length 1). `dz` = `PlayerCombatTunables.stick_deadzone`, radial. If `|r| <= dz` → zero. Else magnitude `m = (|r| − dz) / (1 − dz)`, direction `r / |r|`. Example: raw 0.5, dz 0.2 → 0.375. Digital (keys, D-pad): components ±1, normalized to length 1. Move = stick if its `m > 0`, else digital. The resource `dz` is the **only** runtime filter on stick magnitudes; the reader never uses action strengths for sticks, so nothing is filtered twice. A reloaded `dz` applies from the next tick. | PR-5 |
+| C15 | **Tick timeline** (one physics tick, `delta`): (1) the input node builds an `InputSample` and the mapper submits this tick's `MoveCommand` + `AimCommand` (always) and `DashCommand` (only on the tick `dodge` was pressed). (2) `motor.tick(delta)`: a. facing from this tick's aim/move (C16); b. a `DashCommand` this tick sets the buffer (age 0, replacing any older one); c. a buffered dash **fires** if state ≠ DASHING, cooldown remaining ≤ 0 and buffer age ≤ `input_buffer_window` (inclusive); direction = this tick's move input, else facing; d. advance the active phase by `delta`. A dash moves at `dash_distance / dash_duration` tiles/s for exactly the time left in the dash: in the tick it ends, displacement uses only the remaining time, so total dash distance is exact. The rest of that tick produces no movement and velocity is 0 (AC10). Overshoot (`delta` − time used) is subtracted from the new cooldown. e. outside a dash, velocity moves linearly toward `move_speed × m × dir` at rate `move_speed / accel_time` (or `/ decel_time` when slowing); time 0 = jump to target; position += velocity × delta. f. an unconsumed buffer ages by `delta` and is dropped once age > window. (3) glue sets `velocity = tick_displacement_px / delta`, calls `move_and_slide()` (which uses the physics step delta), then `motor.sync_position(global_position)`. | G1 (PR-3) |
+| C16 | **Aim device rules.** Aim mode is `MOUSE` or `GAMEPAD`; initial mode `MOUSE`; initial facing `Vector2.DOWN` (never zero). Switch to `MOUSE` only on a physical mouse event: motion with relative length ≥ 2 px, or a mouse button press. Camera/player movement that changes the mouse's world position is **not** an event. Switch to `GAMEPAD` on any joypad button press, or either stick with raw `|r| > dz`. Keyboard input never switches mode. Several qualifying events in one tick: the last one received wins. `MOUSE` aim = direction from player to mouse world position; if that distance < 0.25 tiles → no aim (zero). `GAMEPAD` aim = right stick per C14 (zero below dz). Motor facing: aim non-zero → aim direction; else move non-zero → move direction; else keep last facing. The active joypad is the one that produced the last qualifying event (default: first connected). | PR-4 |
+| C17 | **Data validity and hot-reload.** Valid ranges: `move_speed` > 0; `move_accel_time`, `move_decel_time` ≥ 0; `dash_distance` > 0; `dash_duration` > 0; 0 < `dash_iframe_duration` < `dash_duration`; `dash_cooldown` ≥ 0; `input_buffer_window` ≥ 0; 0 ≤ `stick_deadzone` < 1. Each resource has `validate() -> PackedStringArray` (empty = valid). Reload is **atomic**: load both files ignoring cache; if either fails to load or validate, nothing changes and the overlay shows "reload rejected: <errors>". Invalid data at `setup()` is refused (`push_error`, motor stays in its previous state / not started). **Latching:** dash distance, duration and i-frame duration are latched when a dash fires; a mid-dash reload affects the next dash. Remaining cooldown and buffer age are kept as-is; new `dash_cooldown` applies to the next cooldown, new `input_buffer_window` from the next tick. Move speed/accel/decel and `stick_deadzone` apply from the next tick. | PR-6 |
+| C18 | **Lifecycle API effects (exhaustive).** `setup(class_data, tunables, start_position_tiles, initial_facing = Vector2.DOWN)`: validate, store data, reset all state. `apply_data(class_data, tunables)`: validate, replace data only (C17). `sync_position(position_px)`: overwrite position only — the physics result is authoritative in the scene; in core tests nobody calls it and the motor's own integration stands. `from_dict(d)`: replace state per C5; the glue then sets `global_position` from the motor before the next tick. `tick()` and `submit()` per C15. | PR-1 |
 
 **Must not break:** F-000 tooling. `tools/test`, `tools/lint` and the core purity check
-all pass.
+all pass. F-000's input-map test keeps every original assertion (T7 migrates it).
 
 ---
 
 ## 5. Acceptance Criteria  ·  _Planner_
 
-Testable, observable. The Auditor checks each one. "Tolerance" = one tick of travel.
+Testable, observable. The Auditor checks each one.
 
-- [ ] AC1 — **Movement speed:** Given a full-magnitude input in any of the 8 directions,
-      when held for 1 s in open space, then the Warrior travels `move_speed` tiles
-      (± tolerance, accounting for accel). Diagonal is **not** faster than cardinal
-      (input vector length is clamped to 1).
-- [ ] AC2 — **Analog:** Given a stick input with magnitude m (deadzone < m ≤ 1), target
-      speed = `move_speed × m`. Below `stick_deadzone`, input counts as zero.
-- [ ] AC3 — **Accel/decel:** From standstill, the Warrior reaches full speed after
-      `move_accel_time`. From full speed with no input, it stops after `move_decel_time`.
-      With either value at 0, the change is instant on the next tick.
-- [ ] AC4 — **Facing (KB/M):** When the mouse was the last used aim device, facing = unit
-      vector from Warrior to mouse world position, updated every tick, also while moving
-      and dashing.
-- [ ] AC5 — **Facing (gamepad):** When a gamepad was the last used device: right stick above
-      deadzone → facing = right stick direction; else movement input direction; else facing
-      keeps its last value. Facing never changes on its own.
-- [ ] AC6 — **Dash direction:** Dash goes in the current movement input direction. With no
-      movement input, it goes in the facing direction.
-- [ ] AC7 — **Dash travel:** In open space, a dash covers `dash_distance` tiles
-      (± tolerance) in `dash_duration` seconds, at constant speed.
-- [ ] AC8 — **Dash and walls:** A dash into a wall stops at the wall (slides along it if at
-      an angle). The Warrior never ends up inside or through world geometry.
-- [ ] AC9 — **I-frames:** `is_invulnerable()` is true from the dash's first tick until
-      `dash_iframe_duration` has elapsed, then false for the rest of the dash and after.
-- [ ] AC10 — **Dash end:** When the dash ends, no dash momentum carries over. Velocity
-      continues from the current movement input using normal accel rules (from standstill
-      if there is no input).
-- [ ] AC11 — **Cooldown:** After a dash ends, another dash can't start until
-      `dash_cooldown` has elapsed.
-- [ ] AC12 — **Buffer:** A dash pressed during a dash or cooldown is stored. It fires on the
-      first tick a dash is allowed **if** it was pressed no more than `input_buffer_window`
-      seconds before that tick; otherwise it is discarded. Only one dash is buffered; a
-      newer press replaces it. Direction is read when the dash **fires**, not when pressed.
-- [ ] AC13 — **Frame-rate independence:** The same scripted command sequence ticked at 30,
-      60 and 120 ticks/s ends at the same position (± tolerance), with the same
-      invulnerability windows (± one tick).
-- [ ] AC14 — **Serialization:** Serializing the motor mid-dash, mid-cooldown and with a
-      buffered dash, then restoring into a fresh motor, gives identical behavior over the
-      next 30 ticks.
-- [ ] AC15 — **Independence:** Two motors ticked side by side with different commands don't
-      affect each other.
-- [ ] AC16 — **Hot-reload:** In the debug scene, the `debug_reload_tunables` action (F5)
-      reloads `warrior.tres` and `player_combat.tres` from disk (cache ignored) and applies
-      them through `PlayerMotor.apply_data()` immediately — no scene restart, and the motor's
-      current state (position, timers, buffered dash) is kept.
-- [ ] AC17 — **Tests and lint:** GUT tests cover AC1–AC15 at core level; `tools/test`,
-      `tools/lint` and the core purity check pass.
+**Tolerances and oracle (PR-3).** Tests run the same scripted command sequence at 30, 60
+and 120 ticks/s and sample only at times that are multiples of 1/30 s. Position tolerance
+**0.01 tiles** for dash distance (exact by C15) and settled-speed travel; **0.2 tiles** for
+any final position after mixed sequences (AC13); timing tolerance **one 30 Hz tick
+(1/30 s)** for state changes and invulnerability windows. Where acceleration matters,
+the oracle is C15 step e. (linear `move_toward`), never "ideal" continuous motion.
+
+- [ ] AC1 — **Movement speed:** After velocity has settled at full speed (accel finished),
+      holding a full-magnitude input for 1.0 s moves the Warrior `move_speed` tiles
+      (± 0.01) in any of the 8 directions. Diagonal is not faster than cardinal.
+- [ ] AC2 — **Analog:** For raw stick magnitudes 0.1, 0.2, 0.5, 1.0 with `stick_deadzone`
+      0.2, settled speed is 0, 0, `0.375 × move_speed`, `move_speed` (C14, boundary 0.2 → 0).
+- [ ] AC3 — **Accel/decel:** From standstill, settled full speed is reached within
+      `move_accel_time` (+ one tick); from full speed with zero input, speed is 0 within
+      `move_decel_time` (+ one tick). With either value at 0, the change happens in the
+      same tick.
+- [ ] AC4 — **Facing (mouse mode):** In `MOUSE` mode, facing = direction from Warrior to the
+      mouse world position every tick, also while moving and dashing; mouse within 0.25
+      tiles → facing falls back per C16.
+- [ ] AC5 — **Facing (gamepad mode):** In `GAMEPAD` mode: right stick above dz → facing =
+      right stick direction; else move direction; else unchanged. Mode switching follows C16
+      exactly (both directions, noise below dz doesn't switch, camera movement doesn't switch).
+- [ ] AC6 — **Dash direction:** Dash goes in the move input direction of the tick it fires;
+      with no move input, in the facing direction. Immediately after `setup()` with no aim
+      input, a stationary dash goes `Vector2.DOWN`.
+- [ ] AC7 — **Dash travel:** In open space, one dash covers exactly `dash_distance` tiles
+      (± 0.01) over `dash_duration` (± one 30 Hz tick), at constant speed.
+- [ ] AC8 — **Dash and walls:** Dashing straight into a wall stops at the wall; dashing at
+      45° into a wall slides along it. The Warrior's body never overlaps world geometry.
+      (Automated scene test, T9b.)
+- [ ] AC9 — **I-frames:** Per C8: invulnerable from the fire tick until latched
+      `dash_iframe_duration` (± one 30 Hz tick), then vulnerable for the rest of the dash
+      and after.
+- [ ] AC10 — **Dash end:** No dash momentum carries over: velocity is 0 at dash end and then
+      follows normal accel from the current move input.
+- [ ] AC11 — **Cooldown:** A new dash can't fire until `dash_cooldown` after the previous
+      dash ended (overshoot carried per C15).
+- [ ] AC12 — **Buffer:** A dash pressed during a dash or cooldown fires on the first eligible
+      tick if its age ≤ `input_buffer_window` (inclusive), else it is dropped. A newer press
+      replaces the older one. Direction is read at fire time.
+- [ ] AC13 — **Frame-rate independence:** A scripted sequence of moves, aim changes and
+      **5 consecutive dash + cooldown cycles** (with durations not divisible by the tick
+      interval) ends at the same position (± 0.2 tiles) with the same invulnerability
+      windows (± one 30 Hz tick) at 30, 60 and 120 ticks/s.
+- [ ] AC14 — **Serialization:** Snapshot (per C5) mid-dash, mid-i-frames, mid-cooldown and
+      with a buffered dash; restore into a fresh motor; the next 30 ticks of both motors
+      under the same commands are identical.
+- [ ] AC15 — **Independence:** Two motors (and two mappers) ticked side by side with
+      different inputs don't affect each other.
+- [ ] AC16 — **Hot-reload:** `debug_reload_tunables` (F5) in the debug scene reloads both
+      files and applies them per C17: valid edits apply with state kept; an invalid file
+      (e.g. `dash_iframe_duration ≥ dash_duration`) is rejected atomically and shown on the
+      overlay. Tested during a dash, during i-frames, during cooldown and with a buffer.
+- [ ] AC17 — **Coverage map (PR-2):**
+      - Core motor tests (`tests/core/player/`): AC1–AC3, AC6, AC7, AC9–AC15, the motor part
+        of AC4/AC5 (facing from aim/move commands), C17 validation and latching.
+      - Input mapper tests (`tests/entities/player/`, plain GUT, no scene): C14 math, C16
+        device switching both ways, noise, camera movement not switching, mouse-on-player
+        fallback, AC2 via raw samples, `dz` reload through the mapper.
+      - Physics scene test (GUT with physics frames): AC8, and AC16 end-to-end in the
+        debug scene.
+      - F-000 input-map test migrated (T7). `tools/test`, `tools/lint`, core purity pass.
 
 **How to verify manually (feel test):**
 Open `scenes/debug/f001_movement.tscn` and play 2 minutes with KB/M, then 2 with a gamepad.
@@ -228,16 +253,17 @@ Small, ordered, each independently committable.
 
 | # | Task | Files likely touched | Notes |
 |---|---|---|---|
-| T1 | Unit conversion | `src/core/units.gd` (`Units`) | `TILE_SIZE_PX := 16` (CX1 pending) + `tiles_to_px()`, `px_to_tiles()`. Comment: `# CX1: tile size pending Art & Game Feel`. |
-| T2 | Data resource types | `src/core/classes/class_data.gd` (`ClassData`), `src/core/tunables/player_combat_tunables.gd` (`PlayerCombatTunables`) | `ClassData`: `id: StringName`, `display_name: String`, `weapon_family: StringName`, `move_speed`, `move_accel_time`, `move_decel_time`, `dash_distance`, `dash_duration`, `dash_iframe_duration`, `dash_cooldown`. `PlayerCombatTunables`: `input_buffer_window`, `stick_deadzone`. All `@export`, typed. Later features add fields; don't add unused ones now. `# D-005` on `ClassData`. |
-| T3 | Data files | `data/classes/warrior.tres`, `data/tunables/player_combat.tres` | Values from the *Tunables index* in design/combat.md. `warrior`: `id = &"warrior"`, `weapon_family = &"sword"`. `stick_deadzone = 0.2`. Paths as constants (G5). |
-| T4 | Commands | `src/commands/command.gd` (base), `move_command.gd`, `aim_command.gd`, `dash_command.gd` | Plain data, all extend `Command` (`RefCounted`). `MoveCommand(direction: Vector2)` (already deadzoned, length ≤ 1). `AimCommand(direction: Vector2)` (unit vector or zero = "no aim input"). `DashCommand()`. `DashCommand` is produced from the `dodge` input action. |
-| T5 | `PlayerMotor` core | `src/core/player/player_motor.gd` | States: `IDLE`, `MOVING`, `DASHING`. Holds position, velocity, facing, timers, buffered dash + its age. API: `setup(class_data, tunables)` (= `apply_data` + reset state), `apply_data(class_data, tunables)` (swap data, keep state — AC16), `submit(command)`, `tick(delta)`, `get_velocity_px()`, `set_position_px()`, `is_invulnerable()`, `get_state()`, `to_dict()`, `from_dict()`. Signals (past tense): `dash_started`, `dash_ended`, `invulnerability_changed(is_invulnerable)`. Accel/decel = linear `move_toward` on velocity; time 0 = instant. |
-| T6 | Core tests | `tests/core/player/test_player_motor.gd` | One or more tests per AC1–AC3 and AC6–AC15, using scripted commands. No scene needed. Walls (AC8) are tested in T9 manually, not here. |
-| T7 | Input reader | `src/entities/player/player_input.gd`, `project.godot` input map | Reuse F-000 actions `move_*` (all existing bindings, incl. D-pad) and `dodge` (Space + A) → `DashCommand`. Add only `aim_left/right/up/down` (right stick, deadzone 0.2) and `debug_reload_tunables` (F5) (C12). Tracks last used device for facing (AC4/AC5). Converts mouse position to an aim direction relative to the player. Outputs commands only. |
-| T8 | Player glue | `src/entities/player/player.gd` (`Player`, `CharacterBody2D`), `player.tscn` | Per tick: commands → motor → `tick` → `velocity` → `move_and_slide()` → write position back. Placeholder: colored circle + facing line. Collides with world layer only. Logic never reads the visuals. |
-| T9 | Debug scene + overlay (+ `Tunables.player_combat`) | `scenes/debug/f001_movement.tscn`, `src/ui/debug/motor_debug_overlay.gd` | Room ~30×20 tiles with walls and a few pillars (angled corner too). Simple follow camera. Overlay: state, velocity (tiles/s), facing, i-frame flag (+ tint on player while invulnerable), cooldown remaining, buffered dash yes/no, last device, ticks/s. F5 reloads both `.tres` with cache ignored (AC16). |
-| T10 | Glossary | `studio/GLOSSARY.md` | Add rows: Dash, I-frames, Facing, Input buffer, Class (see §11 note if Direction objects). |
+| T1 | Unit conversion | `src/core/units.gd` (`Units`) | `TILE_SIZE_PX := 16` + `tiles_to_px()`, `px_to_tiles()`. `# CX1: tile size pending Art & Game Feel`. |
+| T2 | Data resource types + validation | `src/core/classes/class_data.gd` (`ClassData`), `src/core/tunables/player_combat_tunables.gd` (`PlayerCombatTunables`) | Fields as before: `ClassData` (`id`, `display_name`, `weapon_family`, `move_speed`, `move_accel_time`, `move_decel_time`, `dash_distance`, `dash_duration`, `dash_iframe_duration`, `dash_cooldown`); `PlayerCombatTunables` (`input_buffer_window`, `stick_deadzone`). Each has `validate()` per C17. `# D-005` on `ClassData`. |
+| T3 | Data files + autoload | `data/classes/warrior.tres`, `data/tunables/player_combat.tres`, `src/autoload/tunables.gd` | Values from design/combat.md *Tunables index*. Add `Tunables.player_combat` (path constant + preload). |
+| T4 | Commands | `src/commands/command.gd` (base), `move_command.gd`, `aim_command.gd`, `dash_command.gd` | Plain data, extend `Command` (`RefCounted`). `MoveCommand(direction)` already mapped per C14. `AimCommand(direction)` unit vector or zero. |
+| T5 | `PlayerMotor` core | `src/core/player/player_motor.gd` | States `IDLE`, `MOVING`, `DASHING`. API exactly C4/C18 + getters `get_tick_displacement_px()`, `get_position_px()`, `get_facing()`, `get_state()`, `is_invulnerable()`, `get_cooldown_remaining()`, `has_buffered_dash()`, `to_dict()`. Tick per C15. Signals: `dash_started`, `dash_ended`, `invulnerability_changed(is_invulnerable)`. |
+| T6 | Core motor tests | `tests/core/player/test_player_motor.gd` (+ helpers) | Coverage per AC17 core list, at 30/60/120 Hz with the §5 oracle. |
+| T7 | Input mapper + node + input map | `src/entities/player/input_sample.gd`, `player_input_mapper.gd`, `player_input.gd`; `project.godot`; `tests/test_input_map.gd`; `tests/entities/player/test_player_input_mapper.gd` | Mapper is pure (no `Input`), implements C14/C16. Node fills `InputSample` from `Input` and input events. Add only `debug_reload_tunables` (F5). **Migrate the F-000 input-map test:** extend the exact action set and assert the new binding, keeping every original F-000 assertion unchanged (PR-7). |
+| T8 | Player glue | `src/entities/player/player.gd` (`Player`, `CharacterBody2D`), `player.tscn` | Per tick exactly C15 step 3. `@export var class_data: ClassData` (default warrior). Placeholder circle + facing line. World collision layer only. Logic never reads visuals. |
+| T9 | Debug scene + overlay | `scenes/debug/f001_movement.tscn`, `src/ui/debug/motor_debug_overlay.gd` | Room ~30×20 tiles, walls, pillars, a 45° wall. Follow camera. Overlay: state, velocity (tiles/s), facing, aim mode, i-frame flag (+ player tint), cooldown, buffered dash, ticks/s, last reload result. F5 → atomic reload (C17). |
+| T9b | Physics scene tests | `tests/scenes/test_f001_walls.gd` | AC8 straight + 45° wall with scripted commands over physics frames; AC16 valid/invalid reload end-to-end. |
+| T10 | Glossary | `studio/GLOSSARY.md` | Rows: Dash, I-frames, Facing, Input buffer, Class, Aim mode, Deadzone. |
 
 ---
 
@@ -270,6 +296,8 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
   dash direction, and pending commands needed for identical continuation (or require
   an empty command queue at that boundary). Keep physics resolution outside core.
 
+> **Planner reply (Direction):** Accepted. C4 now limits *intentions* to commands and lists the exhaustive lifecycle API; C18 defines each call's effects (physics result authoritative in scene, motor integration in core tests, glue sets body from motor after restore). C5 fixes the snapshot boundary (between ticks, no pending commands, commands never retained) and its full contents, including dash direction and latched params.
+
 ### PR-2 — 🔴 AC17 demands core-only coverage that T6 explicitly excludes
 - **Location:** §5 AC4/AC5/AC8/AC17; §6 T6/T7/T9; §3 Chosen/Rejected.
 - **Problem:** AC17 requires AC1–AC15 to be tested at core level, which includes
@@ -283,6 +311,8 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
   pure motor tests for movement/dash/timers/facing commands/serialization; input-reader
   tests for actual device-to-command behavior; and a physics scene test for walls,
   or an explicit manual-only AC8 exception. Update T6/T7/T9 to match that choice.
+
+> **Planner reply (Direction):** Accepted. §5 now has a coverage map (AC17): pure motor tests, pure input-mapper tests (new `PlayerInputMapper` + `InputSample`, §3), and an automated physics scene test for walls (AC8) and reload (T9b). T6/T7/T9/T9b updated.
 
 ### PR-3 — 🟡 Timing boundaries and the numeric test oracle are underspecified
 - **Location:** §4 C1/C8–C10; §5 tolerance statement and AC1/AC3/AC7/AC9–AC13; §6 T5/T6/T8.
@@ -303,6 +333,8 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
   not divisible by the tick interval, not just an isolated dash. The glue must account
   for [move_and_slide using the physics step's delta](https://docs.godotengine.org/en/stable/classes/class_characterbody2d.html#class-characterbody2d-method-move-and-slide).
 
+> **Planner reply (Direction):** Accepted. C15 defines the full tick timeline: input ordering, inclusive buffer boundary, exact-distance dash with clipped final-tick displacement, zero movement for the rest of that tick, overshoot carried into cooldown, and how the glue feeds displacement/delta to `move_and_slide()`. §5 defines numeric tolerances, 1/30 s sampling for all rates, the `move_toward` oracle (AC1 now measured at settled speed), and AC13 now runs 5 dash+cooldown cycles with non-divisible durations.
+
 ### PR-4 — 🟡 “Last used device” and initial/zero aim have no deterministic rule
 - **Location:** §5 AC4–AC6; §6 T4/T5/T7.
 - **Problem:** AC4 refers to the last used *aim* device while AC5 refers to the last
@@ -317,6 +349,8 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
   physical mouse activity from a changing mouse world vector caused by the follow
   camera/player moving. Add adapter tests for switching both ways, inactive/noisy
   devices, moving while aiming, and a stationary dash immediately after setup.
+
+> **Planner reply (Direction):** Accepted. C16: initial mode MOUSE, initial facing DOWN, exact qualifying events for each mode (mouse motion ≥ 2 px or click; joypad button or stick above dz), keyboard never switches, camera-driven mouse world changes don't count, last event in a tick wins, mouse within 0.25 tiles → no aim. AC5/AC6 and the mapper tests cover switching, noise, moving while aiming and a dash right after setup.
 
 ### PR-5 — 🟡 Analog magnitude and the authoritative deadzone need one contract
 - **Location:** §2 Input map; §5 AC2/AC16; §6 T3/T4/T7; F-000 action deadzones.
@@ -335,6 +369,8 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
   filtering or changing F-000's bindings. Test representative raw magnitudes and a
   deadzone hot-reload through the input reader, not just constructed MoveCommands.
 
+> **Planner reply (Direction):** Accepted. C14: one radial formula for both sticks with Godot-style remap (raw 0.5, dz 0.2 → 0.375), equality boundary → zero, digital normalized, stick wins over digital when non-zero. The resource `stick_deadzone` is the only runtime filter; sticks are read as raw axes so nothing is filtered twice. `aim_*` actions removed — only `debug_reload_tunables` is new, F-000 bindings untouched. AC2 tests raw magnitudes; dz reload tested through the mapper.
+
 ### PR-6 — 🟡 Hot-reload lacks valid-data and active-phase semantics
 - **Location:** §4 C2/C8/C13; §5 AC16; §6 T2/T5/T9.
 - **Problem:** No allowed ranges or invalid-load policy are defined for editable
@@ -352,6 +388,8 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
   on the next tick, while keeping the promised state. Add automated valid/invalid
   reload tests during dash, invulnerability, cooldown, and an active buffer.
 
+> **Planner reply (Direction):** Accepted. C17: valid ranges and cross-field invariant (0 < iframes < duration, zero accel/decel kept), atomic reload (all-or-nothing, rejection shown on overlay), invalid data refused at setup. Latching: dash distance/duration/i-frames latched at fire; remaining cooldown and buffer age kept; other values from next tick. AC16 tests valid and invalid reload during dash, i-frames, cooldown and buffer.
+
 ### PR-7 — 🟡 Adding the new actions requires an explicit F-000 test migration
 - **Location:** §2 Input map; §4 C12/“Must not break”; §6 T6/T7;
   `tests/test_input_map.gd:7–16` and `_expected_bindings()`.
@@ -363,6 +401,8 @@ stated. Approval is blocked by the conflicting mutation and test contracts below
 - **Suggested fix:** Include the existing input-map test in T7: extend the exact action
   set and new binding/deadzone assertions while retaining every F-000 binding assertion.
   Keep this regression migration distinct from the new motor-only tests.
+
+> **Planner reply (Direction):** Accepted. T7 now includes migrating `tests/test_input_map.gd`: extend the exact action set with `debug_reload_tunables` only and keep every F-000 assertion unchanged. Since `aim_*` actions were dropped (PR-5), the migration is one action.
 
 ---
 

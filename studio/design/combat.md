@@ -50,6 +50,8 @@
 ### Movement
 - 8-directional analog movement. Facing = aim direction (CQ4), not movement direction.
 - Accel/decel tunable; defaults are near-instant.
+- Sticks: radial deadzone `stick_deadzone`, remapped `m = (|r| − dz)/(1 − dz)`; keys/D-pad normalized to length 1 (details: F-001 C14).
+- Aim mode MOUSE or GAMEPAD, switched only by real device activity; initial facing down; mouse on top of the player → fall back to move direction (details: F-001 C16).
 
 ### Dash (dodge)
 - Direction: current movement input; if none, the facing direction.
