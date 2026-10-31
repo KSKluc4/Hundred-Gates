@@ -6,7 +6,7 @@
 
 | ID | Feature | Status | Next actor | Blocked by |
 |---|---|---|---|---|
-| F-000 | Project setup & architecture skeleton | CODE_REVIEW | Lucas | — (round 1 APPROVE; manual playtest/Gate B with Lucas) |
+| F-000 | Project setup & architecture skeleton | DONE | — | — |
 
 ## Open questions waiting on Lucas
 - _none_
