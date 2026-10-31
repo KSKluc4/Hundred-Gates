@@ -352,7 +352,7 @@ the feature and accept D-003/D-004 at Gate A.
 - [x] T4 — 5e9653d
 - [x] T5 — b31d884
 - [x] T6 — ca7214e
-- [ ] T7
+- [x] T7 — d51a853, HASHFIX
 - [ ] T8
 - [ ] T9
 
