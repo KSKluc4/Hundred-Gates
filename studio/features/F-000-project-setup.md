@@ -347,7 +347,7 @@ the feature and accept D-003/D-004 at Gate A.
 ### Progress
 - [x] T0 — afd0879
 - [x] T1 — 8fd1edd
-- [ ] T2
+- [x] T2 — 3553899
 - [ ] T3
 - [ ] T4
 - [ ] T5
