@@ -348,7 +348,7 @@ the feature and accept D-003/D-004 at Gate A.
 - [x] T0 — afd0879
 - [x] T1 — 8fd1edd
 - [x] T2 — 3553899
-- [ ] T3
+- [x] T3 — 015cb5d
 - [ ] T4
 - [ ] T5
 - [ ] T6
