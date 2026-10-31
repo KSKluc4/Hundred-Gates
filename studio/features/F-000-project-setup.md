@@ -371,11 +371,11 @@ the feature and accept D-003/D-004 at Gate A.
   a test script with a parse or compile error was skipped and GUT still exited 0. Impact: the check
   matches GUT's log text, so re-verify it when updating GUT.
 
-- **DEV-5:** Added a "Do it yourself — no TODOs for Lucas" section to `CLAUDE.md` in 694f130, although
-  §4 lists that file under "Must not break". Reason: Lucas's direct instruction (2026-10-31). The
-  wording was written from that section title alone, because no source text reached the Builder;
-  Lucas may replace it. Applied to this repo's `CLAUDE.md` only, so `AGENTS.md`,
-  `~/CLAUDE.md` and `~/.claude/CLAUDE.md` are unchanged. Impact: Builder process only, no game code.
+- **DEV-5:** Added a "Do it yourself — no TODOs for Lucas" section to `CLAUDE.md`, although §4 lists
+  that file under "Must not break". Reason: Lucas's direct instruction (2026-10-31). Lucas provided
+  the final text, which replaced the Builder's first draft from 694f130. Applied to this repo's
+  `CLAUDE.md` only, so `AGENTS.md`, `~/CLAUDE.md` and `~/.claude/CLAUDE.md` are unchanged. Impact:
+  Builder process only, no game code.
 
 ### Assumptions made (small, reversible)
 - **ASSUMPTION-1:** `config/version="0.1.0"`; the plan names no starting version.

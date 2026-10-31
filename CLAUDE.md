@@ -35,10 +35,19 @@ This project runs as a small studio. Read `studio/README.md` once per session.
 
 ## Do it yourself — no TODOs for Lucas
 
-- Implement everything a task needs yourself. Never leave `TODO(Lucas)` stubs or set
-  code aside for Lucas to write.
-- In this project this overrides "Modo aprendizado" item 2 ("Eu escrevo uma parte")
-  in `~/.claude/CLAUDE.md`.
+Lucas is the Director, not your assistant. Finish the work end to end:
+
+- Install missing dev tools yourself (brew, pip into .venv, etc.), run tools/setup,
+  import the project headless, run every check, read the output, fix what fails, rerun.
+- Never leave "TODO: Lucas", "please run", "you'll need to" or manual steps in code,
+  docs, §8, or your final message. If you can run it, run it.
+- Verify instead of asking Lucas to verify: tests, lint, purity check, godot --headless.
+- Only these belong to Lucas: setting APPROVED/DONE, answering §10 questions that are
+  real design decisions, the manual playtest in §5, passwords/sudo/payments/accounts.
+- If you hit one of those, do everything up to that point, then stop and give Lucas
+  one exact command or one yes/no question, never a checklist.
+- Game dependencies still follow G4 (need a D-###). Dev tools on the machine don't.
+- This rule overrides any "learning mode" instruction from ~/.claude/CLAUDE.md in this repo.
 
 ## When done
 
