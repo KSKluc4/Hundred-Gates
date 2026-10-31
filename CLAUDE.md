@@ -33,6 +33,13 @@ This project runs as a small studio. Read `studio/README.md` once per session.
 - Code that exists because of a decision gets a `# D-###` or `# F-XXX/C1` comment.
 - Tunables go in config, never hardcoded (G2).
 
+## Do it yourself — no TODOs for Lucas
+
+- Implement everything a task needs yourself. Never leave `TODO(Lucas)` stubs or set
+  code aside for Lucas to write.
+- In this project this overrides "Modo aprendizado" item 2 ("Eu escrevo uma parte")
+  in `~/.claude/CLAUDE.md`.
+
 ## When done
 
 1. Fill §8 completely: deviations, assumptions, "look at closely", how to test.
