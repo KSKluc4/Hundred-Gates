@@ -1,0 +1,12 @@
+# Normalize to LF on every OS (macOS and Linux agents share this repo).
+* text=auto eol=lf
+
+# Binary files keep their bytes.
+*.png binary
+*.jpg binary
+*.ttf binary
+*.otf binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.aseprite binary

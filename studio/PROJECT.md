@@ -53,7 +53,7 @@ Current phase: **1**.
 ## Tech stack
 | Thing | Choice | Decision |
 |---|---|---|
-| Engine | Godot 4 (latest stable, exact version pinned in F-000) | D-001 |
+| Engine | Godot 4.7.2-stable | D-001 |
 | Language | GDScript, static typing everywhere | D-001 |
 | Tests | GUT (Godot Unit Test), run headless | F-000 |
 | Lint/format | gdtoolkit (`gdlint`, `gdformat`) | F-000 |

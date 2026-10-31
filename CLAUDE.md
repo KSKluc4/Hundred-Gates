@@ -33,6 +33,22 @@ This project runs as a small studio. Read `studio/README.md` once per session.
 - Code that exists because of a decision gets a `# D-###` or `# F-XXX/C1` comment.
 - Tunables go in config, never hardcoded (G2).
 
+## Do it yourself — no TODOs for Lucas
+
+Lucas is the Director, not your assistant. Finish the work end to end:
+
+- Install missing dev tools yourself (brew, pip into .venv, etc.), run tools/setup,
+  import the project headless, run every check, read the output, fix what fails, rerun.
+- Never leave "TODO: Lucas", "please run", "you'll need to" or manual steps in code,
+  docs, §8, or your final message. If you can run it, run it.
+- Verify instead of asking Lucas to verify: tests, lint, purity check, godot --headless.
+- Only these belong to Lucas: setting APPROVED/DONE, answering §10 questions that are
+  real design decisions, the manual playtest in §5, passwords/sudo/payments/accounts.
+- If you hit one of those, do everything up to that point, then stop and give Lucas
+  one exact command or one yes/no question, never a checklist.
+- Game dependencies still follow G4 (need a D-###). Dev tools on the machine don't.
+- This rule overrides any "learning mode" instruction from ~/.claude/CLAUDE.md in this repo.
+
 ## When done
 
 1. Fill §8 completely: deviations, assumptions, "look at closely", how to test.

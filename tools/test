@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Runs the GUT suite headless (D-003). Exit code is non-zero if any test fails.
+# Extra arguments go to GUT, e.g. tools/test -gtest=res://tests/core/test_game_tunables.gd
+set -euo pipefail
+
+# shellcheck source=tools/_godot.sh
+source "$(dirname "${BASH_SOURCE[0]}")/_godot.sh"
+
+godot="$(resolve_godot)"
+# Refreshes the class cache, so class_names added since the last import resolve.
+"$godot" --headless --path "$PROJECT_ROOT" --import >/dev/null
+
+log="$(mktemp)"
+trap 'rm -f "$log"' EXIT
+"$godot" --headless --path "$PROJECT_ROOT" -s res://addons/gut/gut_cmdln.gd \
+	-gdir=res://tests -ginclude_subdirs -gexit "$@" 2>&1 | tee "$log"
+
+# GUT skips a test script it cannot load (e.g. a parse error) and still exits 0.
+if grep -q "Ignoring script" "$log"; then
+	echo "error: GUT skipped a test script, see the log above." >&2
+	exit 1
+fi

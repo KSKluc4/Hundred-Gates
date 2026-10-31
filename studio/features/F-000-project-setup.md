@@ -1,8 +1,8 @@
 ---
 id: F-000
 title: Project setup & architecture skeleton
-status: APPROVED     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder         # who must act next: Planner | Auditor | Builder | Lucas
+status: DONE  # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Lucas           # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [D-001, D-002]
@@ -342,30 +342,163 @@ the feature and accept D-003/D-004 at Gate A.
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** —  ·  **Branch:** `feature/F-000-project-setup`
+**Started:** 2026-10-31  ·  **Branch:** `feature/F-000-project-setup`
 
 ### Progress
-- [ ] T1
-- [ ] T2
-- [ ] T3
-- [ ] T4
-- [ ] T5
-- [ ] T6
-- [ ] T7
-- [ ] T8
-- [ ] T9
+- [x] T0 — afd0879
+- [x] T1 — 8fd1edd
+- [x] T2 — 3553899
+- [x] T3 — 015cb5d
+- [x] T4 — 5e9653d
+- [x] T5 — b31d884
+- [x] T6 — ca7214e, 9803de2
+- [x] T7 — d51a853, e34c071
+- [x] T8 — dbc6535
+- [x] T9 — e3b0054
 
 ### Deviations from plan
+- **DEV-1:** `DebugOverlay._unhandled_input` (toggle half of AC4) was first left as a `TODO(Lucas)`
+  stub in ca7214e under Lucas's learning-mode rule. Lucas then said "modo rápido" and the Builder
+  implemented it in 9803de2. Impact: none now.
+- **DEV-2:** More tests than T7's "one sample test": `tests/test_input_map.gd` (AC6, exact table)
+  and `tests/ui/test_debug_overlay.gd` (AC4, AC5). Reason: those ACs had no automated proof.
+  Impact: none on scope; test code only.
+- **DEV-3:** `tests/fixtures/core_purity/good/` added next to the AC9 bad fixtures, and `--self-test`
+  also requires exactly one violation per bad fixture and all 19 C2 rules tripped. Reason: "every
+  fixture fails" alone is satisfied by a checker that rejects everything, or by a fixture failing
+  for the wrong rule. Impact: adding a C2 token now requires adding its fixture.
+- **DEV-4:** `tools/test` also fails if GUT logs `Ignoring script`. Reason: found while proving AC7:
+  a test script with a parse or compile error was skipped and GUT still exited 0. Impact: the check
+  matches GUT's log text, so re-verify it when updating GUT.
+
+- **DEV-5:** Added a "Do it yourself — no TODOs for Lucas" section to `CLAUDE.md`, although §4 lists
+  that file under "Must not break". Reason: Lucas's direct instruction (2026-10-31). Lucas provided
+  the final text, which replaced the Builder's first draft from 694f130. Applied to this repo's
+  `CLAUDE.md` only, so `AGENTS.md`, `~/CLAUDE.md` and `~/.claude/CLAUDE.md` are unchanged. Impact:
+  Builder process only, no game code.
+
 ### Assumptions made (small, reversible)
+- **ASSUMPTION-1:** `config/version="0.1.0"`; the plan names no starting version.
+- **ASSUMPTION-2:** `window_width/height_override` 1280x720. A 640x360 window is tiny on a desktop,
+  and 2x shows the integer scaling. Base viewport stays 640x360 (Decision D).
+- **ASSUMPTION-3:** All keys bound by `physical_keycode`, so WASD keeps its position on any layout.
+- **ASSUMPTION-4:** Forward Plus renderer (Godot's default); the plan doesn't choose one.
+- **ASSUMPTION-5:** `gdscript/warnings/untyped_declaration=2` (error) enforces C4's static typing.
+  Addons are excluded by Godot's default setting.
+- **ASSUMPTION-6:** C2 tokens: identifier-like ones match as whole words (the list naming both
+  `Sprite2D` and `AnimatedSprite2D` implies this, and it keeps `PlayerController` legal); the rest
+  match literally. Comments are not stripped, so a forbidden token in a comment trips the check.
+- **ASSUMPTION-7:** C8: `$GODOT_BIN` set to a bad path is an error, no fallback. Otherwise a typo
+  would silently pick another Godot.
+- **ASSUMPTION-8:** C9: no export preset exists yet (no task creates one). `tools/.gdignore` hides
+  `tools/` from Godot, `.venv/` is a hidden gitignored folder, and `requirements-dev.txt` is not a
+  Godot resource. The first export feature must still check its preset excludes them.
+- **ASSUMPTION-9:** GUT's editor plugin is not enabled; D-003 only needs headless runs.
+- **ASSUMPTION-10:** `debug_toggle` reads input directly: it's a dev tool, not a player action (G8).
+- **ASSUMPTION-11:** Script default of `debug_overlay_visible_on_start` is `false`, `.tres` value is
+  `true`. Godot only writes non-default values, so the line stays visible in the `.tres`, and a
+  lost value hides the overlay rather than showing it.
+
 ### Things the Auditor should look at closely
+- **C5/AC10 on a clone with no `.godot/`:** `godot --headless --quit` before `tools/setup` exits 0
+  but prints `Could not find type "GameTunables"`, because the `class_name` cache doesn't exist yet.
+  After `tools/setup` it is clean. Opening the editor on such a clone is clean too (headless editor:
+  0 errors, 0 warnings). I read AC10 as running after setup (AC12 order). Say so if you read it differently.
+- **Not tested:** Linux (C7): scripts stick to `sed -E`, `grep -E/-F`, `find`, and run on macOS bash
+  3.2. Real gamepad: bindings are checked against the AC6 table only. The editor's GUI Output panel:
+  checked via `--headless --editor`.
+- **gdtoolkit 4.5.0 vs Godot 4.7:** it's the latest gdtoolkit, and parses all code here. Only
+  `gdtoolkit` is pinned, as D-004 says; its transitive deps are not.
+- **No TDD order for T5/T6:** the spec puts GUT at T7, so their tests came after the code. Each was
+  shown to catch a break by mutation: F3 rebound, and overlay ignoring the tunable.
+- `tools/test` re-runs `--import` each time so new `class_name`s resolve; this adds a little startup.
+
 ### How to test
+```sh
+tools/setup && tools/setup                  # idempotent; git status stays clean
+tools/test                                  # expect 10/10, exit 0
+tools/lint                                  # expect exit 0
+tools/check_core_purity                     # expect "core purity ok"
+tools/check_core_purity --self-test         # expect 19 rules tripped
+godot --headless --path . --quit            # expect exit 0, no errors
+```
+
+AC7 negative: add a `tests/test_x.gd` with `assert_true(false)` and run `tools/test` (exit 1); then
+give it a syntax error (exit 1). Manual: F5 shows the overlay at 2x, F3 hides/shows it; set
+`debug_overlay_visible_on_start` to false in the inspector, run again, overlay starts hidden.
 
 ---
 
 ## 9. Code Review  ·  _Auditor_
 
-**Verdict:** `PENDING`
-**Reviewed commit:** —  ·  **Round:** 1
+**Verdict:** `APPROVE`
+**Reviewed commit:** `a69020f0d3c4e1c8e3a866a6775b52c6d4baee65` · **Round:** 1
+**Reviewed:** 2026-10-31 · **Comparison:** `main...feature/F-000-project-setup`
+
+**Findings:** None. No code changes requested.
+
+### Acceptance criteria evidence
+
+✅ below means the implementation is supported by code inspection and the stated
+automated checks. It does not claim a visual playtest or physical-controller test.
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC1 | ✅ | A clean tracked-files archive, without `.godot/` or `.venv/`, completed `tools/setup` and its headless editor import (`tools/setup:32`) without errors/warnings. `tests/fixtures/core_purity/.gdignore` prevents the deliberately invalid fixtures from being imported. The GUI Output panel was not observed. |
+| AC2 | ✅ | Tracked directories and `.gitkeep` files match PROJECT.md: core/commands/entities/world/ui/autoload, data subdirectories, assets, scenes/debug, tests, tools, and addons/gut. |
+| AC3 | ✅ | `project.godot:15` selects `scenes/main.tscn`; display settings at lines 29–35 set 640×360, 1280×720 window override, canvas_items/keep/integer; line 103 selects nearest filtering. `scenes/main.tscn:7` instances the overlay. Window scaling was inspected in configuration, not visually exercised. |
+| AC4 | ✅ | `src/ui/debug_overlay.gd:15` updates FPS and both versions, and line 20 handles `debug_toggle`. `tests/ui/test_debug_overlay.gd:24` checks the displayed fields; lines 33–44 check press/release behavior and toggling both ways. AC6 tests verify F3 is bound to the action. All five overlay tests pass. |
+| AC5 | ✅ | `src/core/game_tunables.gd:5` exports the typed field; `data/tunables/game_tunables.tres:7` supplies its startup value; `src/autoload/tunables.gd:6` loads that Resource; `src/ui/debug_overlay.gd:12` reads it. The tests at `tests/ui/test_debug_overlay.gd:16` and line 20 pass for false and true. Inspector interaction itself was not exercised. |
+| AC6 | ✅ | `project.godot` defines the exact nine custom actions and the specified keyboard/mouse, stick, D-pad, and face/start bindings. All three `tests/test_input_map.gd` tests pass, including exact bindings and deadzone 0.2. |
+| AC7 | ✅ | GUT 9.7.1 is vendored; `tools/test:15` runs it headless with pipefail; `tests/core/test_game_tunables.gd` supplies two passing core tests. The full suite passes 10/10 (29 assertions). In the temporary copy, a deliberately failing assertion returned 1; a separate syntax-error case also returned 1 via the DEV-4 safeguard. |
+| AC8 | ✅ | `tools/lint:14` runs the project-local gdlint and line 15 runs gdformat --check on src/tests. Executed successfully: zero lint problems; 28 files already formatted. |
+| AC9 | ✅ | `tools/check_core_purity:26` collects allowed core class names; lines 39–68 check bases and all C2 tokens. The real core passes. `--self-test` passes: all 19 rules are tripped independently and the good fixtures pass. |
+| AC10 | ✅ | After setup, `godot --headless --path . --quit` exits 0 without errors, both in the checkout and the clean temporary copy. This follows the setup-first workflow in §1/AC12. |
+| AC11 | ✅ | `README.md:9` records versions/download location; lines 17–29 document Godot discovery; lines 31–46 cover setup/open/run; lines 48–59 cover checks. Lines 4–5 link the studio/project documentation. |
+| AC12 | ✅ | A clean archive of the reviewed commit completed setup twice, then test/lint/purity/self-test/headless startup, all with exit 0. gdtoolkit 4.5.0 was installed into the new .venv; GUT was already vendored. Repeating setup in the branch also left the tracked working tree clean. |
+
+### Rejected options, constraints, deviations, and assumptions
+
+- **Rejected options:** None reintroduced. Tunables remain an exported Resource;
+  there is no JSON/CFG tunable system, script-constant tunable replacement, alternative
+  test framework, GUT submodule, visual-base-only purity checker, or editor analysis plugin.
+- **Constraints:** C1–C8 are supported by the implementation and checks above. C3's
+  version-source ambiguity is settled by Lucas's §11 note: README.md and GUT's
+  plugin.cfg both say 9.7.1. C4 applies to authored GDScript, with vendor/negative
+  fixtures excluded from Godot's typing enforcement. C7 was exercised on macOS
+  bash 3.2; Linux was not run. For C9, no export preset or exported game exists in
+  this feature: `.venv/` is hidden/gitignored, tools/ has `.gdignore`, and the
+  requirements file is not a Godot resource. Actual export exclusions remain to be
+  verified when an export preset is introduced, as explicitly logged in ASSUMPTION-8.
+- **Global constraints:** No game simulation/state/commands/content are introduced
+  outside the allowed skeleton, so G1/G7/G8/G9 add no missing gameplay obligation.
+  The core is a Resource with no presentation dependency (G6); tunables are data
+  (G2), the resource path is centralized (G5), tests/overlay support isolation (G3),
+  and D-003/D-004 are ACCEPTED (G4). The debug overlay is presentation/dev tooling.
+- **DEV-1–DEV-5:** All justified and reflected in the diff. The toggle stub is gone;
+  the added input/overlay tests cover ACs; positive fixtures strengthen the purity
+  self-test; the skipped-script safeguard was reproduced; and DEV-5 records Lucas's
+  authorization for the CLAUDE.md exception, including the final Director text in
+  a69020f. No undocumented implementation deviation found.
+- **ASSUMPTION-1–ASSUMPTION-11:** Reasonable and reversible for this skeleton.
+  Version/window/renderer/key-layout choices are settings; the warning/token rules
+  are local tooling; invalid GODOT_BIN fails clearly; headless GUT does not require
+  enabling its editor plugin; debug input is not a player command; and the Resource
+  default plus explicit .tres value preserve the intended startup behavior.
+
+### Verification limits
+
+Godot initially emitted sandbox-related Library/log/certificate errors; the relevant
+commands were rerun outside the sandbox and completed cleanly. Those environmental
+errors are not findings against the branch. Negative-test fixtures were confined to
+the temporary review copy and removed afterward; no branch source/test files changed.
+
+The clean-copy import and runtime checks were headless. The §5 visual playtest
+(GUI Output, window appearance/scaling, real F3/inspector interaction), physical
+gamepad behavior, Linux execution, and an actual export were not performed.
+The pre-setup missing-class-cache behavior disclosed in §8 is not treated as a failure
+of the documented setup-first workflow. Lucas retains the manual playtest and Gate B;
+this review does not set DONE.
 
 ---
 
