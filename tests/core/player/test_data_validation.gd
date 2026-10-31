@@ -61,3 +61,24 @@ func _valid_class_data() -> ClassData:
 	data.dash_iframe_duration = 0.1
 	data.dash_cooldown = 0.35
 	return data
+
+
+func test_warrior_file_has_the_design_values_and_is_valid() -> void:
+	var warrior: ClassData = load("res://data/classes/warrior.tres")
+	assert_eq(warrior.validate().size(), 0)
+	assert_eq(warrior.id, &"warrior")
+	assert_eq(warrior.weapon_family, &"sword")
+	assert_eq(warrior.move_speed, 5.0)
+	assert_eq(warrior.move_accel_time, 0.05)
+	assert_eq(warrior.move_decel_time, 0.04)
+	assert_eq(warrior.dash_distance, 3.0)
+	assert_eq(warrior.dash_duration, 0.15)
+	assert_eq(warrior.dash_iframe_duration, 0.11)
+	assert_eq(warrior.dash_cooldown, 0.35)
+
+
+func test_autoload_exposes_the_shared_rules_file() -> void:
+	var tunables: PlayerCombatTunables = Tunables.player_combat
+	assert_eq(tunables.validate().size(), 0)
+	assert_eq(tunables.input_buffer_window, 0.12)
+	assert_eq(tunables.stick_deadzone, 0.2)
