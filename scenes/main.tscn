@@ -1,0 +1,7 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://src/ui/debug_overlay.tscn" id="1"]
+
+[node name="Main" type="Node"]
+
+[node name="DebugOverlay" parent="." instance=ExtResource("1")]
