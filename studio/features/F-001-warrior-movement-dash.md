@@ -559,7 +559,7 @@ plan sections were edited by this review.
 - [x] T7 — f7d0e70
 - [x] T8 — bf030b5
 - [x] T9 — 7f00923
-- [ ] T9b
+- [x] T9b — 9228dac, 6b691cc
 - [ ] T10
 
 ### Deviations from plan
