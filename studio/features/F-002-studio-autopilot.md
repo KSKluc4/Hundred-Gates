@@ -1,7 +1,7 @@
 ---
 id: F-002
 title: Studio autopilot (tools/studio)
-status: CODE_REVIEW   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: DONE          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-11-01
@@ -1201,3 +1201,4 @@ Gate B and setting DONE remain Lucas's decision.
 
 <Overrides, priorities, gut calls. Everyone obeys these.>
 - **2026-10-31 (PR-14 note):** C11's "a local `git reset` is always enough" holds only when the remote did not change; if the C3 remote check detects a change, C3's remote-recovery path applies instead. T9 role-document edits are authorized. F-002 APPROVED.
+- **2026-11-01 (Gate B):** Gate B: status, next and notify-test verified on the real repo. First real gate run by the tool.
