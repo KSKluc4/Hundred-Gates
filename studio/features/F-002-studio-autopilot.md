@@ -1,8 +1,8 @@
 ---
 id: F-002
 title: Studio autopilot (tools/studio)
-status: CODE_REVIEW   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-003, D-004]
@@ -886,6 +886,12 @@ Source paths in this table are under `tools/studio_lib/`; test paths are under
 > still publishes. A hand-set `DONE` and a remote-only branch with new commits are refused too.
 > No checks rerun on retry, because the binding proves the code is what passed them.
 
+**Round 2 resolution:** ✔ resolved — `_require_gate_b_revision()` checks the approving
+round, reviewed revision, later commit paths and Gate B commit before retry publication.
+The original reproduction now refuses late code with remote main unchanged. New tests
+also cover rejected main pushes, publication cleanup, metadata-only continuation and
+the remote-only branch case.
+
 ### CR-2 🔴 Stale-lock cleanup can remove a different process's newly acquired lock
 - **Location:** `tools/studio_lib/proc.py:102`–`:109` and `:87`–`:98`; C4/AC10.
 - **Problem:** `_clear_if_stale()` reads a record, checks those recorded PIDs, then
@@ -909,6 +915,10 @@ Source paths in this table are under `tools/studio_lib/`; test paths are under
 > can't act on a stale record while another replaces it. The kernel drops it if a holder dies.
 > `.studio/lock` keeps its C4 role and record. New test: your barrier as two real processes, with
 > A paused right after its stale read; exactly one enters and the live owner's lock survives.
+
+**Round 2 resolution:** ✔ resolved — the OS-held `.studio/lock.guard` serializes the
+stale-read/clear/link sequence. The two-process barrier regression passes, verifying
+that exactly one contender enters and the live owner's record survives.
 
 ### CR-3 🔴 A truncated board row crashes validation before blocking or notification
 - **Location:** `tools/studio_lib/feature.py:311`–`:318`,
@@ -941,9 +951,113 @@ Source paths in this table are under `tools/studio_lib/`; test paths are under
 > a board with no table, an unreadable feature at `run` start (`run` now notifies on any
 > exception), and a corrupt blocked marker, which still refuses.
 
+**Round 2 resolution:** ✔ resolved — `_row_cells()` reports truncated rows as FormatError
+findings. Both original reproductions (agent exits 0 and 7) now produce one notification
+and a blocked record, without traceback or tool commit. The added inspection fallback
+introduces a separate recovery-information issue, recorded as CR-4.
+
 **Round 1 verdict:** `CHANGES_REQUESTED`. Set `status: CODE_CHANGES`,
 `owner_now: Builder`; reply under CR-1–CR-3 after fixing them. Existing passing tests
 should remain green, with regressions for these three cases.
+
+<!-- review-round: 2 verdict: CHANGES_REQUESTED -->
+### Round 2 — Builder reply and code re-review
+
+**Verdict:** `CHANGES_REQUESTED`
+**Reviewed:** 2026-10-31
+**Reviewed commit:** `3a8d0af6594483c3245382a838900285f80bb310`
+**Comparison:** `main...feature/F-002-studio-autopilot`; incremental fixes
+`f5206ee..3a8d0af`.
+
+Checked all three Builder replies first, then the full feature, implementation log and
+branch diff. CR-1–CR-3 are resolved and are not re-raised. New CR-4 is the single blocker:
+the inspection exception handler discards remote-change evidence and recovery guidance.
+
+### Previous-finding resolution evidence
+
+| Finding | Builder reply and verification | Round 2 result |
+|---|---|---|
+| CR-1 | 0843143/3e4d0a8: `engine.py:812` re-proves Gate B/review binding. `test_gates.py:370`, `:381`, `:391`, `:415`, `:447`, `:459` cover late code across recovery stages, metadata continuation, hand-set DONE and changed remote-only branches. The independent original reproduction now exits 1 and preserves remote main. | ✔ resolved |
+| CR-2 | 15a797e/3e4d0a8: `proc.py:87`–`:106` guards acquisition/stale removal with flock. `test_containment.py:476` pauses one real process after its stale read, races a second and verifies only one enters without replacing its live record. | ✔ resolved |
+| CR-3 | 66b08b6/3e4d0a8: `feature.py:311`/`:323` validate row width; `engine.py:554` catches inspection failures. `test_containment.py:205`/`:215` and independent reproductions verify agent exits 0 and 7 both block, notify once and preserve edits/logs without a traceback or tool commit. | ✔ resolved |
+
+### Verification
+
+- `tools/test_studio`: **227 tests passed**, with the approved permissions needed for
+  the loopback notification-server fixture. `tools/test`: **130/130 passed**.
+- `tools/lint`, `tools/check_core_purity` and `git diff --check main...HEAD`: passed.
+  Actual read-only status/next output correctly identified CODE_REVIEW/Auditor and D.
+- Approved §§1–6, §7 and §11 remain identical to main. No changes under `src/`,
+  `scenes/`, `data/`, `addons/`, or to F-000/F-001.
+- Additional disposable-repository fixtures combined a child push with undecodable
+  board output. Both a new remote branch and an advanced remote main reproduced CR-4.
+  This review changed no project source or committed tests.
+
+### AC evidence (current revision)
+
+Source names below refer to `tools/studio_lib/`; tests refer to `tools/tests/`.
+This table updates the result without rewriting Round 1's historical evidence.
+
+| AC | Result | Current evidence |
+|---|---|---|
+| AC1 | ✅ | `engine.py:332`/`:349` implement status/next; `feature.py:394` checks consistency. `test_dispatch.py` passes, as do actual read-only commands. |
+| AC2 | ✅ | Action loop, branch creation and fixed prompts remain intact. `test_run.py:24`/`:44` pass both complete fake-agent paths to Lucas with one notification. |
+| AC3 | ✅ | `transition_errors()`/`_inspect()` retain the accepted-output rules. Rejection tests and the new truncated-row cases pass; malformed board output now blocks and notifies. |
+| AC4 | ✅ | Git snapshots/changed-set logic and `_inspect()` still cover committed, reverted, whitespace and working-tree violations. Committed-violation/unblock tests pass. |
+| AC5 | ✅ | Content, board and decision lane validators are retained; pure/end-to-end lane tests pass. Authorized section ownership is unchanged. |
+| AC6 | ✅ | `engine.py:483`/`:508` enforce clean-tree readiness/counters; `:812`/`:838` enforce retry review binding. Readiness cases and all late-code retry regressions pass. |
+| AC7 | ✅ | Auditor-owned round markers, review caps and separately anchored readiness-failure counts are unchanged. Round-marker/readiness tests pass. |
+| AC8 | ✅ | Rebase/push/conflict/deletion recovery tests pass. The new binding refuses later code before retry publication/deletion; unchanged and permitted metadata-only continuations succeed. |
+| AC9b | ❌ | Origin-push prevention and ordinary explicit-URL push tests pass. Combining a push with unreadable output discards the detected remote changes and omits remote recovery: CR-4. |
+| AC9c | ✅ | `_prepare_resume()` retains branch, owner, question and clean-tree preconditions. Escalation, answered/unanswered and crash-recovery resume tests pass. |
+| AC9 | ✅ | Launch/exit/timeout/interruption/child cleanup cases pass. New malformed/undecodable output cases also block, notify, retain logs and prevent another agent. |
+| AC10 | ✅ | Guarded acquisition preserves the live-agent lock rule and fixes the stale-read race. Normal contention, stale-owner/live-agent and the two-process barrier cases pass. |
+| AC11 | ✅ | Fixed templates and authorized role/template/department documents are unchanged; prompt/document tests pass. |
+| AC12 | ✅ | All required commands passed: 227 studio tests, 130 game tests, lint and purity. The committed suite does not combine the two failures in CR-4. |
+| AC13 | ✅ | README setup, environment, flags, commands and recovery plus handoff pointers remain present; documentation tests pass. |
+
+### Constraints, deviations and assumptions
+
+No rejected option was introduced. C1/G4 and game/content exclusions are respected;
+fcntl is Python standard library functionality on the supported local Mac platform.
+DEV-1–DEV-5 and ASSUMPTION-1–ASSUMPTION-14 remain as assessed in Round 1. New
+ASSUMPTION-15 derives retry evidence from Git; ASSUMPTION-16 serializes acquisition
+while retaining the live-agent lock record. Both are reasonable, locally reversible
+implementation choices with regression coverage. No additional intentional, unlogged
+deviation was identified. CR-4 is a correctness bug in the added error handling.
+The Builder's note about gates publishing local main follows C17/C18; the feature-
+revision guard does not filter unrelated local-main commits.
+
+### Findings
+
+### CR-4 🔴 Inspection exceptions discard detected remote changes and print incomplete recovery
+- **Location:** `tools/studio_lib/engine.py:554`–`:557`, `:568`–`:576`,
+  `:597`–`:616`, `:668`–`:680`; C3/C11 and AC9b.
+- **Problem:** `_inspect()` records remote changes first, but if a later read or validator
+  raises, `_failed_inspection()` replaces that inspection with an object whose remote
+  map is always `{}`. The detected changes and their errors are lost. `_recovery()`
+  interprets the empty map as needing no remote repair and prints only local operations.
+- **Reproduction:** In the existing APPROVED/Builder Sandbox, run `builder_ok()`, push
+  its commit to the bare remote via an explicit URL, then copy a file containing
+  `b'\xff\xfe not text'` over `studio/STATUS.md`. Run exits 1, blocks and notifies, but
+  the blocked JSON has `remote_changes: {}` and only a UTF-8 validation error. Its
+  recovery is `git reset --hard <start> && git clean -fd && tools/studio unblock F-900`,
+  with no remote command. This reproduces for both `HEAD:refs/heads/rogue` and
+  `HEAD:refs/heads/main`; the actual remote ref remains changed in each case.
+- **Why it matters:** Following the supplied recovery can discard local work and clear
+  the block while leaving rejected commits on the remote, including main. C3's backstop
+  loses the required evidence and exact recovery guidance when another validation
+  failure happens in the same step.
+- **Suggested fix:** Preserve partial inspection results across validation failures, or
+  independently collect and merge the remote comparison into the fallback before
+  constructing rejection/recovery. Represent an unverifiable remote explicitly rather
+  than treating it as unchanged. Add combined explicit-URL-push + unreadable-output
+  regressions for a new ref and an advanced existing ref; assert that the blocked record
+  and notification retain ref/old/new SHAs and appropriate remote recovery. Keep the
+  successful CR-3 blocking and notification behavior.
+
+**Round 2 verdict:** `CHANGES_REQUESTED`. CR-1–CR-3 are `✔ resolved`; CR-4 is the
+single blocking finding. Set `status: CODE_CHANGES`, `owner_now: Builder`.
 
 ---
 
