@@ -2,7 +2,7 @@
 id: F-003
 title: Warrior sword chain + hit/hurt + hitstop + training dummy
 status: PLAN_REVIEW       # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
 depends_on: [F-000, F-001, D-002, D-005]
@@ -688,6 +688,8 @@ The previous Planner replies were checked first; PR-1–PR-10 are resolved as an
 
 > **Planner reply (Combat):** accepted. Took the "reject the combination" path. Changed §4 C15 and C18, and §5 AC26. C18 adds `lead + active ≥ 2 × min_active` for attacks and pulses, so a window with no lead-in needs two steps (1/60 s at rate 120), and C15 now carries the full proof, including hitstop. C15 also states the boundary rule that reconciles the half-open window: a phase ending exactly at a step's end crosses in that step, and contact comparisons use `TIME_EPSILON`. AC26 adds the zero-lead oracles for sword and pulse at the new minimum, plus a window starting exactly on a contact. §3 rejects an extra contact at the action's start, and §6 T2 adds `CombatTiming`, so the rule lives in one place. `design/combat.md` is updated.
 
+✔ resolved (round 3) — C18 rejects the unsampled one-step, zero-lead window for both swords and pulses. C15 defines contact-boundary comparisons, and AC26 checks the accepted two-step minimum and a one-step window whose lead ends on a contact. T2 centralizes the duration rules.
+
 ### PR-12 🔴 Lowering the combat step rate can skip a latched active phase
 
 **Location:** §4 C15 minimum active duration; §4 C18 reload rules for running hits, pulses and `combat_step_rate`; §5 AC24.
@@ -699,6 +701,18 @@ The previous Planner replies were checked first; PR-1–PR-10 are resolved as an
 **Suggested fix:** Specify a rate-change policy that accounts for every running latched attack and pulse before changing the grid. For example, reject the entire reload when a retained active duration is below the new step minimum, or define when the rate change is deferred. Reconcile the policy with C18's atomicity and next-tick rule, and add a reload oracle for this 240 → 120 case covering both sword and pulse continuation.
 
 > **Planner reply (Combat):** accepted. Changed §4 C18 and §5 AC24. New rate check: when a reload changes the rate, every running attack in windup or active and pulse in telegraph or active must pass the same duration rules at the new rate on its latched values, or the whole reload is rejected, which keeps C18 atomic. A rate that passes still applies from the next tick. §3 rejects deferral. AC24 has your 240 → 120 case for sword and pulse, its accepted counterpart, and a raised rate. Two more ways to reach the same failure, closed here too: a snapshot restored at a different rate is refused (§4 C19, §5 AC23), and F-001's scene calls `Player.reload_data()` directly on F5, so that path can't change the rate (§2, §4 C18, §6 T13, T16). The sim now stores its own rate (§6 T11).
+
+✔ resolved (round 3) — C18 checks every running latched window before accepting an atomic rate change. AC24 covers rejection and later acceptance of the 240 → 120 example, plus raising the rate. C19/AC23 reject snapshots from a different grid, and the legacy reload path cannot change the sim's rate.
+
+<!-- review-round: 3 verdict: APPROVE -->
+
+**Verdict:** APPROVE — no new findings. PR-11 and PR-12 were checked against the Planner replies and revised contracts first; both are resolved above. PR-1–PR-10 remain resolved.
+
+- **Goal and pillars:** one isolated player-facing outcome, explicit exclusions, and clear support for pillar 2. The dummy remains a tuning tool rather than pre-empting enemy design.
+- **Options and constraints:** the chosen contact grid and rejected alternatives have specific trade-offs. The revised plan agrees with `studio/design/combat.md` and G1–G9. D-007 is explicitly proposed for Lucas's Gate A decision; it is not treated as already accepted.
+- **Acceptance criteria and tasks:** AC24/AC26 cover both corrected boundary cases; AC25 separates core, mapper and scene evidence. T1–T18 expose the runner migration, compatibility work, validation and presentation checks in an ordered build sequence. No remaining blocking ambiguity identified.
+
+**Verification:** An independent rational-arithmetic model checked 1,740 valid lead/active/rate/initial-hitstop combinations across combat rates 120/240/360/480 and physics rates 30/60/120. Every valid window received a contact. The PR-11 sword/pulse examples reject the one-step zero-lead window and sample the accepted minimum at T + 1/120; the PR-12 latched example remains valid at 240 and lands at 9/240, while its duration fails validation at 120. These are plan-contract checks; implementation and gameplay validation remain for the build and code review.
 
 ---
 
