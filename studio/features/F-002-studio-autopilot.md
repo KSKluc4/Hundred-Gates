@@ -1,8 +1,8 @@
 ---
 id: F-002
 title: Studio autopilot (tools/studio)
-status: CODE_CHANGES   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-003, D-004]
@@ -638,6 +638,8 @@ may approve Gate A and set `APPROVED`.
 - [x] T9 — 64a0b0f
 - [x] T10 — 6e5517d
 
+Round 1 findings: see the Builder replies in §9.
+
 Fixes after T10, each found by verification: 9a3355f (Godot import), 1e2de78 (`done` rerun),
 ff7f9c6 (keep awake, hermetic tests).
 
@@ -701,7 +703,20 @@ ff7f9c6 (keep awake, hermetic tests).
 - **ASSUMPTION-14:** `STATUS.md`'s `Last updated` line can't be changed by agents. **Why:** C13 says
   only the row's two columns. The tool doesn't update it either.
 
+- **ASSUMPTION-15:** CR-1's binding is derived from git (Reviewed commit, metadata-only commits
+  after it, `Gate B` commit) instead of a checkpoint file. **Why:** it survives losing `.studio/`,
+  and it needs no new state to keep consistent.
+- **ASSUMPTION-16:** C4's lock stays `.studio/lock`, and `.studio/lock.guard` is only held while
+  acquiring it. **Why:** an `flock` alone can't express C4's rule that a live agent group keeps
+  the lock after its tool dies.
+
 ### Things the Auditor should look at closely
+- **Round 2:** CR-1 `_require_gate_b_revision()`, CR-2 `Lock.__enter__()`, CR-3
+  `_failed_inspection()` and the `run` catch-all. A mutation check on these 10 new guards found
+  3 weak tests and a test that leaked processes; all fixed, and all 10 are now caught.
+- **Not changed, and worth your eye:** `approve` and `done` push whatever local `main` holds, as
+  C17/C18 write it. Tool commits from plan steps sit there unpushed, so a filter would need a
+  rule the spec doesn't give. CR-1's binding covers the feature branch, not local `main`.
 - **Real end-to-end, on a throwaway clone with a local bare remote and the real `.godot/` tabs:**
   `APPROVED` → real Claude built and committed (4 min) → real Godot checks → real Codex Mode B wrote
   the marker and the right Reviewed commit (12 min) → one notification at Gate B → `done` merged,
@@ -727,7 +742,7 @@ ff7f9c6 (keep awake, hermetic tests).
 
 ### How to test
 ```sh
-tools/test_studio                   # expect 211 tests, OK
+tools/test_studio                   # expect 227 tests, OK
 tools/test                          # expect 130/130
 tools/lint                          # expect exit 0
 tools/check_core_purity             # expect "core purity ok"
@@ -862,6 +877,15 @@ Source paths in this table are under `tools/studio_lib/`; test paths are under
   path for the unchanged approved revision. Add a rejected-push → later-code-commit →
   retry regression that verifies neither publication nor branch deletion occurs.
 
+> **Builder reply:** fixed in 0843143, regressions tightened in 3e4d0a8. A `DONE` rerun now re-proves
+> the binding from git before anything is pushed: the latest §9 round approves, only metadata
+> commits follow its Reviewed commit, and the `Gate B` commit exists after it
+> (`_require_gate_b_revision`). Later code is refused with branches and `origin/main` untouched,
+> in all three states: after a rejected feature push, after a rejected main push, and after
+> publication. Removing the late code lets the rerun finish, and a later metadata-only commit
+> still publishes. A hand-set `DONE` and a remote-only branch with new commits are refused too.
+> No checks rerun on retry, because the binding proves the code is what passed them.
+
 ### CR-2 🔴 Stale-lock cleanup can remove a different process's newly acquired lock
 - **Location:** `tools/studio_lib/proc.py:102`–`:109` and `:87`–`:98`; C4/AC10.
 - **Problem:** `_clear_if_stale()` reads a record, checks those recorded PIDs, then
@@ -879,6 +903,12 @@ Source paths in this table are under `tools/studio_lib/`; test paths are under
   reader cannot unlink a replacement owner's lock. Add a two-process barrier test
   covering stale-read → competing acquisition → stale-clear, and assert that exactly
   one contender enters and the live owner's lock survives.
+
+> **Builder reply:** fixed in 15a797e, regression tightened in 3e4d0a8. Acquiring the lock (link, stale
+> read, stale clear, relink) now happens under an `flock` on `.studio/lock.guard`, so a contender
+> can't act on a stale record while another replaces it. The kernel drops it if a holder dies.
+> `.studio/lock` keeps its C4 role and record. New test: your barrier as two real processes, with
+> A paused right after its stale read; exactly one enters and the live owner's lock survives.
 
 ### CR-3 🔴 A truncated board row crashes validation before blocking or notification
 - **Location:** `tools/studio_lib/feature.py:311`–`:318`,
@@ -903,6 +933,13 @@ Source paths in this table are under `tools/studio_lib/`; test paths are under
   the rejected-step path even when the process itself failed. Add successful-exit and
   nonzero-exit malformed-row regressions asserting one notification, a blocked record,
   preserved edits/logs, no commit and no subsequent agent.
+
+> **Builder reply:** fixed in 66b08b6, regressions tightened in 3e4d0a8. A short row is now a
+> `FormatError`, reported as a consistency finding. Any exception while inspecting a step becomes a
+> rejection (`_failed_inspection`), so it blocks and notifies whatever the exit code was. Both
+> regressions you asked for are in, plus the same class one level out: undecodable agent output,
+> a board with no table, an unreadable feature at `run` start (`run` now notifies on any
+> exception), and a corrupt blocked marker, which still refuses.
 
 **Round 1 verdict:** `CHANGES_REQUESTED`. Set `status: CODE_CHANGES`,
 `owner_now: Builder`; reply under CR-1–CR-3 after fixing them. Existing passing tests
