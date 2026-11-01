@@ -369,7 +369,7 @@ class Studio:
         timeout_minutes: float = proc.DEFAULT_TIMEOUT_MINUTES,
     ) -> int:
         ref = self.find(fid)
-        with self.lock() as lock:
+        with self.lock() as lock, proc.keep_awake():
             try:
                 return self._run_locked(ref, lock, resume, max_steps, timeout_minutes)
             except StepRejected as rejected:

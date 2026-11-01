@@ -205,7 +205,9 @@ class Sandbox:
         self.temp.cleanup()
 
     def _make_env(self) -> dict[str, str]:
-        env = {key: value for key, value in os.environ.items() if not key.startswith("STUDIO_")}
+        # Hermetic: a Builder runs these tests with the push guard from proc.agent_env() set.
+        inherited = ("STUDIO_", "GIT_")
+        env = {key: value for key, value in os.environ.items() if not key.startswith(inherited)}
         env.update(
             {
                 "PATH": f"{self.bin_dir}{os.pathsep}{env['PATH']}",

@@ -63,7 +63,8 @@ To fix formatting, run `.venv/bin/gdformat src tests`.
 `tools/studio` runs the pipeline between the Director's two gates (`studio/README.md`,
 F-002): it reads a feature's `status` and `owner_now`, runs the one agent that state calls
 for, checks everything that agent changed, and stops with a notification when Lucas is
-needed. It runs locally, one agent at a time, while the Mac is awake.
+needed. It runs locally, one agent at a time. `run` keeps an idle Mac awake with `caffeinate`;
+closing the lid still puts it to sleep, and the run continues when it wakes.
 
 ### Setup
 

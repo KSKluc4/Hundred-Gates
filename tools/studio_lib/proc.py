@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 DEFAULT_TIMEOUT_MINUTES = 90.0
 KILL_GRACE_SECONDS = 30.0
@@ -233,6 +235,30 @@ def run_group(
             signal.signal(signum, handler)
         if on_start:
             on_start(None)
+
+
+@contextmanager
+def keep_awake() -> Iterator[None]:
+    """F-002 §1: Lucas walks away, so an idle Mac must not sleep under a step. `-w` ends the
+    assertion with this process, however it dies. A closed lid still sleeps."""
+    binary = shutil.which("caffeinate")
+    process = None
+    if binary:
+        try:
+            process = subprocess.Popen(
+                [binary, "-i", "-w", str(os.getpid())],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            process = None
+    try:
+        yield
+    finally:
+        if process:
+            process.terminate()
+            process.wait()
 
 
 def agent_env() -> dict[str, str]:

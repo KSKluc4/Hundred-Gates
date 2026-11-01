@@ -8,6 +8,7 @@ import sys
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from helpers import (
     BOARD,
@@ -95,6 +96,39 @@ class ChildPushTests(unittest.TestCase):
         command = proc.agent_command("claude", "planner", "x", Path("/tmp"))
         tools = command[command.index("--tools") + 1]
         self.assertNotIn("Bash", tools)
+
+
+class KeepAwakeTests(unittest.TestCase):
+    """F-002 §1: walking away must not put the Mac to sleep under a step."""
+
+    def fake_caffeinate(self, box):
+        fake = box.bin_dir / "caffeinate"
+        fake.write_text(f'#!/bin/sh\necho "$$ $*" > "{box.fake_dir}/caffeinate"\nexec sleep 30\n')
+        fake.chmod(0o755)
+
+    def test_run_holds_the_assertion_and_releases_it(self):
+        with Sandbox("DRAFT", "Planner") as box:
+            self.fake_caffeinate(box)
+            self.assertEqual(box.studio("run", "F-900").returncode, 0)
+            deadline = time.monotonic() + 5
+            while not (box.fake_dir / "caffeinate").exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            pid, *args = (box.fake_dir / "caffeinate").read_text().split()
+            self.assertEqual(args[:2], ["-i", "-w"])
+            self.assertFalse(alive(int(pid)))
+
+    def test_a_machine_without_caffeinate_still_runs(self):
+        with Sandbox("DRAFT", "Planner") as box:
+            box.env["PATH"] = f"{box.bin_dir}:/nonexistent"
+            box.env["PATH"] += ":/usr/local/bin:/opt/homebrew/bin"
+            self.assertEqual(box.studio("run", "F-900").returncode, 0)
+
+
+class FixtureTests(unittest.TestCase):
+    def test_the_sandbox_ignores_the_push_guard_of_an_agent_session(self):
+        guard = {key: value for key, value in proc.agent_env().items() if key.startswith("GIT_")}
+        with patch.dict(os.environ, guard), Sandbox() as box:
+            self.assertEqual(box.git("rev-parse", "HEAD"), box.remote_git("rev-parse", "main"))
 
 
 class AgentFailureTests(unittest.TestCase):
