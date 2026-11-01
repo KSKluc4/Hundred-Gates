@@ -56,9 +56,9 @@
 ### Dash (dodge)
 - Direction: current movement input; if none, the facing direction.
 - I-frames are an exact time window starting the instant the dash fires and ending before the dash ends — the dash tail is vulnerable. Timing is exact in time, not rounded to frames (details: F-001 C8, C15).
-- Cooldown starts when the dash ends.
+- Cooldown starts when the dash ends. A dash interrupted by a hit ends at that instant, so its full cooldown starts there.
 - A dash pressed during cooldown or an attack's active frames is **buffered** and fires as soon as allowed, if within the buffer window.
-- Can cancel the **recovery** of any attack. Cannot cancel windup or active frames.
+- Can cancel the **recovery** of any attack, once it can fire: cooldown still applies. A dash buffered during recovery cancels nothing until it fires. Cannot cancel windup or active frames.
 - When the dash ends, no dash momentum carries over: velocity continues from current movement input with normal accel.
 - During a dash, movement input is ignored; the direction is fixed at dash start. Facing still updates.
 - The dash is the `dodge` input action (F-000). There is no separate `dash` action.
@@ -70,7 +70,8 @@
 - Hit 3 (finisher): longer windup and recovery, bigger arc, more damage, more knockback. Its recovery **cannot** be cancelled by attack — only by dash. This is the player's own punish window.
 - The Warrior is **rooted** during all three phases (velocity decels to 0). No lunge for now.
 - Aim is locked at the start of each hit's windup.
-- Dash cancels recovery only and resets the chain. A dash pressed during windup or active is buffered.
+- Dash cancels recovery only. Any dash that fires resets the chain. A dash pressed during windup or active is buffered.
+- If a buffered dash and a buffered attack can both fire at one instant, the dash fires and the attack is discarded (principle 3). A dash that can't fire yet doesn't block an attack that can.
 - Getting hit interrupts any attack and resets the chain.
 - The chain is data: the Warrior class resource holds an ordered list of attack resources, one per hit (G9, D-005).
 
@@ -78,10 +79,13 @@
 - **Hurtbox:** a circle that can receive hits. **Hitbox:** a sector (origin, direction, arc, range) that deals damage while active; a full circle = 360° sector.
 - Hits are decided by exact circle–sector intersection in core logic, by a per-scene `HitResolver` — never from animation frames or physics overlaps (G6).
 - **Teams:** a hitbox never hits its own team. No friendly fire, no PvP.
+- **Timing (D-007):** hits are decided at the end of each combat step (1/120 s by default), the **contact instant**, using collision-corrected positions. Dash i-frames are checked exactly at that instant. Every active window lasts at least one step.
 - A single attack instance hits each hurtbox **at most once**. A hurtbox skipped because of i-frames is **not** marked — if it's still inside when the i-frames end, it gets hit. Leaving the hitbox matters.
 - On hit: damage → knockback → per-entity hitstop on attacker and target → hurt i-frames on the target (player only for phase 1).
-- **Knockback:** distance × target's `knockback_scale`, over `knockback_duration`, after the target's hitstop; walls stop it. A knocked-back player can't move; dash/attack are buffered.
-- **Hitstop:** an entity's logic timer that pauses **all** of that entity's timers (incl. input buffer ages) for N seconds. Serializable (G7), ticked (G1). New hitstop = max(remaining, new), never additive. The world keeps running.
+- **Simultaneous hits:** hits at the same instant trade, so attackers aren't rechecked and registration order never decides an exchange. Targets are rechecked hit by hit, so a second hit on a player at the same instant is stopped by the first one's hurt i-frames.
+- **Knockback:** distance × target's `knockback_scale`, over `knockback_duration`, after the target's hitstop; walls stop it. A knocked-back player can't move; dash/attack are buffered. A new knockback replaces the remaining one, never adds to it.
+- **Hurt i-frames:** start on the hit, count down during knockback, pause during hitstop.
+- **Hitstop:** an entity's logic timer that pauses **all** of that entity's timers (incl. input buffer ages) for N seconds. Serializable (G7), ticked (G1). New hitstop = max(remaining, new), never additive. The world keeps running. A hitbox isn't live while its owner is in hitstop.
 - Presentation listens to signals (`hit_landed`, `damaged`, `died`) for shake, flash, numbers and sound — only for hits involving a local player. Shake can be disabled by the player.
 
 ## Enemies (phase 1)
@@ -127,10 +131,12 @@ Template per boss:
 | `hitstop_finisher` | 0.10 s | same |
 | `shake_intensity_hit` / `_finisher` / `_player_hurt` | 0.2 / 0.5 / 0.6 (0–1 scale) | `data/tunables/player_combat.tres` |
 | `hurtbox_radius_tiles` (Warrior) | 0.35 | `data/classes/warrior.tres` |
+| `knockback_scale` (Warrior) | 1.0 | `data/classes/warrior.tres` |
 | `knockback_duration` | 0.12 s | `data/tunables/player_combat.tres` |
+| `combat_step_rate` | 120 steps/s (multiple of 120, D-007) | `data/tunables/player_combat.tres` |
 | Dummy `max_hp` / `hurtbox_radius_tiles` / `respawn_delay` | 200 / 0.5 / 1.0 s | `data/enemies/training_dummy.tres` |
 | Dummy `knockback_scale` | 0 (anchored) / 1 (loose) | per dummy instance in scene; default 0 |
-| Dummy pulse `interval` / `telegraph` / `active` | 2.0 / 0.6 / 0.1 s | `data/enemies/training_dummy.tres` |
+| Dummy pulse `interval` (start to start) / `telegraph` / `active` | 2.0 / 0.6 / 0.1 s | `data/enemies/training_dummy.tres` |
 | Dummy pulse `radius` / `damage` / `knockback` | 2.5 tiles / 20 / 1.0 tile | same |
 | `screen_shake_enabled` / `max_offset_px` / `decay_time` | true / 6 / 0.2 s | `data/tunables/screen_shake.tres` (placeholder → Art) |
 | Enemy damage, floor 1 | 18–25 (→ ~4–6 hits) | `data/enemies/*.tres` (next session) |

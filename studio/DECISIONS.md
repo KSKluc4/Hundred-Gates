@@ -20,6 +20,30 @@
 
 ---
 
+## D-007 — Combat runs on a shared step grid
+- **Status:** PROPOSED
+- **Date:** 2026-11-01 · **Decided by:** Lucas (proposed by Combat, from the F-003 plan review)
+- **Context:** Hits depend on exact timing: the vulnerable dash tail (F-001/C8), short active
+  phases, and hitstop on separate entity clocks. Testing hits once per physics tick gives
+  different results at different tick rates, which breaks G1 and would desync co-op later.
+- **Chosen:** Each physics tick splits into equal combat steps of at most
+  `1 / combat_step_rate` (default 120 Hz, data, must be a multiple of 120). Every combatant
+  advances, bodies move, and hits are decided at the end of each step, so 30, 60 and 120
+  ticks/s share the same instants. Details: F-003 C15.
+- **Rejected:**
+  - *Resolve once per physics tick* — the result depends on the tick rate, and a short
+    active phase can vanish. Tempting because it's the simplest loop.
+  - *Solve exact contact times inside a tick* — a hit changes the rest of the tick, so it
+    needs rollback and swept collision, for precision nobody can feel. Tempting because it
+    sounds like the purest reading of "exact time".
+  - *Force the whole game to 120 physics ticks/s* — G1 still has to hold, and physics would
+    cost more for every scene. Tempting because no sub-steps would be needed.
+- **Consequences:** Hit timing is quantized to 1/120 s. `move_and_slide()` runs several
+  times per physics tick. Every entity that fights must implement `Combatant` and advance by
+  steps. Enemies and bosses (F-004 on) inherit this.
+- **Revisit if:** Sub-stepping costs too much with many enemies, or phase 3 networking needs
+  a different simulation rate.
+
 ## D-006 — Death and re-entry (phases 1–2)
 - **Status:** ACCEPTED
 - **Date:** 2026-10-31 · **Decided by:** Lucas (proposed by Combat, promoted by Direction)
