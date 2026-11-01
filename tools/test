@@ -8,7 +8,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/_godot.sh"
 
 godot="$(resolve_godot)"
 # Refreshes the class cache, so class_names added since the last import resolve.
-"$godot" --headless --path "$PROJECT_ROOT" --import >/dev/null
+godot_import "$godot"
 
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT

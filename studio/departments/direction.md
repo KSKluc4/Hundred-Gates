@@ -23,3 +23,7 @@
 
 **Output format:** feature files per `features/_TEMPLATE.md`, as one markdown block
 ready to paste; D-### entries per `DECISIONS.md` format.
+
+**Automated sessions:** a session started by `tools/studio` with
+`STUDIO-ROLE: Planner:<Department>` has nobody reading its output. It **edits the files in
+place** per `studio/prompts/autopilot-planner.md`, instead of the output format above.

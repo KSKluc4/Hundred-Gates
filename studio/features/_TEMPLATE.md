@@ -100,10 +100,8 @@ Small, ordered, each independently committable.
 
 ## 7. Plan Review  ·  _Auditor_
 
-**Verdict:** `PENDING` <!-- APPROVE | APPROVE_WITH_NOTES | CHANGES_REQUESTED -->
-**Reviewed:** YYYY-MM-DD
-
-Findings (severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion):
+<Each completed round starts with its machine line (format in AGENTS.md), then its findings.
+Severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion. Example finding:>
 
 ### PR-1 🔴 <title>
 <What's wrong, where, why it matters, what you'd suggest.>
@@ -136,20 +134,9 @@ Findings (severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion):
 
 ## 9. Code Review  ·  _Auditor_
 
-**Verdict:** `PENDING` <!-- APPROVE | APPROVE_WITH_NOTES | CHANGES_REQUESTED -->
-**Reviewed commit:** <hash>  ·  **Round:** 1
+<Each completed round starts with its machine line (format in AGENTS.md), then
+`**Reviewed commit:** <hash>`, AC evidence and findings. Example finding:>
 
-### Checklist
-- [ ] Every AC in §5 met (state evidence per AC below)
-- [ ] No Rejected option from §3 implemented, even partially
-- [ ] All constraints in §4 and PROJECT.md respected
-- [ ] Every deviation in §8 is justified; no undocumented deviations
-- [ ] Assumptions in §8 are sane
-
-### AC evidence
-- AC1: ✅/❌ <where in the code / how verified>
-
-### Findings
 ### CR-1 🔴 <title>  ·  `path/to/file:line`
 <problem, why it matters, suggested fix>
 > **Builder reply:** <fixed in abc123 / disagree because …>

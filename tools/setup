@@ -29,6 +29,6 @@ fi
 .venv/bin/python -m pip install --quiet --disable-pip-version-check -r requirements-dev.txt
 
 # A fresh clone has no .godot/ yet, and GUT needs the class cache it holds.
-"$godot" --headless --path "$PROJECT_ROOT" --import >/dev/null
+godot_import "$godot"
 
 echo "setup ok: Godot $godot_version, $(.venv/bin/gdlint --version)"

@@ -7,6 +7,23 @@ This project runs as a small studio. Read `studio/README.md` once per session.
 - **You (Claude Code)** = implement approved specs.
 - **Auditor** (Codex) = reviews plans and your code.
 
+## Automated sessions (`STUDIO-ROLE`)
+
+`tools/studio` (F-002) starts unattended sessions. The first line of the prompt says who
+you are. Nobody reads your chat output in these sessions.
+
+- `STUDIO-ROLE: Planner:<Department>` — you are that department, not the Builder. Follow
+  its brief and `studio/prompts/autopilot-planner.md`, and **edit files in place**. The
+  Builder rules in this file don't apply, except: never set `APPROVED` or `DONE`.
+- `STUDIO-ROLE: Builder` — this whole file applies, and also:
+  - The branch is provided: `tools/studio` created it and checked it out. Never create,
+    switch or delete branches, and never push.
+  - Commit all your work. The tree must be clean when you finish.
+  - Finish at `status: CODE_REVIEW`, `owner_now: Auditor`. If you need a decision from
+    Lucas, add a §10 row with Blocking `yes`, set `status: IN_PROGRESS`, `owner_now: Lucas`,
+    commit, and stop.
+- No `STUDIO-ROLE` line — an interactive session: follow the rest of this file.
+
 ## Before any task
 
 1. Read `studio/PROJECT.md` (pillars, global constraints G1…).
@@ -16,14 +33,17 @@ This project runs as a small studio. Read `studio/README.md` once per session.
    Read the design doc of the feature's `department:` (e.g. `studio/design/combat.md`);
    values and rules there are binding unless the spec explicitly overrides them.
 4. Check `status:` in the header.
-   - Only start building if status is `APPROVED` or `CODE_CHANGES`.
+   - Only start building if status is `APPROVED` or `CODE_CHANGES`, or `IN_PROGRESS` in
+     a session started by `tools/studio run --resume`.
    - Otherwise stop and tell Lucas the feature isn't ready for you.
 
 ## While building
 
-- Set `status: IN_PROGRESS`, `owner_now: Builder`, update `STATUS.md`.
-- Work on branch `feature/F-XXX-<slug>`. One commit per task (T1, T2…), message
-  `F-XXX T1: <what>`.
+- Set `status: IN_PROGRESS`, `owner_now: Builder`, update `STATUS.md` (only this feature's
+  Status and Next-actor cells; `tools/studio` rejects any other edit there).
+- Work on branch `feature/F-XXX-<slug>`. `tools/studio` provides it in automated sessions;
+  in a manual session, create it from `main`. One commit per task (T1, T2…), message
+  `F-XXX T1: <what>`. Commit explicit paths, never `git add -A`.
 - Tick tasks off in §8 Progress with the commit hash as you go.
 - **Ambiguity protocol** (see `studio/README.md`):
   - Never implement anything listed under §3 Rejected — not even partially.

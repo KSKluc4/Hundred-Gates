@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Studio autopilot: runs the pipeline between Lucas's two gates (F-002)."""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from studio_lib import engine, notify, proc  # noqa: E402
+from studio_lib.git import GitError  # noqa: E402
+
+
+def repo_root() -> Path:
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        sys.exit("error: not inside a git repository")
+    return Path(result.stdout.strip())
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(prog="tools/studio", description=__doc__)
+    commands = root.add_subparsers(dest="command", required=True)
+    commands.add_parser("status", help="every feature, its state and any mismatch")
+    commands.add_parser("next", help="what run would do").add_argument("feature")
+    run = commands.add_parser("run", help="run agent steps until Lucas is needed")
+    run.add_argument("feature")
+    run.add_argument("--resume", action="store_true", help="continue IN_PROGRESS")
+    run.add_argument("--max-steps", type=int, default=engine.DEFAULT_MAX_STEPS)
+    run.add_argument(
+        "--timeout",
+        type=float,
+        default=proc.DEFAULT_TIMEOUT_MINUTES,
+        help="minutes per agent call",
+    )
+    for name, text in (("approve", "Gate A"), ("done", "Gate B")):
+        gate = commands.add_parser(name, help=f"{text}: Lucas only")
+        gate.add_argument("feature")
+        gate.add_argument("--note", help="added to §11")
+    commands.add_parser("unblock", help="clear a blocked feature").add_argument("feature")
+    commands.add_parser("notify-test", help="send a test notification")
+    return root
+
+
+def dispatch(args: argparse.Namespace) -> int:
+    if args.command == "notify-test":
+        notify.send("studio", "notifications work", "tools/studio status")
+        return 0
+    studio = engine.Studio(repo_root())
+    if args.command == "run":
+        return studio.run(args.feature, args.resume, args.max_steps, args.timeout)
+    if args.command == "status":
+        lines = studio.status_lines()
+    elif args.command == "next":
+        lines = studio.next_lines(args.feature)
+    elif args.command == "unblock":
+        lines = studio.unblock(args.feature)
+    elif args.command == "approve":
+        lines = studio.approve(args.feature, args.note)
+    else:
+        lines = studio.done(args.feature, args.note)
+    print("\n".join(lines))
+    return 0
+
+
+def main() -> int:
+    args = parser().parse_args()
+    recovery = f"tools/studio {args.command} {getattr(args, 'feature', '')}".strip()
+    try:
+        return dispatch(args)
+    except proc.LockHeld as error:
+        print(f"refused: {error}", file=sys.stderr)
+    except engine.Refused as error:
+        print(f"refused: {error.message}\nNext: {error.next_command}", file=sys.stderr)
+    except GitError as error:
+        print(f"failed: {error}\nNext: {recovery}", file=sys.stderr)
+    except ValueError as error:  # FormatError, or a file that isn't text.
+        print(f"failed: {error}", file=sys.stderr)
+    except (KeyboardInterrupt, proc.Interrupted):
+        print("interrupted", file=sys.stderr)
+        return 130
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
