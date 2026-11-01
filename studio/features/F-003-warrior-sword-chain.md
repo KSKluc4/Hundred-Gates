@@ -1,8 +1,8 @@
 ---
 id: F-003
 title: Warrior sword chain + hit/hurt + hitstop + training dummy
-status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_REVIEW       # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
 depends_on: [F-000, F-001, D-002, D-005]
@@ -59,6 +59,7 @@ What the Builder needs to know that isn't obvious from the code:
   - Tests call `motor.tick(delta)` directly, and submit commands once per physics tick. `tick()` keeps its exact F-001 behavior, and sub-steps use a new `step()` (T5).
   - `Player._load_ignoring_cache` uses `CACHE_MODE_IGNORE`, which still takes external dependencies from the cache. `warrior.tres` now references the attack files, so the reload must use `CACHE_MODE_IGNORE_DEEP`, or edits to attack files are silently ignored.
   - `MotorDebugOverlay` reads `player.velocity`. With several `move_and_slide()` calls per tick, that holds only the last step's share, so the overlay reads the motor's velocity instead (T16).
+  - `MotorDebugOverlay` handles F5 by calling `player.reload_data()`, and F-001's scene keeps that path. It must never change the combat step rate behind the sim's back (C18, T16).
 - **Relevant prior decisions:**
   - D-002 — online-ready architecture. Hitstop must never freeze other entities. Shake must be a per-player presentation effect.
   - D-005 — the chain is class data: `ClassData` holds an ordered list of attack resources.
@@ -97,6 +98,8 @@ What the Builder needs to know that isn't obvious from the code:
   - Contact timing is quantized to 1/120 s. That's under one 60 Hz frame, and a dash covers about 0.17 tiles per step, which is much less than any hurtbox.
   - `move_and_slide()` runs several times per physics tick, and the motor gains a `step()` / `finish_tick()` pair.
   - A physics rate that doesn't divide `combat_step_rate` samples slightly different instants. The game runs at 60, and C1 only promises 30, 60 and 120.
+  - A hit or pulse with no lead-in time needs two steps of active time, so 1/120 s with zero windup is rejected as data. The default values are far above that.
+  - A reload that lowers `combat_step_rate` can be refused while a short hit or pulse is running. Pressing F5 again after it finishes works.
 - **Would revisit if:** bosses need shapes that aren't circles or sectors (lines, rectangles), or entity counts make per-step testing slow. Either way, add the new shape types to the resolver; don't switch to Area2D.
 
 ### ❌ Rejected: Resolve once per physics tick, at the end of the tick
@@ -114,6 +117,24 @@ What the Builder needs to know that isn't obvious from the code:
   - Moving shapes need swept collision, and each entity's clock would have to be mapped to scene time.
   - All of that buys precision nobody can feel below 1/120 s.
 - **Tempting because:** it matches the "exact time" wording of F-001/C8, and looks like the purest answer.
+
+### ❌ Rejected: An extra contact check at the instant an action starts
+- **How it would work:** right after a press or toggle starts an attack or pulse, run one more contact at that instant, so a window `[T, T + 1/120)` is sampled at T.
+- **Why rejected:**
+  - The timeline would have two kinds of contact, and "the end of the step" would stop being the only place hits are decided.
+  - Presses fire inside the first step and toggles act between ticks, so each would need its own hook.
+  - It only serves a window with no lead-in that lasts a single step, an 8 ms swing nobody would tune on purpose.
+- **Tempting because:** every duration stays legal, and an instant attack lands on the exact press instant.
+- **Instead:** C18 rejects durations with no guaranteed contact.
+
+### ❌ Rejected: Deferring a step-rate change until nothing is running
+- **How it would work:** a reload that lowers `combat_step_rate` applies everything else now, and keeps the new rate waiting until no hit or pulse is running.
+- **Why rejected:**
+  - It splits one atomic reload in two (C18).
+  - The waiting rate becomes new state to serialize and show.
+  - A pulse with no wait between cycles would keep it waiting forever.
+- **Tempting because:** F5 would never be refused.
+- **Instead:** the whole reload is rejected, the overlay says why, and F5 works again once that hit or pulse has finished.
 
 ### ❌ Rejected: Recovery dash cancel that bypasses the dash cooldown
 - **How it would work:** a dash pressed during recovery always fires instantly.
@@ -218,7 +239,13 @@ Rules at the contact instant:
 - **Dash protection.** A player is protected iff their clock is inside `get_iframe_window()`, half-open, checked by a new `is_dash_protected()`. `is_invulnerable()` stays a presentation flag and never decides a hit.
 - **Hurt protection.** A player is protected while `hurt_iframes_remaining > 0`.
 - **New timers.** Hitstop, knockback and hurt i-frames set by a hit start at the contact instant, so the next step is the first to consume them.
-- **No vanished phases.** `active` and `pulse_active` must be ≥ `1 / combat_step_rate` (C18). A clock moves at most `s` per step, so a half-open window that long always contains a contact instant.
+- **Boundaries.** A phase that reaches its end with no time left in the step crosses in that step, so the contact at that instant sees the new phase. Every comparison at a contact uses F-001's `TIME_EPSILON`: a clock within it of a boundary counts as having reached that boundary. So a half-open window includes a contact on its start and excludes one on its end, at every rate, despite float rounding.
+- **No vanished phases.** An attack or pulse can start just after the contact at its own instant, because presses and toggles arrive after the previous tick's last contact. Its first contact can therefore come a whole step later. With `lead` = `windup` or `pulse_telegraph`, C18 requires `active ≥ min_active` and `lead + active ≥ 2 × min_active`. That guarantees a contact:
+  - Worst case, contacts fall at `start + k × s` for k ≥ 1, with `s ≤ min_active`.
+  - If `lead > 0`, the first contact at or after the window's start comes less than `s` later, which is inside the window because `active ≥ s`.
+  - If `lead = 0`, then `active ≥ 2 × min_active > s`, so `start + s` is inside the window.
+  - Hitstop only adds contacts. The first contact after it ends finds the clock less than `s` past where it stopped, so the argument still holds.
+  - A running window always meets these rules at the sim's rate. Only a rate change could break that, and C18's rate check and C19's snapshot rule prevent it.
 
 **C16 — Applying hits**
 
@@ -268,17 +295,21 @@ Hits and resets:
 
 **C18 — Data validity and hot-reload**
 
-Valid ranges. `validate()` on `ClassData` and `PlayerCombatTunables` keeps its F-001 rules, and these go in a new `validate_combat()`, which `PlayerMotor._accepts` also calls. `DummyData` and `ScreenShakeSettings` have a plain `validate()`. Bounds that need the step use `min_active = 1 / combat_step_rate`.
+Valid ranges. `validate()` on `ClassData` and `PlayerCombatTunables` keeps its F-001 rules, and these go in a new `validate_combat()`, which `PlayerMotor._accepts` also calls. `ClassData.validate_combat()` and `DummyData.validate()` take the step rate to check against, and `ScreenShakeSettings` has a plain `validate()`. Bounds that need the step use `min_active = 1 / combat_step_rate`, with the rate from the `PlayerCombatTunables` validated alongside, so a reload is always checked against its own new rate. They compare with `TIME_EPSILON`, so an exact minimum passes.
 
 | Resource | Rule |
 |---|---|
-| `AttackData` | `id` not empty; `windup` ≥ 0; `active` ≥ `min_active`; `recovery` ≥ 0; `damage` ≥ 1; 0 < `arc_angle_deg` ≤ 360; `range_tiles` > 0; `knockback_tiles` ≥ 0 |
+| `AttackData` | `id` not empty; `windup` ≥ 0; `active` ≥ `min_active`; `windup + active` ≥ `2 × min_active`; `recovery` ≥ 0; `damage` ≥ 1; 0 < `arc_angle_deg` ≤ 360; `range_tiles` > 0; `knockback_tiles` ≥ 0 |
 | `ClassData` | `attack_chain` has at least one entry, no nulls, each entry valid; `is_finisher` on the last entry only; `attack_chain_window` ≥ 0; `max_hp` ≥ 1; `hurtbox_radius_tiles` > 0; `knockback_scale` ≥ 0 |
 | `PlayerCombatTunables` | `combat_step_rate` a positive multiple of 120; `player_hurt_iframes` ≥ 0; `knockback_duration` > 0; `hitstop_normal`, `hitstop_finisher` ≥ 0; each `shake_intensity_*` within 0–1 |
-| `DummyData` | `max_hp` ≥ 1; `hurtbox_radius_tiles` > 0; `respawn_delay` ≥ 0; `pulse_interval` > 0; `pulse_telegraph` ≥ 0; `pulse_active` ≥ `min_active`; `pulse_telegraph + pulse_active ≤ pulse_interval`; `pulse_radius_tiles` > 0; `pulse_damage` ≥ 1; `pulse_knockback_tiles` ≥ 0 |
+| `DummyData` | `max_hp` ≥ 1; `hurtbox_radius_tiles` > 0; `respawn_delay` ≥ 0; `pulse_interval` > 0; `pulse_telegraph` ≥ 0; `pulse_active` ≥ `min_active`; `pulse_telegraph + pulse_active` ≥ `2 × min_active`; `pulse_telegraph + pulse_active ≤ pulse_interval`; `pulse_radius_tiles` > 0; `pulse_damage` ≥ 1; `pulse_knockback_tiles` ≥ 0 |
 | `ScreenShakeSettings` | `max_offset_px` ≥ 0; `decay_time` > 0 |
 
 Reload. F5 reloads one atomic group: `warrior.tres` with its attack files, `player_combat.tres`, `training_dummy.tres` and `screen_shake.tres`, loaded with `CACHE_MODE_IGNORE_DEEP`. If any file fails to load or validate, nothing changes and the overlay shows "reload rejected: <errors>" (F-001/C17). Chains may change length; a chain whose rules pass is valid.
+
+Rate check. Only this reload can change the sim's rate. If the group's `combat_step_rate` differs from the sim's, every attack in windup or active and every pulse in telegraph or active must also pass the two duration rules (`active`, `lead + active`) at the new rate, using its latched values. If one fails, the whole reload is rejected like an invalid file, and the overlay names the running hit or pulse. Nothing is deferred: F5 again once it has finished. A hit in recovery or a pulse in its wait is not checked, since it has no window left to lose. Raising the rate always passes.
+
+`Player.reload_data()`, the F5 path of F-001's scene, never changes the rate: it rejects a file whose `combat_step_rate` differs from the sim's.
 
 What happens to running state on a valid reload:
 
@@ -291,16 +322,16 @@ What happens to running state on a valid reload:
 | Hitstop, knockback, hurt i-frames, respawn in progress | Kept as they are. New values apply to the next hit or KO |
 | Pulse in progress | Latched at telegraph start. New values apply from the next pulse |
 | `hurtbox_radius_tiles`, `knockback_scale` | From the next contact instant |
-| `combat_step_rate` | From the next tick |
+| `combat_step_rate` | From the next tick, once the rate check passes |
 | `screen_shake_enabled` | Takes the file's value, replacing the K toggle. Other shake values apply to the next shake |
 
 **C19 — Identity and snapshots**
 
 - Every combatant has a stable `combat_id` (`StringName`), set in the scene: `player_1`, `dummy_anchored`, `dummy_loose`. Hit sets store these ids, never object references or indices.
 - Registration order is the order of the runner's exported list.
-- `HitResolver` holds no state that needs saving. A fresh scene rebuilds it by registering the same ids in the same order. `CombatSim.from_dict()` refuses a snapshot whose ids or order differ (`push_error`, nothing changes).
+- `HitResolver` holds no state that needs saving. A fresh scene rebuilds it by registering the same ids in the same order. `CombatSim.from_dict()` refuses a snapshot whose ids, order or `combat_step_rate` differ from the sim's (`push_error`, nothing changes). A snapshot holds latched durations, so restoring one on a slower grid could skip a window, just like a reload.
 - There is **one** scene snapshot boundary: after `finish_tick()`, with no pending commands and no pending events. Mid-tick snapshots are invalid, as in F-001/C5.
-- `CombatSim.to_dict()` is keyed by `combat_id`, and each entry holds that combatant's full state. The glue then sets each body from its logic position, and views re-sync (C12).
+- `CombatSim.to_dict()` holds the step rate, plus one entry per `combat_id` with that combatant's full state. The glue then sets each body from its logic position, and views re-sync (C12).
 - Damage numbers and shake offsets are transient presentation. They aren't saved, and a restore clears them.
 
 **C20 — Pulse lifecycle and debug reset**
@@ -402,7 +433,7 @@ Testable, observable. The Auditor checks each one.
       | 29/15 (1.9333) | Dash + move right, during recovery, cooldown not ready | Fires at 1.95, cancelling the recovery that would end at 1.97 |
 
       The cooldown ends at 1.95, not 1.90, because the hitstop at 1.6833 paused it for 0.05. At 2.2: **4 hits, 52 total damage, dummy HP 148, player at (3, 0)**. The run holds in core at every rate, and once in a scene over real physics at every rate.
-- [ ] AC23 — **Serialization:** Snapshot at the C19 boundary mid-windup, mid-active with a partial hit set (one dummy hit, the other not yet), mid-hitstop, mid-knockback, mid-pulse (telegraph and active, with its hit set), and with buffered attack and dash. Restore into **fresh** objects: player, both dummies and `CombatSim`, registered in the same order. The next 60 ticks behave identically to an unbroken run, with no target hit twice or skipped. A snapshot with different ids or order is refused.
+- [ ] AC23 — **Serialization:** Snapshot at the C19 boundary mid-windup, mid-active with a partial hit set (one dummy hit, the other not yet), mid-hitstop, mid-knockback, mid-pulse (telegraph and active, with its hit set), and with buffered attack and dash. Restore into **fresh** objects: player, both dummies and `CombatSim`, registered in the same order. The next 60 ticks behave identically to an unbroken run, with no target hit twice or skipped. A snapshot with different ids, order or `combat_step_rate` is refused.
 - [ ] AC24 — **Hot-reload:** F5 reloads the three attack files, `warrior.tres`, `player_combat.tres`, `training_dummy.tres` and `screen_shake.tres`, atomically, per C18.
   - Every C18 bound is tested on both sides.
   - An invalid value in any one file rejects the whole group, shows on the overlay and changes nothing.
@@ -410,8 +441,12 @@ Testable, observable. The Auditor checks each one.
   - A valid reload during an attack lets that hit finish on its latched values, and the next hit uses the new ones.
   - A valid reload during knockback keeps that knockback.
   - Lowering `max_hp` below current HP clamps HP.
+  - **Rate change 240 → 120.** Two separate runs at rate 240, each with a stationary target inside: a hit with `windup` 0.036 and `active` 1/240, pressed at 0; and a pulse with `pulse_telegraph` 0.036 and `pulse_active` 1/240, toggled on at 0. At 1/30, a reload sets the rate to 120, with new attack and dummy files that are valid at 120. In both runs it is rejected: nothing changes, the rate stays 240, and the running hit or pulse lands at 9/240 (0.0375).
+  - The same reload is accepted once the hit is in recovery and the pulse is in its wait, and the rate is 120 from the next tick.
+  - Raising the rate from 120 to 240 during a hit is accepted, and that hit finishes on its latched values.
+  - `Player.reload_data()` rejects a file with a different `combat_step_rate`, and the sim's rate is unchanged.
 - [ ] AC25 — **Tooling and coverage map:**
-  - **Core tests, no scene** (`tests/core/`): AC2–AC11; AC12 without walls; AC13–AC15; AC16 up to `died`; AC17; the logic of AC18 and AC19; AC22; AC23; AC24's validation and latching; AC26–AC28.
+  - **Core tests, no scene** (`tests/core/`): AC2–AC11; AC12 without walls; AC13–AC15; AC16 up to `died`; AC17; the logic of AC18 and AC19; AC22; AC23; AC24's validation, latching and rate check; AC26–AC28.
   - **Mapper tests:** `attack` press → one `AttackCommand`.
   - **Scene tests, real physics** (`tests/scenes/`): AC1; AC12 walls; AC16 refill; AC18 and AC19 visuals; AC20; AC21; AC22's physics run; AC24 end to end; AC29–AC31.
   - F-001's tests pass unedited, except the input-map migration in T4. `tools/test`, `tools/lint`, the core purity check and `tools/test_studio` pass.
@@ -421,7 +456,10 @@ Testable, observable. The Auditor checks each one.
   - **Contact after i-frames, inside one tick:** dash at 0 inside a pulse with `pulse_telegraph` 0 and `pulse_active` 0.2, staying inside it. The player is protected at 13/120 and hit at **14/120 (0.1167)**, once. That instant is inside the 30 Hz tick [0.1, 0.1333), which `is_invulnerable()` reports as true. It must not block the hit.
   - **Active phase inside one tick:** an attack with `windup` 0.045 and `active` 1/120 occupies [0.045, 0.0533), inside the 30 Hz tick [0.0333, 0.0667). It lands at **0.05**, exactly once.
   - **Hitstop overshoot:** with `hitstop_normal` 0.055, hit 1 lands at 10/120, the attacker resumes mid-step at 0.1383, and recovery starts at **0.195**.
-  - **Bound:** `active` 0.008 is rejected at rate 120, and 1/120 is accepted.
+  - **Bound:** `active` 0.008 is rejected at rate 120, and 1/120 is accepted, with `windup` ≥ 1/120.
+  - **Zero lead, sword:** at rate 120, `windup` 0 with `active` 1/120 is rejected, and with `active` 1/60 it's accepted. Pressed at T on a stationary overlapping dummy, that minimum hit lands at **T + 1/120**, exactly once.
+  - **Zero lead, pulse:** at rate 120, `pulse_telegraph` 0 with `pulse_active` 1/120 is rejected, and with `pulse_active` 1/60 it's accepted. Toggled on at T with a stationary player inside, that minimum pulse lands at **T + 1/120**, exactly once.
+  - **Window starting on a contact:** `windup` 1/120 with `active` 1/120 is accepted, and the same for a pulse. The window `[T + 1/120, T + 2/120)` lands at **T + 1/120**, exactly once, because a contact on a window's start counts and one on its end doesn't (C15).
   - **Attacker hitstop and reach:** a hurtbox that enters the hitbox while its owner is in hitstop isn't hit until hitstop ends.
 - [ ] AC27 — **Arbitration (C17):**
   - Attack and dash both buffered, at the start of recovery and again at the end of knockback: the dash fires and the attack is discarded, in either press order.
@@ -457,21 +495,21 @@ Small, ordered, each independently committable.
 | # | Task | Files likely touched | Notes |
 |---|---|---|---|
 | T1 | Fix the F-001 tint re-sync | `src/entities/player/player.gd`, `src/core/player/player_motor.gd`, `tests/scenes/test_f003_restore.gd` | `from_dict()` emits a `state_restored` signal at the end. Player presentation has one `_refresh_from_state()` that sets the tint from `is_invulnerable()`, called on `state_restored` and on `invulnerability_changed`. Add a regression test on the real tint, in a scene (AC1). Applies C12. T17 adds the HP display and arc checks once they exist. |
-| T2 | Data types | `src/core/combat/attack_data.gd` (`AttackData`), `src/core/combat/dummy_data.gd` (`DummyData`), extend `ClassData`, `PlayerCombatTunables`; `src/core/tunables/screen_shake_settings.gd` (`ScreenShakeSettings`) | `AttackData`: `id`, `windup`, `active`, `recovery`, `damage: int`, `arc_angle_deg`, `range_tiles`, `knockback_tiles`, `is_finisher: bool`. `ClassData` += `attack_chain: Array[AttackData]`, `attack_chain_window`, `max_hp: int`, `hurtbox_radius_tiles`, `knockback_scale`. `PlayerCombatTunables` += `combat_step_rate: int`, `player_hurt_iframes`, `knockback_duration`, `hitstop_normal`, `hitstop_finisher`, `shake_intensity_hit`, `shake_intensity_finisher`, `shake_intensity_player_hurt`. `DummyData`: `max_hp`, `hurtbox_radius_tiles`, `respawn_delay`, `pulse_interval`, `pulse_telegraph`, `pulse_active`, `pulse_radius_tiles`, `pulse_damage`, `pulse_knockback_tiles`. `ScreenShakeSettings`: `screen_shake_enabled`, `max_offset_px`, `decay_time` (placeholder look, → Art). All C18 validation, with `validate()` on `ClassData` and `PlayerCombatTunables` left as it is (§2). |
+| T2 | Data types | `src/core/combat/attack_data.gd` (`AttackData`), `src/core/combat/dummy_data.gd` (`DummyData`), `src/core/combat/combat_timing.gd` (`CombatTiming`), extend `ClassData`, `PlayerCombatTunables`; `src/core/tunables/screen_shake_settings.gd` (`ScreenShakeSettings`) | `AttackData`: `id`, `windup`, `active`, `recovery`, `damage: int`, `arc_angle_deg`, `range_tiles`, `knockback_tiles`, `is_finisher: bool`. `ClassData` += `attack_chain: Array[AttackData]`, `attack_chain_window`, `max_hp: int`, `hurtbox_radius_tiles`, `knockback_scale`. `PlayerCombatTunables` += `combat_step_rate: int`, `player_hurt_iframes`, `knockback_duration`, `hitstop_normal`, `hitstop_finisher`, `shake_intensity_hit`, `shake_intensity_finisher`, `shake_intensity_player_hurt`. `DummyData`: `max_hp`, `hurtbox_radius_tiles`, `respawn_delay`, `pulse_interval`, `pulse_telegraph`, `pulse_active`, `pulse_radius_tiles`, `pulse_damage`, `pulse_knockback_tiles`. `ScreenShakeSettings`: `screen_shake_enabled`, `max_offset_px`, `decay_time` (placeholder look, → Art). All C18 validation, with `validate()` on `ClassData` and `PlayerCombatTunables` left as it is (§2). `CombatTiming` has no state and holds the two duration rules once, as `window_errors(lead, active, step_rate)`, used by data validation and the rate check. It owns `TIME_EPSILON`, and `PlayerMotor.TIME_EPSILON` stays as an alias of it. |
 | T3 | Data files | `data/attacks/sword_hit_{1,2,3}.tres`, `warrior.tres`, `player_combat.tres`, `data/enemies/training_dummy.tres`, `data/tunables/screen_shake.tres` | Values from the design-doc *Tunables index*. `warrior.tres` gets `attack_chain` = [hit 1, hit 2, hit 3]. Only hit 3 has `is_finisher`. Paths as constants (G5). |
 | T4 | Attack command + input | `src/commands/attack_command.gd`, `input_sample.gd`, `player_input.gd`, `player_input_mapper.gd`, `project.godot`, `tests/test_input_map.gd`, mapper tests | `AttackCommand()` carries no data; the aim comes from the motor's facing. Produced from the existing `attack` action (bindings unchanged). Add only `debug_pulse_toggle` (P), `debug_shake_toggle` (K), `debug_reset` (R) and migrate the input-map test (§2). |
-| T5 | Motor step API, no behavior change | `src/core/combat/combatant.gd` (`Combatant`), `src/core/player/player_motor.gd` | `Combatant` (`RefCounted`) is the base of `PlayerMotor` and `DummyLogic`: `get_combat_id()`, `get_team()`, `get_combat_state()`, `get_hurtbox()`, `get_live_hitbox()`, `step(s)`, `finish_tick()`, `get_tick_displacement_px()`, `sync_position()`, `to_dict()`, `from_dict()`. Motor gets `step(s)`, which consumes presses but keeps move and aim, and `finish_tick()`, which clears them. `tick(delta)` becomes `step(delta)` + `finish_tick()`. Displacement and the `is_invulnerable()` overlap now cover the last `step()`. Also `get_velocity_tiles()`. F-001/C4's API list gains `step()` and `finish_tick()`, plus the `apply_hit()` of T9. All F-001 core tests pass unedited. |
+| T5 | Motor step API, no behavior change | `src/core/combat/combatant.gd` (`Combatant`), `src/core/player/player_motor.gd` | `Combatant` (`RefCounted`) is the base of `PlayerMotor` and `DummyLogic`: `get_combat_id()`, `get_team()`, `get_combat_state()`, `get_hurtbox()`, `get_live_hitbox()`, `get_running_window_errors(step_rate)`, `step(s)`, `finish_tick()`, `get_tick_displacement_px()`, `sync_position()`, `to_dict()`, `from_dict()`. Motor gets `step(s)`, which consumes presses but keeps move and aim, and `finish_tick()`, which clears them. `tick(delta)` becomes `step(delta)` + `finish_tick()`. Displacement and the `is_invulnerable()` overlap now cover the last `step()`. Also `get_velocity_tiles()`. F-001/C4's API list gains `step()` and `finish_tick()`, plus the `apply_hit()` of T9. All F-001 core tests pass unedited. |
 | T6 | Geometry + resolver | `src/core/combat/hurtbox.gd`, `hitbox.gd`, `geometry.gd`, `hit_resolver.gd`, `hit_candidate.gd`, `hit_event.gd` | Exact circle–sector intersection. `HitResolver.find_candidates(combatants) -> Array[HitCandidate]`, in C16 order, with no state of its own. A `HitEvent` exists only for a hit that lands. Teams as an enum (`PLAYER`, `ENEMY`). Each attacker owns the hit set for its attack instance. |
 | T7 | Combat state component | `src/core/combat/combat_state.gd` (`CombatState`) | Shared by the player and the dummy: HP, hitstop timer, knockback (remaining distance, direction, speed), hurt i-frames, `apply_hit(event, tunables)`, signals `hit_landed`, `damaged`, `died`, `to_dict`/`from_dict`. Hitstop takes the max of remaining and new (C7). Knockback replaces (C17). |
-| T8 | Motor: attack chain | `src/core/player/player_motor.gd` (+ an `attack_chain.gd` helper if it grows) | New state `ATTACKING` (with phase). Attack phases join the C15 phase loop. Implements AC2–AC8 and C17's press table and priority. Latches per C18. Cooldown runs during attacks and stops exactly at expiry if a dash is waiting. Exposes `get_live_hitbox()` and `is_dash_protected()`. Extend serialization (C5). |
+| T8 | Motor: attack chain | `src/core/player/player_motor.gd` (+ an `attack_chain.gd` helper if it grows) | New state `ATTACKING` (with phase). Attack phases join the C15 phase loop. Implements AC2–AC8 and C17's press table and priority. Latches per C18. Cooldown runs during attacks and stops exactly at expiry if a dash is waiting. Exposes `get_live_hitbox()` and `is_dash_protected()`. `get_running_window_errors()` checks the latched hit during windup and active. Phase boundaries per C15. Extend serialization (C5). |
 | T9 | Motor: hit reaction | `src/core/player/player_motor.gd` | Hitstop is consumed first in `step()`, then the phase loop (C15). New state `KNOCKBACK`. `apply_hit()` handles interruption, the dash tail, zero knockback and hurt i-frames per C17 and AC14, AC15. |
-| T10 | Dummy logic | `src/core/combat/dummy_logic.gd` | `Combatant` with `CombatState`, respawn timer and the pulse lifecycle (C20). Its `knockback_scale` arrives through `setup()` from the scene. |
-| T11 | `CombatSim` | `src/core/combat/combat_sim.gd` | One tick per C15: splits `delta` into steps, advances, calls a `move_bodies` `Callable` (empty in core tests), finds candidates, applies them per C16, and calls `finish_tick()`. Scene snapshot and identity checks per C19. |
+| T10 | Dummy logic | `src/core/combat/dummy_logic.gd` | `Combatant` with `CombatState`, respawn timer and the pulse lifecycle (C20). Its `knockback_scale` arrives through `setup()` from the scene. `get_running_window_errors()` checks the latched pulse during telegraph and active. |
+| T11 | `CombatSim` | `src/core/combat/combat_sim.gd` | One tick per C15: splits `delta` into steps, advances, calls a `move_bodies` `Callable` (empty in core tests), finds candidates, applies them per C16, and calls `finish_tick()`. Scene snapshot and identity checks per C19. The sim stores its own step rate, set in setup. `rate_change_errors(new_rate)` collects every combatant's `get_running_window_errors()`, and `set_step_rate()` applies from the next tick (C18). |
 | T12 | Core tests | `tests/core/combat/test_geometry.gd`, `test_hit_resolver.gd`, `test_combat_state.gd`, `test_combat_sim.gd`, `test_dummy_logic.gd`, `tests/core/player/test_player_attack.gd`, `test_player_hit_reaction.gd`, `test_player_snapshot.gd`, `test_combat_data_validation.gd` | Everything in AC25's core row. No scenes. |
-| T13 | Runner + player glue | `src/world/combat_runner.gd` (`CombatRunner`), `src/entities/player/player.gd`, `scenes/debug/f001_movement.tscn` | `CombatRunner` (`Node`) is the only `_physics_process` that steps logic. It creates the `CombatSim`, registers its exported ordered list of combatants, and passes `move_bodies`. `move_bodies` sets each body's `velocity = get_tick_displacement_px() / physics_delta`, calls `move_and_slide()`, then `sync_position()`. `Player` loses its `_physics_process`, and gets a method the runner calls to submit commands. F-001's scene gains a `CombatRunner` as its last child and nothing else. Player HP refill on `died` happens only in the debug scene. |
+| T13 | Runner + player glue | `src/world/combat_runner.gd` (`CombatRunner`), `src/entities/player/player.gd`, `scenes/debug/f001_movement.tscn` | `CombatRunner` (`Node`) is the only `_physics_process` that steps logic. It creates the `CombatSim`, registers its exported ordered list of combatants, and passes `move_bodies`. `move_bodies` sets each body's `velocity = get_tick_displacement_px() / physics_delta`, calls `move_and_slide()`, then `sync_position()`. `Player` loses its `_physics_process`, and gets a method the runner calls to submit commands, plus the sim's step rate for `reload_data()` to compare against (C18). F-001's scene gains a `CombatRunner` as its last child and nothing else. Player HP refill on `died` happens only in the debug scene. |
 | T14 | Dummy body | `src/entities/dummy/training_dummy.gd`, `.tscn` | Body: `CharacterBody2D`, `collision_layer` 0, `collision_mask` 1 (world), so nothing is blocked by it. Exports `combat_id`, `knockback_scale` (default 0) and whether it pulses. Placeholder visuals: a circle, an HP bar with a number, a "KO" label, a telegraph ring. All derived from state (C12). |
 | T15 | Presentation listeners | `src/ui/debug/damage_numbers.gd`, `src/world/camera/placeholder_shake.gd` | Floating numbers on dummies. Placeholder shake: random camera offset ≤ `intensity × max_offset_px`, decaying over `decay_time`; a new shake takes the larger intensity, never the sum. Implements C10 and AC21. A placeholder white flash on the damaged entity is allowed. |
-| T16 | Debug scene + overlay | `scenes/debug/f003_sword.tscn`, extend `src/ui/debug/motor_debug_overlay.gd`, `src/world/combat_runner.gd` | Room with one anchored dummy and one loose dummy, plus a wall usable for AC12. Overlay shows: chain index, phase and remaining time, chain window, buffered attack/dash, hitstop remaining, player HP, hurt i-frames, shake on/off, and speed from `get_velocity_tiles()`. Draws the active hitbox arc and the hurtbox circles. Keys: F5 `debug_reload_tunables`, P `debug_pulse_toggle`, K `debug_shake_toggle`, R `debug_reset` (actions from T4). The runner owns the atomic reload (C18) and the reset (C20). `Player.reload_data()` keeps working for F-001's tests, and switches to `CACHE_MODE_IGNORE_DEEP`. F-001's debug scene keeps working as it does today. |
+| T16 | Debug scene + overlay | `scenes/debug/f003_sword.tscn`, extend `src/ui/debug/motor_debug_overlay.gd`, `src/world/combat_runner.gd` | Room with one anchored dummy and one loose dummy, plus a wall usable for AC12. Overlay shows: chain index, phase and remaining time, chain window, buffered attack/dash, hitstop remaining, player HP, hurt i-frames, shake on/off, and speed from `get_velocity_tiles()`. Draws the active hitbox arc and the hurtbox circles. Keys: F5 `debug_reload_tunables`, P `debug_pulse_toggle`, K `debug_shake_toggle`, R `debug_reset` (actions from T4). The runner owns the atomic reload, including the rate check (C18), and the reset (C20). In this scene the overlay sends F5 to the runner. `Player.reload_data()` keeps working for F-001's tests and F-001's scene, switches to `CACHE_MODE_IGNORE_DEEP`, and rejects a different `combat_step_rate` once a runner has set the sim's rate. `test_f001_reload.gd` is unaffected, because its file copies keep the same rate. F-001's debug scene keeps working as it does today. |
 | T17 | Scene tests | `tests/scenes/test_f003_*.gd` | Everything in AC25's scene row, including the rest of AC1 and AC22's physics run. Uses `user://` copies of data, like `test_f001_reload.gd`. |
 | T18 | Glossary | `studio/GLOSSARY.md` | Add: Hitbox, Hurtbox, Attack instance, Windup / Active / Recovery, Chain window, Hitstop, Knockback, Hurt i-frames, Punish window, Telegraph, Team, Combat step, Contact instant, Hit candidate, Combatant. Extend Input buffer to cover attacks. |
 
@@ -648,6 +686,8 @@ The previous Planner replies were checked first; PR-1–PR-10 are resolved as an
 
 **Suggested fix:** Define how the action-start boundary is sampled, or explicitly reject the duration combination that has no sample. Reconcile that rule with the half-open window and C18 bounds. Add 30/60/120 Hz core oracles for both a zero-windup sword hit and a newly enabled zero-telegraph pulse at the minimum active duration, with a stationary overlapping target.
 
+> **Planner reply (Combat):** accepted. Took the "reject the combination" path. Changed §4 C15 and C18, and §5 AC26. C18 adds `lead + active ≥ 2 × min_active` for attacks and pulses, so a window with no lead-in needs two steps (1/60 s at rate 120), and C15 now carries the full proof, including hitstop. C15 also states the boundary rule that reconciles the half-open window: a phase ending exactly at a step's end crosses in that step, and contact comparisons use `TIME_EPSILON`. AC26 adds the zero-lead oracles for sword and pulse at the new minimum, plus a window starting exactly on a contact. §3 rejects an extra contact at the action's start, and §6 T2 adds `CombatTiming`, so the rule lives in one place. `design/combat.md` is updated.
+
 ### PR-12 🔴 Lowering the combat step rate can skip a latched active phase
 
 **Location:** §4 C15 minimum active duration; §4 C18 reload rules for running hits, pulses and `combat_step_rate`; §5 AC24.
@@ -657,6 +697,8 @@ The previous Planner replies were checked first; PR-1–PR-10 are resolved as an
 **Why it matters:** A valid atomic reload can invalidate the minimum-duration assumption behind C15 and make an in-progress hit disappear despite the latching contract. Validating only the newly loaded resources cannot prevent this.
 
 **Suggested fix:** Specify a rate-change policy that accounts for every running latched attack and pulse before changing the grid. For example, reject the entire reload when a retained active duration is below the new step minimum, or define when the rate change is deferred. Reconcile the policy with C18's atomicity and next-tick rule, and add a reload oracle for this 240 → 120 case covering both sword and pulse continuation.
+
+> **Planner reply (Combat):** accepted. Changed §4 C18 and §5 AC24. New rate check: when a reload changes the rate, every running attack in windup or active and pulse in telegraph or active must pass the same duration rules at the new rate on its latched values, or the whole reload is rejected, which keeps C18 atomic. A rate that passes still applies from the next tick. §3 rejects deferral. AC24 has your 240 → 120 case for sword and pulse, its accepted counterpart, and a raised rate. Two more ways to reach the same failure, closed here too: a snapshot restored at a different rate is refused (§4 C19, §5 AC23), and F-001's scene calls `Player.reload_data()` directly on F5, so that path can't change the rate (§2, §4 C18, §6 T13, T16). The sim now stores its own rate (§6 T11).
 
 ---
 

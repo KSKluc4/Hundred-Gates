@@ -79,7 +79,7 @@
 - **Hurtbox:** a circle that can receive hits. **Hitbox:** a sector (origin, direction, arc, range) that deals damage while active; a full circle = 360° sector.
 - Hits are decided by exact circle–sector intersection in core logic, by a per-scene `HitResolver` — never from animation frames or physics overlaps (G6).
 - **Teams:** a hitbox never hits its own team. No friendly fire, no PvP.
-- **Timing (D-007):** hits are decided at the end of each combat step (1/120 s by default), the **contact instant**, using collision-corrected positions. Dash i-frames are checked exactly at that instant. Every active window lasts at least one step.
+- **Timing (D-007):** hits are decided at the end of each combat step (1/120 s by default), the **contact instant**, using collision-corrected positions. Dash i-frames are checked exactly at that instant. Every active window lasts at least one step, and windup (or telegraph) plus active lasts at least two, so every window gets a contact instant. Lowering `combat_step_rate` is refused while a running hit or pulse would break that.
 - A single attack instance hits each hurtbox **at most once**. A hurtbox skipped because of i-frames is **not** marked — if it's still inside when the i-frames end, it gets hit. Leaving the hitbox matters.
 - On hit: damage → knockback → per-entity hitstop on attacker and target → hurt i-frames on the target (player only for phase 1).
 - **Simultaneous hits:** hits at the same instant trade, so attackers aren't rechecked and registration order never decides an exchange. Targets are rechecked hit by hit, so a second hit on a player at the same instant is stopped by the first one's hurt i-frames.
