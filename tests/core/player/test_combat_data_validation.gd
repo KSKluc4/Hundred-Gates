@@ -29,9 +29,12 @@ func test_each_attack_bound_is_rejected() -> void:
 
 func test_attack_values_at_their_limits_are_valid() -> void:
 	var cases: Array[Array] = [
+		["windup", 0.0 + 1.0 / RATE],
 		["recovery", 0.0],
 		["damage", 1],
+		["arc_angle_deg", 0.001],
 		["arc_angle_deg", 360.0],
+		["range_tiles", 0.001],
 		["knockback_tiles", 0.0],
 	]
 	for case: Array in cases:
@@ -93,10 +96,12 @@ func test_each_class_bound_is_rejected() -> void:
 		assert_eq(data.validate_combat(RATE).size(), 1, "%s = %s" % case)
 
 
-func test_zero_chain_window_and_zero_knockback_scale_are_valid() -> void:
+func test_class_values_at_their_limits_are_valid() -> void:
 	var data: ClassData = _class_data()
 	data.attack_chain_window = 0.0
 	data.knockback_scale = 0.0
+	data.max_hp = 1
+	data.hurtbox_radius_tiles = 0.001
 	assert_eq(data.validate_combat(RATE).size(), 0)
 
 

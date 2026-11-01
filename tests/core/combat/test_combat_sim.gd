@@ -149,12 +149,30 @@ func test_ac13_one_attack_on_two_targets_gives_one_hitstop() -> void:
 	assert_almost_eq(left, 0.05 - (0.1 - 10.0 / 120.0), TIME, "one, not two")
 
 
-func test_ac13_finisher_uses_its_own_hitstop_and_other_entities_keep_ticking() -> void:
+func test_ac13_finisher_uses_its_own_hitstop() -> void:
 	var arena: CombatArena = CombatArena.new().build()
 	arena.play(120, 0, 17, [0, 6, 12])
 	assert_true(arena.events[2].is_finisher)
 	var left: float = arena.player.get_combat_state().get_hitstop_remaining()
 	assert_almost_eq(left, 0.1 - (17.0 / 30.0 - 68.0 / 120.0), TIME)
+
+
+func test_ac13_other_entities_keep_moving_and_ticking_during_a_hitstop() -> void:
+	var arena: CombatArena = CombatArena.new().build()
+	var bystander: PlayerMotor = PlayerMotor.new()
+	bystander.setup(arena.class_data, arena.rules, Vector2(9, 9), Vector2.DOWN, &"player_2")
+	arena.sim.register(bystander)
+	arena.dummy.set_pulse_enabled(true)
+	arena.play(120, 0, 3, [0])
+	assert_true(arena.player.get_combat_state().is_in_hitstop())
+	assert_true(arena.dummy.get_combat_state().is_in_hitstop())
+	var before_clock: float = bystander.to_dict()["time"]
+	var before_position: Vector2 = bystander.get_position_px()
+	bystander.submit(MoveCommand.new(Vector2.RIGHT))
+	arena.sim.tick(1.0 / 60.0)
+	assert_almost_eq(bystander.to_dict()["time"], before_clock + 1.0 / 60.0, TIME)
+	assert_gt(bystander.get_position_px().x, before_position.x)
+	assert_false(bystander.get_combat_state().is_in_hitstop())
 
 
 func _assert_times(actual: Array[float], expected: Array, label: String) -> void:

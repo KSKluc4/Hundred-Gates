@@ -37,8 +37,13 @@ func test_tunable_values_at_their_limits_are_valid() -> void:
 		["player_hurt_iframes", 0.0],
 		["hitstop_normal", 0.0],
 		["hitstop_finisher", 0.0],
+		["knockback_duration", 0.001],
 		["shake_intensity_hit", 0.0],
 		["shake_intensity_hit", 1.0],
+		["shake_intensity_finisher", 0.0],
+		["shake_intensity_finisher", 1.0],
+		["shake_intensity_player_hurt", 0.0],
+		["shake_intensity_player_hurt", 1.0],
 	]
 	for case: Array in cases:
 		var tunables: PlayerCombatTunables = _tunables()
@@ -69,7 +74,11 @@ func test_each_dummy_bound_is_rejected() -> void:
 
 func test_dummy_values_at_their_limits_are_valid() -> void:
 	var cases: Array[Array] = [
+		["max_hp", 1],
+		["hurtbox_radius_tiles", 0.001],
 		["respawn_delay", 0.0],
+		["pulse_telegraph", 0.0],
+		["pulse_radius_tiles", 0.001],
 		["pulse_knockback_tiles", 0.0],
 		["pulse_damage", 1],
 	]
