@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import shutil
@@ -88,18 +89,22 @@ class Lock:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp = self._write_temp()
         try:
-            for _attempt in range(2):
+            # Taking the lock is one step: a contender can't act on a stale record while
+            # another replaces it. The kernel drops this if the holder dies.
+            with self.path.with_name(f"{self.path.name}.guard").open("w") as guard:
+                fcntl.flock(guard, fcntl.LOCK_EX)
                 try:
                     # Atomic: fails if the lock exists, and never leaves it half written.
                     os.link(temp, self.path)
-                    return self
                 except FileExistsError:
                     self._clear_if_stale()
-            raise LockHeld(f"{self.path} is held")
+                    os.link(temp, self.path)
+            return self
         finally:
             temp.unlink(missing_ok=True)
 
     def _clear_if_stale(self) -> None:
+        """Only with the guard held."""
         record = self._read() or {}
         tool_pid = record.get("tool_pid")
         agent_pgid = record.get("agent_pgid")

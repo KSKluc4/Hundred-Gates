@@ -14,6 +14,7 @@ from helpers import (
     BOARD,
     BRANCH,
     FEATURE,
+    TOOLS_DIR,
     Sandbox,
     auditor_code,
     auditor_plan,
@@ -21,6 +22,38 @@ from helpers import (
     builder_ok,
 )
 from studio_lib import proc
+
+
+CONTENDER = """
+import sys, time
+from pathlib import Path
+sys.path.insert(0, {tools!r})
+from studio_lib import proc
+
+fake = Path({fake!r})
+name = {name!r}
+
+def wait(path):
+    while not path.exists():
+        time.sleep(0.01)
+
+if {pause}:
+    real_read = proc.Lock._read
+    def paused_read(self):
+        record = real_read(self)
+        (fake / (name + ".paused")).write_text("")
+        wait(fake / (name + ".go"))
+        return record
+    proc.Lock._read = paused_read
+
+try:
+    with proc.Lock(Path({lock!r})):
+        (fake / (name + ".done")).write_text("entered")
+        proc.Lock._read = real_read if {pause} else proc.Lock._read
+        wait(fake / "release")
+except proc.LockHeld:
+    (fake / (name + ".done")).write_text("refused")
+"""
 
 
 def dead_pid():
@@ -360,6 +393,49 @@ class LockTests(unittest.TestCase):
             finally:
                 agent.kill()
                 agent.wait()
+
+    def test_two_contenders_at_a_stale_lock_never_both_enter(self):
+        """CR-2: A pauses right after reading the stale record, while B contends."""
+        with Sandbox("DRAFT", "Planner") as box:
+            self.write_lock(box, dead_pid())
+            lock_path = box.repo / ".studio/lock"
+            first = self.start_contender(box, lock_path, "a", pause_after_read=True)
+            self.wait_for(box.fake_dir / "a.paused")
+            second = self.start_contender(box, lock_path, "b", pause_after_read=False)
+            time.sleep(0.5)  # B gets every chance to run while A sits on its stale read.
+            (box.fake_dir / "a.go").write_text("")
+            self.wait_for(box.fake_dir / "a.done")
+            self.wait_for(box.fake_dir / "b.done")
+            outcomes = {
+                name: (box.fake_dir / f"{name}.done").read_text() for name in ("a", "b")
+            }
+            self.assertEqual(sorted(outcomes.values()), ["entered", "refused"], outcomes)
+            winner = "a" if outcomes["a"] == "entered" else "b"
+            record = json.loads(lock_path.read_text())
+            expected = first.pid if winner == "a" else second.pid
+            self.assertEqual(record["tool_pid"], expected, "the live owner's lock survives")
+            (box.fake_dir / "release").write_text("")
+            for process in (first, second):
+                process.communicate(timeout=15)
+            self.assertFalse(box.lock_exists())
+
+    def wait_for(self, path, seconds=10.0):
+        deadline = time.monotonic() + seconds
+        while not path.exists():
+            if time.monotonic() > deadline:
+                raise AssertionError(f"{path.name} never appeared")
+            time.sleep(0.02)
+
+    def start_contender(self, box, lock_path, name, pause_after_read):
+        """A real second process: `python -c` with the Lock from the tool under test."""
+        script = CONTENDER.format(
+            tools=str(TOOLS_DIR),
+            lock=str(lock_path),
+            fake=str(box.fake_dir),
+            name=name,
+            pause=pause_after_read,
+        )
+        return subprocess.Popen([sys.executable, "-c", script], stderr=subprocess.DEVNULL)
 
     def test_a_refused_command_leaves_the_other_lock_alone(self):
         with Sandbox("DRAFT", "Planner") as box:
