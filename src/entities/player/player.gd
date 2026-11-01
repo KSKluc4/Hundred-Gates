@@ -68,6 +68,14 @@ func reset_to_start() -> void:
 	_refresh_from_state()
 
 
+func get_tunables() -> PlayerCombatTunables:
+	return _tunables
+
+
+func get_class_data_path() -> String:
+	return _class_data_path
+
+
 func get_aim_mode() -> PlayerInputMapper.AimMode:
 	return _input.get_aim_mode()
 
