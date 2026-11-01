@@ -1,7 +1,7 @@
 ---
 id: F-002
 title: Studio autopilot (tools/studio)
-status: APPROVED      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: IN_PROGRESS   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
@@ -624,11 +624,19 @@ may approve Gate A and set `APPROVED`.
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** YYYY-MM-DD  ·  **Branch:** `feature/F-002-studio-autopilot`
+**Started:** 2026-10-31  ·  **Branch:** `feature/F-002-studio-autopilot`
 
 ### Progress
-- [ ] T1 — <commit hash when done>
+- [ ] T1
 - [ ] T2
+- [ ] T3
+- [ ] T4
+- [ ] T5
+- [ ] T6
+- [ ] T7
+- [ ] T8
+- [ ] T9
+- [ ] T10
 
 ### Deviations from plan
 <Every place the code differs from §3–§6, with reason. "None" if none.>
