@@ -36,6 +36,10 @@ func get_time() -> float:
 	return _time
 
 
+func get_tunables() -> PlayerCombatTunables:
+	return _tunables
+
+
 ## F-003/C18: new rules apply to the next hit.
 func set_tunables(tunables: PlayerCombatTunables) -> void:
 	_tunables = tunables

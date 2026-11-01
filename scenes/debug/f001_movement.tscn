@@ -2,6 +2,7 @@
 
 [ext_resource type="PackedScene" path="res://src/entities/player/player.tscn" id="1"]
 [ext_resource type="Script" path="res://src/ui/debug/motor_debug_overlay.gd" id="2"]
+[ext_resource type="Script" path="res://src/world/combat_runner.gd" id="3"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_512x16"]
 size = Vector2(512, 16)
@@ -123,3 +124,7 @@ player = NodePath("../Player")
 [node name="Label" type="Label" parent="MotorDebugOverlay"]
 offset_left = 4.0
 offset_top = 4.0
+
+[node name="CombatRunner" type="Node" parent="."]
+script = ExtResource("3")
+combatant_paths = Array[NodePath]([NodePath("../Player")])
