@@ -1,8 +1,8 @@
 ---
 id: F-003
 title: Warrior sword chain + hit/hurt + hitstop + training dummy
-status: IN_PROGRESS          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
 depends_on: [F-000, F-001, D-002, D-005]
@@ -721,21 +721,62 @@ The previous Planner replies were checked first; PR-1–PR-10 are resolved as an
 **Started:** 2026-11-01  ·  **Branch:** `feature/F-003-warrior-sword-chain`
 
 ### Progress
-- [ ] T1 — <commit hash when done>
-- [ ] T2
+- [x] T1 — 1984b03
+- [x] T2 — aea96da
+- [x] T3 — 7fc967f
+- [x] T4 — 21555bf
+- [x] T5 — 9fcee7d
+- [x] T6 — 639bac8
+- [x] T7 — 575fc3d
+- [x] T8 — 2a6bf21
+- [x] T9 — d0b0c91
+- [x] T10 — b77e491
+- [x] T11 — d8f5dec
+- [x] T12 — 8969597
+- [x] T13 — f956c72
+- [x] T14 — 16908c3
+- [x] T15 — 73ea330
+- [x] T16 — 7e3f1f1
+- [x] T17 — 512bfa5
+- [x] T18 — 6c2d25c
 
 ### Deviations from plan
-<Every place the code differs from §3–§6, with reason. "None" if none.>
-- DEV-1: <what changed> — **Why:** <reason> — **Impact:** <what else this affects>
+- DEV-1: `PlayerMotor` doesn't implement all of T5's `Combatant` API itself. `Combatant` holds position, hurtbox, displacement, `sync_position()`, the "no hitbox in hitstop" rule, the target recheck and the rate-check wrapper, and subclasses fill in private hooks (`_build_live_hitbox()`, `_is_protected()`, `_running_window()`, `_hurtbox_radius()`). — **Why:** gdlint's `max-public-methods: 20` applies, and the motor alone would have reached about 29. It also keeps each of those rules in one place. — **Impact:** `PlayerMotor` sits exactly at 20, so a new public method there needs a helper. `Combatant` also gains `can_be_hit()`, `apply_hit()`, `get_knockback_scale()` and `get_position_px()`, which T5 didn't list.
+- DEV-2: The hit set is marked through `Hitbox.mark_hit()`, not through a method on the attacker. The hitbox shares the attacker's own array, so the attacker still owns the set (T6). — **Why:** one less public method (DEV-1). A trade also stays clean: an interrupted attack replaces its array, so a late mark lands on the old one and can't leak into the next hit (C16). — **Impact:** none outside `AttackChain` and `PulseCycle`.
+- DEV-3: `Combatant` grew over T5–T7 instead of arriving whole in T5. — **Why:** its full API returns `Hurtbox`, `Hitbox` and `CombatState`, which T6 and T7 create. — **Impact:** history only.
+- DEV-4: New files the plan didn't name: `src/core/combat/pulse_cycle.gd` (`PulseCycle`, the pulse version of T8's optional `AttackChain` helper), `src/entities/combat_body.gd` (`CombatBody`, the typed base of `Player` and `TrainingDummy`, so the runner needs no duck typing) and `src/ui/debug/combat_debug_draw.gd`. — **Why:** T16 had the overlay draw arcs, but the overlay is a screen-space `CanvasLayer`, so world-space drawing needs its own `Node2D`. — **Impact:** `Player` now extends `CombatBody`, which is a `CharacterBody2D`, so nothing else changes.
+- DEV-5: P, K and R are read by `MotorDebugOverlay`, which calls the runner. T16 didn't say which node reads them. — **Why:** F-001's overlay has no runner, so those keys do nothing there, and F-001's scene needs no change beyond its `CombatRunner`. — **Impact:** tested by `test_ac31_f001_scene_keeps_its_keys_to_itself`.
+- DEV-6: `Tunables.load_fresh()` replaces `Player._load_ignoring_cache()`, and both reload paths use it. It checks `FileAccess.file_exists()` instead of `ResourceLoader.exists()`. — **Why:** `ResourceLoader.exists()` still returns true for a deleted file that's in the resource cache, so a missing file logged engine errors on its way to a correct rejection. — **Impact:** the autoload gains a stateless function, and C6 still holds.
+- DEV-7: Tests live in more files than T12 and T17 name, and were committed with the task they cover, not all in T12/T17. — **Why:** `max-public-methods` also counts test functions, and tests were written alongside each task. — **Impact:** T12's commit holds only the remaining core coverage. Extra files: `test_combat_rules_validation.gd`, `test_combat_data_files.gd`, `test_player_motor_steps.gd`, `test_player_dash_cancel.gd`, `test_player_hitstop.gd`, `test_combat_batches.gd`, `test_rate_change.gd`, `test_player_input_mapper_attack.gd`, and the `test_f003_*` scene set.
+- DEV-8: T15 was committed before T14, because the dummy's scene uses `DamageNumbers`. T15's commit (73ea330) doesn't compile on its own: `PlaceholderShake.enabled` clashes with `Camera2D.enabled`, and no scene loaded the script until T16 (7e3f1f1), which renames it `shake_enabled`. — **Why:** a mistake of mine, not a plan change. — **Impact:** don't bisect onto 73ea330 or 16908c3 expecting the shake to load. `f003_sword.tscn` doesn't exist in either, so nothing else is affected.
 
 ### Assumptions made (small, reversible)
-- ASSUMPTION-1: <the gap in the spec> → <what I chose> — **Why:** <reason>
+- ASSUMPTION-1: C15 says a phase that ends with no time left crosses in that step, but doesn't say when a buffered action due at that instant fires. → It fires at the top of the next step, at the same clock time, as F-001's loop already does. So a contact exactly on the fire instant doesn't see it, the same as a fresh press (C15's proof covers this). — **Why:** `tick()` must keep F-001's exact behavior, and firing at the end of a step would change a tick's `get_state()` and `is_invulnerable()`.
+- ASSUMPTION-2: A remainder within `TIME_EPSILON` in `PlayerMotor._run_phases()` counts as no time left, and the clock absorbs it. — **Why:** without this, a dash due on a step's end fired in the step before or after depending on float rounding. AC22 caught it. The spec states the `TIME_EPSILON` rule for contact comparisons, and this extends it to the loop that ASSUMPTION-1 relies on.
+- ASSUMPTION-3: On a landed hit the target is applied first, then the attacker's hitstop and `hit_landed`. AC11's order holds per entity. — **Why:** `hit_landed` should be able to read the target's new HP. Both happen at one instant, and only signal handlers could tell the difference.
+- ASSUMPTION-4: A dash cancelling a finisher's recovery doesn't discard a buffered attack, because that attack couldn't have fired at that instant (C17 discards only when both can). It may fire as hit 1 at the end of the dash if still within the window. — **Why:** literal reading of C17. With default data it always expires first (0.12 < 0.15).
+- ASSUMPTION-5: `get_velocity_tiles()` reports the knockback velocity while knockback moves, and 0 during its hitstop. — **Why:** C17 sets stored velocity to 0 on the hit, and the overlay should show real speed.
+- ASSUMPTION-6: A hit on a player at 0 HP still lands normally, with no second `died`. The debug scene's refill runs inside the `died` signal. — **Why:** AC16 says once per drop to 0, and there's no death flow yet (D-006).
+- ASSUMPTION-7: R doesn't reset the sim clock (`CombatSim.get_time()`). — **Why:** nothing reads it to decide logic. It's scene time for tests and is in the snapshot only for continuity. Every combatant's own clock does reset.
+- ASSUMPTION-8: The telegraph ring shows during telegraph only, and the debug arc shows the live hitbox, so it disappears during its owner's hitstop. — **Why:** AC19 and C15, and it keeps both views truthful.
 
 ### Things the Auditor should look at closely
-- <tricky spots, edge cases you're unsure about>
+- `PlayerMotor._run_phases()` and ASSUMPTION-1/2: this decides which side of a contact a boundary action falls on.
+- `CombatSim._apply_contact()`: the recheck order, and that hits still trade after the attacker was interrupted or KO'd. Replacing (not clearing) `_hit_ids` in `AttackChain` and `PulseCycle` is what keeps a stale mark out of the next hit.
+- `CombatRunner.reload_data()`: validation is against the group's own rate, the rate check runs only if everything else passed, and nothing is applied before all checks finish.
+- `CACHE_MODE_IGNORE_DEEP`: it works in 4.7.2 here, including for scripts referenced by the files. `test_ac24_a_valid_edit_to_one_attack_file_is_really_picked_up` proves the edit is picked up.
+- `Player.reload_data()` and `apply_reloaded_data()`: the second is also called by the runner, with `data_reloaded` keeping the sim's tunables current.
+
+**Honest gaps:**
+- Mutation checks: only `CombatTiming`'s two-step rule was mutated, and exactly the zero-lead tests failed. A wider pass on four more rules (`is_dash_protected`, marking order, hitstop max, per-step contact) was not run, because that command was denied in this session.
+- TDD: T2's code was written alongside its tests, so those never failed first, apart from that one mutation. Tests for T3 onward failed first, except the few added at the end of T17 to close coverage gaps, which were written after the code they cover.
+- History: T9's first commit went in with one failing test, because a chained command ignored the result. It was a test sampling error, and the commit was amended to d0b0c91 before anything else built on it.
+- The §5 manual feel test (KB/M and gamepad) hasn't been run: it belongs to Lucas. Nothing here tests a real gamepad.
 
 ### How to test
-<exact steps / commands / scene to run>
+- All checks: `tools/test`, `tools/lint`, `tools/check_core_purity`, `tools/check_core_purity --self-test`, `tools/test_studio`.
+- At T17/T18: 397 GUT tests pass in 39 scripts, with no leaks. Lint and purity are clean, and `tools/test_studio` passes 243 tests.
+- Debug scene: `scenes/debug/f003_sword.tscn`. J / left mouse attacks, Space dashes, P pulse, K shake, R reset, F5 reload. It also boots headless with no errors over 240 frames.
 
 ---
 
