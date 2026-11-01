@@ -65,18 +65,24 @@
 
 ### Sword attack chain
 - 3 hits. Each hit: **windup → active → recovery**. The hitbox exists only during active.
-- Pressing attack during a hit's recovery, within the chain window, starts the next hit. Otherwise the chain resets.
-- Hit 3 (finisher): longer windup and recovery, bigger arc, more damage, more knockback.
+- The chain window opens at the start of recovery and lasts `attack_chain_window`. Attack during recovery starts the next hit at once (cancels the rest of recovery); attack after recovery but inside the window also starts the next hit. Otherwise the chain resets to hit 1.
+- Attack pressed during windup/active, a dash or knockback is **buffered** (`input_buffer_window`).
+- Hit 3 (finisher): longer windup and recovery, bigger arc, more damage, more knockback. Its recovery **cannot** be cancelled by attack — only by dash. This is the player's own punish window.
+- The Warrior is **rooted** during all three phases (velocity decels to 0). No lunge for now.
 - Aim is locked at the start of each hit's windup.
+- Dash cancels recovery only and resets the chain. A dash pressed during windup or active is buffered.
+- Getting hit interrupts any attack and resets the chain.
 - The chain is data: the Warrior class resource holds an ordered list of attack resources, one per hit (G9, D-005).
 
 ## Hit / hurt system
-- **Hitbox:** an area that deals damage while active. **Hurtbox:** an area that can receive it.
-- A single attack instance hits each hurtbox **at most once**.
+- **Hurtbox:** a circle that can receive hits. **Hitbox:** a sector (origin, direction, arc, range) that deals damage while active; a full circle = 360° sector.
+- Hits are decided by exact circle–sector intersection in core logic, by a per-scene `HitResolver` — never from animation frames or physics overlaps (G6).
+- **Teams:** a hitbox never hits its own team. No friendly fire, no PvP.
+- A single attack instance hits each hurtbox **at most once**. A hurtbox skipped because of i-frames is **not** marked — if it's still inside when the i-frames end, it gets hit. Leaving the hitbox matters.
 - On hit: damage → knockback → per-entity hitstop on attacker and target → hurt i-frames on the target (player only for phase 1).
-- **Hitstop:** an entity's logic timer that pauses that entity's state progression for N seconds. It is serializable state (G7) and runs on ticks (G1). The world keeps running.
-- Logic decides hits from shapes and timers, never from animation frames (G6).
-- Presentation listens to signals (`hit_landed`, `damaged`, `died`) for shake, flash and sound.
+- **Knockback:** distance × target's `knockback_scale`, over `knockback_duration`, after the target's hitstop; walls stop it. A knocked-back player can't move; dash/attack are buffered.
+- **Hitstop:** an entity's logic timer that pauses **all** of that entity's timers (incl. input buffer ages) for N seconds. Serializable (G7), ticked (G1). New hitstop = max(remaining, new), never additive. The world keeps running.
+- Presentation listens to signals (`hit_landed`, `damaged`, `died`) for shake, flash, numbers and sound — only for hits involving a local player. Shake can be disabled by the player.
 
 ## Enemies (phase 1)
 _(3 archetypes — next Combat session)_
@@ -119,7 +125,14 @@ Template per boss:
 | Hit 1 / 2 / 3 knockback | 0.3 / 0.3 / 1.2 tiles | per-hit files |
 | `hitstop_normal` | 0.05 s | `data/tunables/player_combat.tres` |
 | `hitstop_finisher` | 0.10 s | same |
-| `shake_intensity_hit` / `_finisher` / `_player_hurt` | 0.2 / 0.5 / 0.6 (0–1 scale) | same |
+| `shake_intensity_hit` / `_finisher` / `_player_hurt` | 0.2 / 0.5 / 0.6 (0–1 scale) | `data/tunables/player_combat.tres` |
+| `hurtbox_radius_tiles` (Warrior) | 0.35 | `data/classes/warrior.tres` |
+| `knockback_duration` | 0.12 s | `data/tunables/player_combat.tres` |
+| Dummy `max_hp` / `hurtbox_radius_tiles` / `respawn_delay` | 200 / 0.5 / 1.0 s | `data/enemies/training_dummy.tres` |
+| Dummy `knockback_scale` | 0 (anchored) / 1 (loose) | per dummy instance in scene; default 0 |
+| Dummy pulse `interval` / `telegraph` / `active` | 2.0 / 0.6 / 0.1 s | `data/enemies/training_dummy.tres` |
+| Dummy pulse `radius` / `damage` / `knockback` | 2.5 tiles / 20 / 1.0 tile | same |
+| `screen_shake_enabled` / `max_offset_px` / `decay_time` | true / 6 / 0.2 s | `data/tunables/screen_shake.tres` (placeholder → Art) |
 | Enemy damage, floor 1 | 18–25 (→ ~4–6 hits) | `data/enemies/*.tres` (next session) |
 
 ## Open questions (cross-department)
