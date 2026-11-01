@@ -22,6 +22,16 @@ func get_team() -> Team:
 	return _team
 
 
+## From the next contact instant, so hurtbox_radius_tiles hot-reloads (F-003/C18).
+func get_hurtbox() -> Hurtbox:
+	return Hurtbox.new(_combat_id, _team, _position, _hurtbox_radius())
+
+
+## F-003/C15: null unless a hitbox is live at this contact instant.
+func get_live_hitbox() -> Hitbox:
+	return _build_live_hitbox()
+
+
 ## F-003/C15: advances by one step of `duration` seconds.
 func step(_duration: float) -> void:
 	pass
@@ -53,3 +63,11 @@ func to_dict() -> Dictionary:
 
 func from_dict(_snapshot: Dictionary) -> void:
 	pass
+
+
+func _hurtbox_radius() -> float:
+	return 0.0
+
+
+func _build_live_hitbox() -> Hitbox:
+	return null
