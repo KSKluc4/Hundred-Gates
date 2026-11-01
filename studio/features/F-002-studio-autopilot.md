@@ -2,7 +2,7 @@
 id: F-002
 title: Studio autopilot (tools/studio)
 status: CODE_REVIEW   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-11-01
 depends_on: [F-000, D-003, D-004]
@@ -1096,6 +1096,96 @@ single blocking finding. Set `status: CODE_CHANGES`, `owner_now: Builder`.
 >   local refs are now restored (ASSUMPTION-18), and their names appear in the error.
 >
 > The CR-3 behaviour is unchanged. Its regressions still pass.
+
+**Round 3 resolution:** ✔ resolved — evidence is collected into the same Inspection
+before file validation, so exceptions retain remote changes, earlier errors, commits
+and paths. Both original push + undecodable-board reproductions now retain ref/old/new
+SHAs in the blocked record and notification. Executing each printed recovery against
+the disposable bare remote restored its original refs, reset the local tree and cleared
+the block. An unreachable remote is explicitly unverified; its recovery check stopped
+without discarding the local commit or clearing the block. CR-1–CR-3 remain resolved.
+
+<!-- review-round: 3 verdict: APPROVE -->
+### Round 3 — CR-4 reply and code re-review
+
+**Verdict:** `APPROVE`
+**Reviewed:** 2026-11-01
+**Reviewed commit:** `01481f6cc5ee324e3630612c6feadf126d166c34`
+**Comparison:** `main...feature/F-002-studio-autopilot`; incremental changes
+`8779eb8..01481f6`.
+
+Checked the Builder's CR-4 reply first, then the revised implementation log and branch
+diff. CR-4 is `✔ resolved`; CR-1–CR-3 remain resolved. No new findings.
+
+### Resolution evidence and verification
+
+- `engine.py:586` gathers remote and local evidence independently before validation.
+  `_inspect()` adds errors to that same object instead of replacing it. Unknown state
+  remains explicit through `remote_verified` and conservative recovery defaults.
+- `engine.py:600`, `:689` and `:711` retain the remote ref/old/new values in the record,
+  notification and recovery. `git.py:remote_refs()` uses `ls-remote --refs`, excluding
+  the HEAD/peeled-tag pseudo entries that cannot be repaired as normal refs.
+- Independent repetitions of both original CR-4 cases (new `refs/heads/rogue` and
+  advanced `refs/heads/main`, followed by undecodable STATUS output) exited 1, blocked
+  and retained both the remote-change and validation errors. Executing the printed
+  recovery in each temporary repository exited 0, restored all original remote refs,
+  left a clean local tree and removed the block.
+- A separate unreachable-origin fixture recorded `remote_verified: false`. Executing
+  its recovery exited nonzero, preserving the feature block and the built local HEAD.
+  The committed tests also cover an unseen remote move, failed agent output, annotated
+  tags, rewound HEAD and restoration of other moved/deleted/created local branches.
+- `tools/test_studio`: **243 tests passed**. `tools/test`: **130/130 passed**.
+  `tools/lint`, `tools/check_core_purity` and `git diff --check main...HEAD`: passed.
+  The studio suite used the approved permissions for its loopback notification fixture.
+- Actual read-only status/next commands correctly reported CODE_REVIEW/Auditor and
+  action D before this review was appended. Approved §§1–6, §7 and §11 match main;
+  game/content paths and F-000/F-001 remain unchanged. Verification used fake agents
+  and disposable local bare remotes; no project source or committed tests were edited.
+
+### AC evidence (current revision)
+
+Source names below refer to `tools/studio_lib/`; tests refer to `tools/tests/`.
+Earlier evidence is retained as history; this table records the current result.
+
+| AC | Result | Current evidence |
+|---|---|---|
+| AC1 | ✅ | `Studio.status_lines()`/`next_lines()` and feature consistency checks remain intact. `test_dispatch.py` and actual read-only output pass. |
+| AC2 | ✅ | Action loop, first branch creation, fixed prompts and commits still pass both full fake-agent paths in `test_run.py`. Each stops at Lucas with one notification. |
+| AC3 | ✅ | Accepted transitions and malformed-output rejection retain blocking, notification and no-following-agent behavior. Transition and CR-3 regressions pass. |
+| AC4 | ✅ | Snapshots, every-new-commit paths and working-tree/index checks remain enforced. `_compare_local()` now preserves additional local-ref evidence before validation; committed/whitespace/revert tests pass. |
+| AC5 | ✅ | Content, frontmatter, board-column and decision-entry restrictions are unchanged. Pure and end-to-end lane tests pass. |
+| AC6 | ✅ | Clean-tree readiness checks, durable failure counts and Gate B retry binding remain enforced. Readiness and late-code/metadata retry regressions pass. |
+| AC7 | ✅ | Auditor-owned machine rounds, review caps and independent readiness-failure counters are unchanged; marker/cap/restart tests pass. |
+| AC8 | ✅ | Rebase, rejected feature/main push, merge conflict and both deletion-failure tests pass. Retry revision binding and preservation of feature commits remain intact. |
+| AC9b | ✅ | Push guards and remote comparison pass ordinary cases. New RecoveryEvidenceTests plus independent original reproductions prove remote changes survive validation errors and the printed recovery restores refs. Unknown-remote cases stay blocked. |
+| AC9c | ✅ | Explicit resume still checks branch, clean tree, owner and blocking-question answers. Escalation, answered/unanswered and crash-recovery tests pass. |
+| AC9 | ✅ | Launch failure, nonzero exit, timeout, interruption, child cleanup and malformed/undecodable output cases pass. Evidence retention does not bypass rejection or notification. |
+| AC10 | ✅ | Shared locking, live-agent ownership and serialized stale-lock acquisition are unchanged. Normal contention and two-process barrier regressions pass. |
+| AC11 | ✅ | Fixed pointer-only prompts and authorized role/template/department instructions are unchanged; role/document tests pass. |
+| AC12 | ✅ | All four required commands pass: 243 studio tests, 130 game tests, lint and purity. |
+| AC13 | ✅ | README/handoffs retain setup, variables, flags and commands; recovery documentation now also explains restoring other local refs and the unverified-remote comparison gate. |
+
+### Constraints, deviations and assumptions
+
+No rejected option was introduced, no new dependency was added, and the game/content
+exclusions and applicable global constraints remain respected. C3/C11 evidence and
+recovery now survive the combined failure from CR-4. The earlier findings about C4,
+C5/C15/C20 and C14/C18 remain resolved under the full regression suite.
+
+DEV-1–DEV-5 and ASSUMPTION-1–ASSUMPTION-16 remain justified as assessed previously.
+ASSUMPTION-17 records unknown remote state and gates the operator's printed recovery
+on comparing the saved refs. ASSUMPTION-18 restores other local refs and forces the
+checkout before resetting rejected work; these commands are printed for Lucas, not
+automatically executed by run. Both choices are explicitly logged and documented, and
+their supported recovery cases have end-to-end tests. No additional intentional,
+unlogged deviation was found in the incremental diff.
+
+### Findings
+
+None. CR-1–CR-4 are `✔ resolved`.
+
+**Round 3 verdict:** `APPROVE`. Keep `status: CODE_REVIEW`, set `owner_now: Lucas`.
+Gate B and setting DONE remain Lucas's decision.
 
 ---
 
