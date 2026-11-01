@@ -424,6 +424,26 @@ class DoneRecoveryTests(DoneCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assert_published(box, reviewed)
 
+    def test_a_newer_round_that_does_not_approve_stops_the_rerun(self):
+        with Sandbox() as box:
+            box.prepare_gate_b()
+            main_before = box.remote_git("rev-parse", "main")
+            box.add_remote_hook(REJECT_FEATURE)
+            box.studio("done", "F-900")
+            box.remove_remote_hook()
+            reviewed = box.git("rev-parse", "HEAD~2")
+            marker = (
+                "<!-- review-round: 2 verdict: CHANGES_REQUESTED -->\n"
+                f"**Reviewed commit:** `{reviewed}`\n"
+            )
+            box.write(FEATURE, box.read(FEATURE).replace("\n---\n\n## 10.", f"\n{marker}\n---\n\n## 10."))
+            box.commit_all("F-900: second look", FEATURE)
+            result = box.studio("done", "F-900")
+            self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertIn("doesn't approve", result.stderr)
+            self.assertEqual(box.remote_git("rev-parse", "main"), main_before)
+            self.assert_branches_exist(box)
+
     def test_a_hand_set_done_never_passed_the_gate(self):
         with Sandbox() as box:
             box.prepare_gate_b()
@@ -452,6 +472,7 @@ class DoneRecoveryTests(DoneCase):
             box.git("branch", "-q", "-D", BRANCH)
             result = box.studio("done", "F-900")
             self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertIn("never passed Gate B", result.stderr)
             self.assertEqual(box.remote_git("rev-parse", "main"), main_before)
             self.assertNotEqual(box.git("ls-remote", "origin", f"refs/heads/{BRANCH}"), "")
 

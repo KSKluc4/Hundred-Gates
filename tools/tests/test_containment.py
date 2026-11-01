@@ -263,6 +263,8 @@ class AgentFailureTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertNotIn("Traceback", result.stderr)
             self.assertEqual(box.calls(), [])
+            self.assertIn("unreadable marker", box.notifications()[0])
+            self.assertIn("tools/studio unblock F-900", box.notifications()[0])
 
     def test_launch_failure_blocks(self):
         with Sandbox("PLAN_REVIEW", "Auditor") as box:
@@ -512,7 +514,10 @@ class LockTests(unittest.TestCase):
             name=name,
             pause=pause_after_read,
         )
-        return subprocess.Popen([sys.executable, "-c", script], stderr=subprocess.DEVNULL)
+        process = subprocess.Popen([sys.executable, "-c", script], stderr=subprocess.DEVNULL)
+        self.addCleanup(process.wait)
+        self.addCleanup(process.kill)
+        return process
 
     def test_a_refused_command_leaves_the_other_lock_alone(self):
         with Sandbox("DRAFT", "Planner") as box:
