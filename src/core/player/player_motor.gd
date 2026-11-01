@@ -12,8 +12,8 @@ signal state_restored
 
 enum State { IDLE, MOVING, DASHING }
 
-## Absorbs float rounding at exact time boundaries. Far below AC13's 1 µs.
-const TIME_EPSILON: float = 1e-9
+## F-003 T2: CombatTiming owns it, this name stays for F-001's code and tests.
+const TIME_EPSILON: float = CombatTiming.TIME_EPSILON
 const SNAPSHOT_KEYS: Array[String] = [
 	"time",
 	"position",
