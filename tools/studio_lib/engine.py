@@ -754,6 +754,7 @@ class Studio:
                 raise self._merge_conflict(ref)
             view = self.view(ref)
             if view.feature.status == "DONE":
+                self._require_gate_b_revision(ref, view.feature)
                 return self._publish(ref)
             self._gate_b_preconditions(ref, view)
             on_branch = self.git.current_branch() == ref.branch
@@ -772,7 +773,7 @@ class Studio:
             text = self._read(ref.path)
             if note:  # F-002/C2: only gates write §11.
                 text = ft.add_director_note(text, note, "Gate B", date.today().isoformat())
-            self._set_state(ref, "DONE", "Lucas", f"Gate B: {ref.fid} DONE", text)
+            self._set_state(ref, "DONE", "Lucas", self._gate_b_message(ref), text)
             return self._publish(ref)
 
     def _gate_b_preconditions(self, ref: FeatureRef, view: View) -> None:
@@ -781,16 +782,43 @@ class Studio:
             raise Refused(f"done needs (CODE_REVIEW, Lucas), found {feature.status}.")
         if not self.git.branch_exists(ref.branch):
             raise Refused(f"{ref.branch} doesn't exist.", f"open {ref.path}")
-        rounds = feature.code_rounds
-        if not rounds or rounds[-1].verdict not in APPROVING:
-            raise Refused(f"The latest §9 round of {ref.fid} doesn't approve.", f"open {ref.path}")
+        self._require_approving_round(ref, feature)
         problems = ft.consistency_errors(feature, view.board)
         if problems:
             raise Refused(f"state mismatch: {'; '.join(problems)}", f"open {ref.path}")
         self._require_reviewed_head(ref, feature)
 
-    def _require_reviewed_head(self, ref: FeatureRef, feature: Feature) -> None:
-        """Only metadata commits may follow the reviewed commit (F-002/C18)."""
+    def _gate_b_message(self, ref: FeatureRef) -> str:
+        return f"Gate B: {ref.fid} DONE"
+
+    def _require_gate_b_revision(self, ref: FeatureRef, feature: Feature) -> None:
+        """F-002/C14, C18: a rerun publishes only what passed Gate B. `status: DONE` alone
+        proves nothing: code may have landed since, so the binding is re-proved from git."""
+        if self.git.branch_exists(ref.branch):
+            self._require_approving_round(ref, feature)
+            reviewed = self._require_reviewed_head(ref, feature)
+            if self._gate_b_message(ref) not in self.git.subjects(reviewed, ref.branch):
+                raise Refused(
+                    f"{ref.branch} has no Gate B commit after the reviewed revision.",
+                    f"open {ref.path}",
+                )
+            return
+        remote_sha = self.git.remote_branch_sha(ref.branch)
+        if remote_sha:
+            self.git.fetch()
+            if not self.git.is_ancestor(remote_sha, MAIN):
+                raise Refused(
+                    f"origin/{ref.branch} has commits that never passed Gate B.",
+                    f"git log {MAIN}..origin/{ref.branch}",
+                )
+
+    def _require_approving_round(self, ref: FeatureRef, feature: Feature) -> None:
+        rounds = feature.code_rounds
+        if not rounds or rounds[-1].verdict not in APPROVING:
+            raise Refused(f"The latest §9 round of {ref.fid} doesn't approve.", f"open {ref.path}")
+
+    def _require_reviewed_head(self, ref: FeatureRef, feature: Feature) -> str:
+        """Only metadata commits may follow the reviewed commit (F-002/C18). Returns it."""
         head = self.git.head(ref.branch)
         reviewed = feature.reviewed_commit
         if not reviewed:
@@ -808,6 +836,7 @@ class Studio:
                 "It needs a new review.",
                 f"open {ref.path}",
             )
+        return full
 
     def _commit_review_edits(self, ref: FeatureRef, dirty: list[str]) -> None:
         """F-002/C18's one exception: the Auditor's uncommitted, lane-valid edits."""

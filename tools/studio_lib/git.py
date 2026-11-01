@@ -125,6 +125,9 @@ class Git:
             "log", "-m", "--format=", "--name-only", "--no-renames", "-z", f"{start}..{end}"
         )
 
+    def subjects(self, start: str, end: str) -> list[str]:
+        return self._out("log", "--format=%s", f"{start}..{end}").splitlines()
+
     def changed_set(self, start: str) -> list[str]:
         paths = set(self.committed_paths(start)) | set(self.dirty_paths())
         return sorted(path for path in paths if not path.startswith(STUDIO_DIR))

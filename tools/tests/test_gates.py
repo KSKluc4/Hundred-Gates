@@ -1,5 +1,6 @@
 """AC6 and AC8: gates, recovery after every partial failure, against a bare remote."""
 
+import subprocess
 import unittest
 
 from helpers import BOARD, BRANCH, FEATURE, Sandbox
@@ -348,6 +349,111 @@ class DoneRecoveryTests(DoneCase):
             result = box.studio("done", "F-900")
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assert_published(box, reviewed)
+
+    def assert_late_code_refused(self, box, main_before):
+        box.set_checks(1)
+        result = box.studio("done", "F-900")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("src/late.txt", result.stderr)
+        self.assert_branches_exist(box)
+        self.assertEqual(box.remote_git("rev-parse", "main"), main_before, "nothing published")
+        tree = box.remote_git("ls-tree", "-r", "--name-only", "main")
+        self.assertNotIn("src/late.txt", tree)
+
+    def commit_late_code(self, box):
+        current = box.git("branch", "--show-current")
+        box.git("checkout", "-q", BRANCH)
+        box.write("src/late.txt", "late\n")
+        box.commit_all("late code", "src/late.txt")
+        box.git("checkout", "-q", current)
+
+    def test_code_committed_after_a_rejected_feature_push_is_refused(self):
+        """CR-1: the Auditor's reproduction, with checks red."""
+        with Sandbox() as box:
+            box.prepare_gate_b()
+            main_before = box.remote_git("rev-parse", "main")
+            box.add_remote_hook(REJECT_FEATURE)
+            box.studio("done", "F-900")
+            box.remove_remote_hook()
+            self.commit_late_code(box)
+            self.assert_late_code_refused(box, main_before)
+
+    def test_code_committed_after_a_rejected_main_push_is_refused(self):
+        with Sandbox() as box:
+            box.prepare_gate_b()
+            main_before = box.remote_git("rev-parse", "main")
+            box.add_remote_hook(REJECT_MAIN)
+            box.studio("done", "F-900")
+            box.remove_remote_hook()
+            self.commit_late_code(box)
+            self.assert_late_code_refused(box, main_before)
+
+    def test_code_committed_after_publication_keeps_the_branch(self):
+        with Sandbox() as box:
+            box.prepare_gate_b()
+            box.add_remote_hook(REJECT_DELETES)
+            box.studio("done", "F-900")
+            box.remove_remote_hook()
+            main_before = box.remote_git("rev-parse", "main")
+            self.commit_late_code(box)
+            self.assert_late_code_refused(box, main_before)
+
+    def test_removing_the_late_code_lets_the_rerun_finish(self):
+        with Sandbox() as box:
+            reviewed = box.prepare_gate_b()
+            box.add_remote_hook(REJECT_FEATURE)
+            box.studio("done", "F-900")
+            box.remove_remote_hook()
+            box.write("src/late.txt", "late\n")
+            box.commit_all("late code", "src/late.txt")
+            self.assertEqual(box.studio("done", "F-900").returncode, 1)
+            box.git("reset", "-q", "--hard", "HEAD~1")
+            result = box.studio("done", "F-900")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assert_published(box, reviewed)
+
+    def test_a_metadata_commit_after_a_failed_push_still_publishes(self):
+        with Sandbox() as box:
+            reviewed = box.prepare_gate_b()
+            box.add_remote_hook(REJECT_FEATURE)
+            box.studio("done", "F-900")
+            box.remove_remote_hook()
+            box.write(FEATURE, box.read(FEATURE).replace("**Started:** —", "**Started:** today"))
+            box.commit_all("F-900: tidy log", FEATURE)
+            result = box.studio("done", "F-900")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assert_published(box, reviewed)
+
+    def test_a_hand_set_done_never_passed_the_gate(self):
+        with Sandbox() as box:
+            box.prepare_gate_b()
+            box.edit_state("DONE", "Lucas")
+            box.commit_all("hand-set done", FEATURE, BOARD)
+            box.set_checks(1)
+            main_before = box.remote_git("rev-parse", "main")
+            result = box.studio("done", "F-900")
+            self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertIn("Gate B", result.stderr)
+            self.assertEqual(box.remote_git("rev-parse", "main"), main_before)
+
+    def test_new_commits_on_a_remote_only_branch_are_not_merged(self):
+        with Sandbox() as box:
+            box.prepare_gate_b()
+            box.add_remote_hook(REJECT_DELETES)
+            box.studio("done", "F-900")
+            box.remove_remote_hook()
+            main_before = box.remote_git("rev-parse", "main")
+            other = box.base / "elsewhere"
+            clone = ["git", "clone", "-q", "-b", BRANCH, str(box.remote), str(other)]
+            subprocess.run(clone, check=True, env=box.env)
+            (other / "src/late.txt").write_text("late\n")
+            for args in (["add", "--", "src/late.txt"], ["commit", "-q", "-m", "late"], ["push", "-q"]):
+                subprocess.run(["git", *args], cwd=other, check=True, env=box.env)
+            box.git("branch", "-q", "-D", BRANCH)
+            result = box.studio("done", "F-900")
+            self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertEqual(box.remote_git("rev-parse", "main"), main_before)
+            self.assertNotEqual(box.git("ls-remote", "origin", f"refs/heads/{BRANCH}"), "")
 
     def test_a_rerun_after_success_is_a_no_op(self):
         with Sandbox() as box:
