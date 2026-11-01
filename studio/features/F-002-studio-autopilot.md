@@ -1,10 +1,10 @@
 ---
 id: F-002
 title: Studio autopilot (tools/studio)
-status: CODE_CHANGES   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
-updated: 2026-10-31
+updated: 2026-11-01
 depends_on: [F-000, D-003, D-004]
 pillars: []              # studio infrastructure
 department: Direction      # infrastructure
@@ -638,7 +638,7 @@ may approve Gate A and set `APPROVED`.
 - [x] T9 — 64a0b0f
 - [x] T10 — 6e5517d
 
-Round 1 findings: see the Builder replies in §9.
+Round 1 and 2 findings: see the Builder replies in §9.
 
 Fixes after T10, each found by verification: 9a3355f (Godot import), 1e2de78 (`done` rerun),
 ff7f9c6 (keep awake, hermetic tests).
@@ -709,8 +709,24 @@ ff7f9c6 (keep awake, hermetic tests).
 - **ASSUMPTION-16:** C4's lock stays `.studio/lock`, and `.studio/lock.guard` is only held while
   acquiring it. **Why:** an `flock` alone can't express C4's rule that a live agent group keeps
   the lock after its tool dies.
+- **ASSUMPTION-17:** An unverifiable remote is represented by `remote_verified: false`,
+  `.studio/blocked/F-XXX.remote` (the refs before the step) and a recovery that starts with
+  `git ls-remote --refs origin | diff <that file> -`. **Why:** `&&` makes it fail closed while the
+  remote is unreachable or differs, with no new command, and `unblock` keeps doing only what
+  C11 says. `unblock` also removes that file.
+- **ASSUMPTION-18:** C11 says a local `git reset` is always enough. The recovery also restores
+  other local branches with `git update-ref`, and uses `git checkout -f`. **Why:** a reset moves one
+  branch, and a gate pushes whatever local `main` holds. `-f` because the switched-to branch can
+  hold what the rejected step wrote, and the reset that follows discards it anyway.
 
 ### Things the Auditor should look at closely
+- **Round 3:** CR-4 `_evidence()`, `_compare_remote()`, `_compare_local()`, `_recovery()`. Evidence
+  is read before validation and starts at the worst case (`Inspection` defaults). 16 new tests,
+  and 12 of them run the printed recovery in a shell against the bare remote; that is what
+  exposed the `HEAD` bug in the CR-4 reply. A mutation check of 24 breaks caught 21. One survivor
+  was a missing test, now caught, and one showed an ordering that didn't matter, so that code was
+  merged. The third was my own contrived break (dropping remote evidence only with no local
+  commits); the plain drop is caught by the tests that assert `remote_changes`.
 - **Round 2:** CR-1 `_require_gate_b_revision()`, CR-2 `Lock.__enter__()`, CR-3
   `_failed_inspection()` and the `run` catch-all. A mutation check on these 10 new guards found
   3 weak tests and a test that leaked processes; all fixed, and all 10 are now caught.
@@ -742,7 +758,7 @@ ff7f9c6 (keep awake, hermetic tests).
 
 ### How to test
 ```sh
-tools/test_studio                   # expect 227 tests, OK
+tools/test_studio                   # expect 243 tests, OK
 tools/test                          # expect 130/130
 tools/lint                          # expect exit 0
 tools/check_core_purity             # expect "core purity ok"
@@ -1058,6 +1074,28 @@ revision guard does not filter unrelated local-main commits.
 
 **Round 2 verdict:** `CHANGES_REQUESTED`. CR-1–CR-3 are `✔ resolved`; CR-4 is the
 single blocking finding. Set `status: CODE_CHANGES`, `owner_now: Builder`.
+
+> **Builder reply (CR-4):** fixed in 7cbe7fb. `_agent_step` now calls `_evidence()` before validating.
+> It compares the remote and the local state separately, and `Inspection` starts at the worst
+> case, so what can't be read stays unverified. `_failed_inspection()` is gone: a broken validator
+> adds its error to the same `Inspection` and loses neither the evidence nor earlier errors. Your
+> reproduction now keeps ref/old/new in the blocked record and the notification, and the recovery
+> runs end to end, for both `refs/heads/rogue` and `refs/heads/main`.
+>
+> An unverifiable remote is explicit: `remote_verified: false`, and the recovery starts with
+> `git ls-remote --refs origin | diff .studio/blocked/F-XXX.remote -`, so nothing is discarded or
+> unblocked while the remote is unreachable or differs (ASSUMPTION-17).
+>
+> Beyond the finding, same root cause, all verified first:
+> - **`HEAD` in the remote map.** `ls-remote` lists it, so a moved `main` also printed
+>   `git push --force origin <old>:HEAD`. It sorts first and git refuses it, so the chain stopped
+>   before repairing `main`, and the older `assertIn` test hid that. Fixed with `--refs`, which also
+>   drops the `^{}` entry of an annotated tag.
+> - **A rewound `HEAD`** printed only `unblock`. **A corrupt `.git/HEAD`** printed no reset.
+> - **A moved local `main`** was detected but left moved, and a later gate would push it. Other
+>   local refs are now restored (ASSUMPTION-18), and their names appear in the error.
+>
+> The CR-3 behaviour is unchanged. Its regressions still pass.
 
 ---
 
