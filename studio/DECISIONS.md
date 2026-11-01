@@ -21,7 +21,7 @@
 ---
 
 ## D-007 — Combat runs on a shared step grid
-- **Status:** PROPOSED
+- **Status:** ACCEPTED
 - **Date:** 2026-11-01 · **Decided by:** Lucas (proposed by Combat, from the F-003 plan review)
 - **Context:** Hits depend on exact timing: the vulnerable dash tail (F-001/C8), short active
   phases, and hitstop on separate entity clocks. Testing hits once per physics tick gives
