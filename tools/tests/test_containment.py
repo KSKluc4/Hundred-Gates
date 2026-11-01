@@ -165,6 +165,13 @@ class AgentFailureTests(unittest.TestCase):
             child = json.loads((box.fake_dir / "out-0.json").read_text())["child_pid"]
             self.assertFalse(alive(child))
 
+    def test_a_finished_agent_leaves_nothing_running(self):
+        with Sandbox("PLAN_REVIEW", "Auditor") as box:
+            box.script([["spawn_child"], *auditor_plan(1, "APPROVE")])
+            self.assertEqual(box.studio("run", "F-900").returncode, 0)
+            child = json.loads((box.fake_dir / "out-0.json").read_text())["child_pid"]
+            self.assertFalse(alive(child))
+
     def test_a_blocked_feature_refuses_every_mutating_command(self):
         with Sandbox("PLAN_REVIEW", "Auditor") as box:
             box.script([["exit", 1]])

@@ -846,12 +846,20 @@ class Studio:
             self.git.push(branch)
         if self.git.current_branch() != MAIN:
             self.git.checkout(MAIN)
-        # Keeps an unpushed merge commit intact when a rerun has to catch up with origin.
-        self.git.pull_rebase(MAIN, keep_merges=True)
+        self.git.fetch()
+        origin_main = f"origin/{MAIN}"
+        diverged = not (
+            self.git.is_ancestor(origin_main, MAIN) or self.git.is_ancestor(MAIN, origin_main)
+        )
+        if self.git.is_ancestor(head, MAIN) and diverged:
+            # A rerun with an unpushed merge: rebasing would replay the feature's commits.
+            if not self.git.merge_no_ff(origin_main, f"Merge {origin_main}"):
+                raise self._merge_conflict(ref)
+        else:
+            self.git.pull_rebase(MAIN)
         if not self.git.is_ancestor(head, MAIN):
             title = self._load_worktree(ref).title
-            merged = self.git.merge_no_ff(branch, f"Merge {ref.fid}: {title}")
-            if not merged:
+            if not self.git.merge_no_ff(branch, f"Merge {ref.fid}: {title}"):
                 raise self._merge_conflict(ref)
         self.git.push(MAIN)
         self.git.fetch()

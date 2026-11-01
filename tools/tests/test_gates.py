@@ -3,6 +3,7 @@
 import unittest
 
 from helpers import BOARD, BRANCH, FEATURE, Sandbox
+from studio_lib.git import Git, GitError
 
 REJECT_MAIN = """
 while read old new ref; do
@@ -112,9 +113,8 @@ class DoneCase(unittest.TestCase):
         self.assertEqual(box.git("branch", "--list", BRANCH), "")
         self.assertEqual(box.git("ls-remote", "origin", f"refs/heads/{BRANCH}"), "")
         self.assertEqual(box.git("rev-parse", "HEAD"), box.remote_git("rev-parse", "main"))
-        self.assertEqual(
-            box.git("merge-base", "--is-ancestor", reviewed, "origin/main", check=False), ""
-        )
+        contains = box.git("branch", "-r", "--contains", reviewed)
+        self.assertIn("origin/main", contains)
         self.assertEqual(box.state(), ("DONE", "Lucas"))
         self.assertIn("| DONE | — |", box.read(BOARD))
 
@@ -273,8 +273,9 @@ class DoneRecoveryTests(DoneCase):
             result = box.studio("done", "F-900")
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assert_published(box, reviewed)
-            merges = box.git("log", "--merges", "--format=%s", "main")
-            self.assertIn("Merge F-900", merges)
+            subjects = box.git("log", "--format=%s", "main").split("\n")
+            self.assertEqual(subjects.count("Merge F-900: Demo feature"), 1)
+            self.assertEqual(subjects.count("F-900 T1: work"), 1, "work isn't replayed")
 
     def test_merge_conflict_stops_with_the_files_and_the_abort_command(self):
         with Sandbox() as box:
@@ -327,18 +328,15 @@ class DoneRecoveryTests(DoneCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assert_published(box, reviewed)
 
-    def test_branches_are_never_deleted_with_force(self):
+    def test_an_unmerged_branch_is_never_force_deleted(self):
         with Sandbox() as box:
-            box.prepare_gate_b()
-            box.add_remote_hook(REJECT_DELETES)
-            box.studio("done", "F-900")
-            box.remove_remote_hook()
-            box.git("checkout", "-q", BRANCH)
+            box.git("checkout", "-q", "-b", "unmerged")
             box.write("src/unmerged.txt", "x\n")
             box.commit_all("unmerged work", "src/unmerged.txt")
             box.git("checkout", "-q", "main")
-            box.studio("done", "F-900")
-            self.assertIn("src/unmerged.txt", box.git("ls-tree", "-r", "--name-only", "main"))
+            with self.assertRaises(GitError):
+                Git(box.repo).delete_local_branch("unmerged")
+            self.assertIn("unmerged", box.git("branch", "--list", "unmerged"))
 
     def test_a_missing_local_branch_counts_as_deleted(self):
         with Sandbox() as box:

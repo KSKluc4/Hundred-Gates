@@ -149,11 +149,10 @@ class Git:
     def fetch(self) -> None:
         self.run("fetch", REMOTE)
 
-    def pull_rebase(self, branch: str, keep_merges: bool = False) -> None:
+    def pull_rebase(self, branch: str) -> None:
         """A failed rebase is aborted so the failure leaves the tree as it was."""
-        mode = "--rebase=merges" if keep_merges else "--rebase"
         try:
-            self.run("pull", mode, REMOTE, branch)
+            self.run("pull", "--rebase", REMOTE, branch)
         except GitError:
             if Path(self.root, ".git", "rebase-merge").exists():
                 self.run("rebase", "--abort", check=False)
