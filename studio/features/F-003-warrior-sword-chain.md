@@ -1,8 +1,8 @@
 ---
 id: F-003
 title: Warrior sword chain + hit/hurt + hitstop + training dummy
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
 depends_on: [F-000, F-001, D-002, D-005]
@@ -504,6 +504,8 @@ The goal is one clear, isolated player outcome serving pillar 2, with explicit s
 
 > **Planner reply (Combat):** accepted. Changed §3 (new chosen option, two rejected options), §4 C1 and new C15, §5 AC2, AC3, AC14 and new AC26, §6 T5, T8, T9, T11. Each tick now splits into combat steps on a shared 1/120 s grid (proposed as D-007), so 30/60/120 ticks/s sample the same contact instants. Each entity's state is read on its own clock at that instant, so nothing maps between clocks. `is_dash_protected()` checks the exact window and `is_invulnerable()` never decides a hit. Hitstop is consumed first in a step and overshoot is carried. `active` ≥ one step guarantees a contact instant. AC26 has the worked oracle with exact times.
 
+✔ resolved (round 2) — C15 and AC26 replace the original once-per-tick pipeline with an explicit contact timeline and exact protection checks. Two remaining duration/grid boundary cases are recorded separately in PR-11 and PR-12 below.
+
 ### PR-2 🔴 Hurt i-frames begin at two different points
 
 **Location:** §3 hit application step 4; §5 AC11 versus AC15; `studio/design/combat.md` → Hit / hurt system.
@@ -515,6 +517,8 @@ The goal is one clear, isolated player outcome serving pillar 2, with explicit s
 **Suggested fix:** Make AC15 agree with the on-hit rule and state explicitly whether the timer ages during knockback, preserving C7's pause during hitstop. If delayed i-frames are intended instead, explicitly reconcile the design doc and AC11 and define protection during knockback. Add boundary checks for the chosen rule.
 
 > **Planner reply (Combat):** accepted. Kept the on-hit rule from the design doc. Changed §5 AC14 and AC15: the timer starts at the contact instant, counts down during knockback and pauses in hitstop. AC14 has the boundary: with defaults, protected until T + 0.65. §3 rejects the delayed version, and `design/combat.md` now states the rule.
+
+✔ resolved (round 2) — AC14/AC15 and the design doc consistently start hurt i-frames on contact, count them during knockback and pause them during hitstop.
 
 ### PR-3 🔴 Immediate recovery dash cancels contradict the retained cooldown
 
@@ -528,6 +532,8 @@ The goal is one clear, isolated player outcome serving pillar 2, with explicit s
 
 > **Planner reply (Combat):** accepted. Changed §4 C11, §5 AC8 and the feel test, and §3 rejects the cooldown bypass. AC8 now has the three cases you listed, and AC22's last dash exercises the middle one (fires at 1.95). `design/combat.md` is updated.
 
+✔ resolved (round 2) — C11, AC8 and the feel test preserve cooldown eligibility and cancel recovery only when the dash fires.
+
 ### PR-4 🟡 Define arbitration between buffered actions and interrupted movement states
 
 **Location:** §5 AC4–AC8/AC15; §6 T7.
@@ -539,6 +545,8 @@ The goal is one clear, isolated player outcome serving pillar 2, with explicit s
 **Suggested fix:** Add a transition/priority table for simultaneous eligible actions and incoming hits, including buffer disposal, dash interruption/cooldown and repeated knockback. Add focused tests for both buffers at recovery/knockback exit and for a hit during the vulnerable dash tail.
 
 > **Planner reply (Combat):** accepted. New §4 C17 and §5 AC27. The dash wins over the attack, and the losing attack is discarded. A dash that can't fire yet doesn't block an attack that can. A hit in the dash tail ends the dash and starts the full cooldown. Repeated knockback replaces, never accumulates. Also settled: any fired dash resets the chain, and zero knockback skips the `KNOCKBACK` state.
+
+✔ resolved (round 2) — C17/AC27 define action priority, losing-buffer disposal, interrupted-dash cooldown and replacement knockback.
 
 ### PR-5 🟡 Define eligibility while applying a batch of hit events
 
@@ -552,6 +560,8 @@ The goal is one clear, isolated player outcome serving pillar 2, with explicit s
 
 > **Planner reply (Combat):** accepted. New §4 C16 and §5 AC28, and §4 C8 and §6 T6 changed. The resolver returns candidates, and a `HitEvent` exists only for a hit that lands. The target is rechecked per candidate at apply time, and only a landed hit marks the hit set. Simultaneous attacks trade: attackers aren't rechecked, so registration order never decides an exchange. Two hits on one player resolve by order, and the skipped one stays unmarked.
 
+✔ resolved (round 2) — C16/AC28 distinguish candidates from landed hits, specify target rechecks and preserve simultaneous trades.
+
 ### PR-6 🟡 Resolve geometry using an explicit authoritative position
 
 **Location:** §6 T9; §5 AC12. Related: `src/core/player/player_motor.gd:122` and `src/entities/player/player.gd:33`.
@@ -563,6 +573,8 @@ The goal is one clear, isolated player outcome serving pillar 2, with explicit s
 **Suggested fix:** Specify where shape positions come from and when collision-corrected positions become authoritative in the hit timeline from PR-1. Add a scene case where a dashing or knocked-back body reaches a wall while a hitbox is active, verifying the resolver uses the intended body position.
 
 > **Planner reply (Combat):** accepted. Changed §4 C15 and §6 T13, new §5 AC29. Bodies move and logic positions sync inside every step, before the contact instant, so the collision-corrected body position is the one read for hitbox origins and hurtbox centers. AC29 is the scene case, for a dash and for knockback.
+
+✔ resolved (round 2) — C15/T13 resolve geometry after body movement and position synchronization; AC29 checks the wall cases.
 
 ### PR-7 🟡 Complete the new data validation and hot-reload contract
 
@@ -576,6 +588,8 @@ The goal is one clear, isolated player outcome serving pillar 2, with explicit s
 
 > **Planner reply (Combat):** accepted. New §4 C18, and §5 AC4, AC12 and AC24 changed. Player scaling comes from a new `ClassData.knockback_scale` (1.0, D-005), and C17 settles chain window vs recovery: the window only adds time after recovery. Two things I found while checking `main`: `test_data_validation.gd` builds data by hand, so the new rules go in `validate_combat()`, and F-001's `CACHE_MODE_IGNORE` wouldn't reload external attack files, so reload uses `CACHE_MODE_IGNORE_DEEP` (§2). `knockback_scale` also moved out of `DummyData` to a scene instance value, matching the design doc (§4 C2, §6 T2, T14).
 
+✔ resolved (round 2) — C18 supplies validation, atomic loading, latching and HP rules; C17 settles the chain window and AC12 specifies player scaling. The new step-rate reload interaction is PR-12 below.
+
 ### PR-8 🟡 Define snapshot identity and the scene snapshot boundary
 
 **Location:** §3 owner IDs/registration order; §4 C5; §5 AC23; §6 T5/T9/T10.
@@ -587,6 +601,8 @@ The goal is one clear, isolated player outcome serving pillar 2, with explicit s
 **Suggested fix:** Define stable scene-supplied identities, registry restoration order and one snapshot boundary after the complete scene step with no pending events/commands. Include pulse state and reconstruct the player, both dummies and resolver as fresh objects in a partial-hit-set continuation test.
 
 > **Planner reply (Combat):** accepted. New §4 C19, and §4 C5, §5 AC23 and §6 T11 changed. Scene-set `combat_id`s go in hit sets, registration order is the runner's exported list, and the one boundary is after `finish_tick()`. `from_dict()` refuses mismatched ids or order. AC23 restores into fresh objects, with a partial hit set and pulse state.
+
+✔ resolved (round 2) — C19/AC23 define stable identities, registry order, a completed-scene snapshot boundary and fresh-object continuation with pulse/hit-set state.
 
 ### PR-9 🟡 Separate core coverage from scene coverage and give position tolerance units
 
@@ -600,6 +616,8 @@ The goal is one clear, isolated player outcome serving pillar 2, with explicit s
 
 > **Planner reply (Combat):** accepted. §5 now opens with an oracle: 0.01 tiles and ± 1 µs. AC22 is a worked schedule ending in 4 hits, 52 damage, dummy HP 148, player at (3, 0). AC25 is a coverage map, AC31 checks the runner, and §6 T17 is the scene-test task. §6 was also renumbered to T1–T18 so the Builder gets a clean order. Old T7 split into T5, T8 and T9, old T9 into T11 and T13, and old T10 into T10 and T14. T5 and T11 are new work the plan was hiding.
 
+✔ resolved (round 2) — AC25/T17 separate core and scene coverage, AC31 checks runner ownership, and the common-time oracle gives numeric distance and timing tolerances. AC22's stated default-data hit and cooldown times are consistent with C15.
+
 ### PR-10 🟡 Specify the debug reset and pulse lifecycle
 
 **Location:** §5 AC18/AC19; §6 T10/T12.
@@ -611,6 +629,34 @@ The goal is one clear, isolated player outcome serving pillar 2, with explicit s
 **Suggested fix:** State the complete reset contract and pulse phase transitions, including toggle-off, KO and respawn, and define what `pulse_interval` measures. Add small core checks for the pulse lifecycle and a debug reset check.
 
 > **Planner reply (Combat):** accepted. New §4 C20, §5 AC19 changed and new AC30. `pulse_interval` is start to start. Toggle-off and KO end a pulse at once, and toggle-on and respawn start a new cycle at telegraph. R re-runs `setup()` on every combatant, and only pulse on/off and shake on/off survive.
+
+✔ resolved (round 2) — C20/AC19/AC30 specify pulse transitions, interval meaning and the complete reset state.
+
+<!-- review-round: 2 verdict: CHANGES_REQUESTED -->
+
+**Verdict:** CHANGES_REQUESTED — two blocking findings (PR-11, PR-12).
+
+The previous Planner replies were checked first; PR-1–PR-10 are resolved as annotated above. The goal, pillar alignment, explicit scope and alternatives remain sound. The task split and coverage map address the earlier integration gaps. The shared-step approach is coherent for the default oracle, but two configurations permitted by C18 still invalidate C15's guarantee that active phases cannot vanish.
+
+### PR-11 🔴 A zero-windup attack can finish before its first contact check
+
+**Location:** §4 C15, step order and “No vanished phases”; §4 C18 `AttackData`/`DummyData` bounds; §5 AC10/AC26.
+
+**Problem:** At rate 120, C18 permits `windup = 0` and `active = 1/120`. An attack pressed at tick start T is active on `[T, T + 1/120)`. C15 advances before checking contact, so the first check is at `T + 1/120`, when the half-open active window has already ended. There was no contact check at T after the press started the attack. A stationary overlapping target is never hit. The same failure occurs when toggling on a pulse with `pulse_telegraph = 0`, `pulse_active = 1/120` and a longer interval. The interval arithmetic holds at all three required physics rates.
+
+**Why it matters:** The one-step minimum does not guarantee a contact for an active phase beginning at the action-start boundary. Valid tuning can silently remove an entire sword hit or pulse, violating C15 and AC10. AC26 tests a positive windup, so it misses this case.
+
+**Suggested fix:** Define how the action-start boundary is sampled, or explicitly reject the duration combination that has no sample. Reconcile that rule with the half-open window and C18 bounds. Add 30/60/120 Hz core oracles for both a zero-windup sword hit and a newly enabled zero-telegraph pulse at the minimum active duration, with a stationary overlapping target.
+
+### PR-12 🔴 Lowering the combat step rate can skip a latched active phase
+
+**Location:** §4 C15 minimum active duration; §4 C18 reload rules for running hits, pulses and `combat_step_rate`; §5 AC24.
+
+**Problem:** C18 validates replacement resources against the new rate, preserves running attacks and pulses on their latched values, and applies the new rate next tick without checking those latched values. For example, start at rate 240 with `windup = 0.036` and `active = 1/240`. Reload at scene time `1/30` to rate 120, also changing the replacement attack's active duration to `1/120`, so the new data validates. The running hit retains its old active interval `[0.036, 0.0401667)`. At rate 240 it would be checked at 0.0375; after reload the next contact is 0.0416667 and the whole phase is skipped. A latched pulse has the same exposure.
+
+**Why it matters:** A valid atomic reload can invalidate the minimum-duration assumption behind C15 and make an in-progress hit disappear despite the latching contract. Validating only the newly loaded resources cannot prevent this.
+
+**Suggested fix:** Specify a rate-change policy that accounts for every running latched attack and pulse before changing the grid. For example, reject the entire reload when a retained active duration is below the new step minimum, or define when the rate change is deferred. Reconcile the policy with C18's atomicity and next-tick rule, and add a reload oracle for this 240 → 120 case covering both sword and pulse continuation.
 
 ---
 
