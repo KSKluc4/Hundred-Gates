@@ -27,3 +27,24 @@ resolve_godot() {
 	echo "  export GODOT_BIN=/path/to/godot" >&2
 	return 1
 }
+
+# Refreshes Godot's import and class caches. `--import` restores the editor's open tabs and
+# saves them on exit, which rewrites the indentation of any text file left open there
+# (F-002 §8). So it runs with the tab list hidden, and the list comes back afterwards.
+godot_import() {
+	local godot="$1"
+	local layout="$PROJECT_ROOT/.godot/editor/editor_layout.cfg"
+	local hidden="$layout.hidden-for-import"
+	local status=0
+	if [ -f "$hidden" ]; then
+		mv -f "$hidden" "$layout" # Left behind by an interrupted run.
+	fi
+	if [ -f "$layout" ]; then
+		mv "$layout" "$hidden"
+	fi
+	"$godot" --headless --path "$PROJECT_ROOT" --import >/dev/null || status=$?
+	if [ -f "$hidden" ]; then
+		mv -f "$hidden" "$layout"
+	fi
+	return "$status"
+}
