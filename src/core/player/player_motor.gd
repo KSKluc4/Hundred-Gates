@@ -10,7 +10,7 @@ signal invulnerability_changed(is_invulnerable: bool)
 ## F-003/C12: from_dict() sends no change signals, so views re-sync from state on this.
 signal state_restored
 
-enum State { IDLE, MOVING, DASHING }
+enum State { IDLE, MOVING, DASHING, ATTACKING }
 
 ## F-003 T2: CombatTiming owns it, this name stays for F-001's code and tests.
 const TIME_EPSILON: float = CombatTiming.TIME_EPSILON
@@ -33,6 +33,9 @@ const SNAPSHOT_KEYS: Array[String] = [
 	"has_iframe_window",
 	"iframe_start",
 	"iframe_end",
+	"has_buffered_attack",
+	"buffered_attack_age",
+	"attack_chain",
 ]
 
 var _class_data: ClassData
@@ -59,10 +62,15 @@ var _has_iframe_window: bool = false
 var _iframe_start: float = 0.0
 var _iframe_end: float = 0.0
 
+var _has_buffered_attack: bool = false
+var _buffered_attack_age: float = 0.0
+var _attack_chain: AttackChain = AttackChain.new()
+
 # Per-tick only: never retained past finish_tick(), so never in the snapshot (C5).
 var _move_input: Vector2 = Vector2.ZERO
 var _aim_input: Vector2 = Vector2.ZERO
 var _dash_pressed: bool = false
+var _attack_pressed: bool = false
 var _fired_this_step: bool = false
 
 
@@ -93,6 +101,7 @@ func apply_data(class_data: ClassData, tunables: PlayerCombatTunables) -> bool:
 		return false
 	_class_data = class_data
 	_tunables = tunables
+	_attack_chain.clamp_next_index(class_data.attack_chain.size())
 	return true
 
 
@@ -104,6 +113,8 @@ func submit(command: Command) -> void:
 		_aim_input = (command as AimCommand).direction.normalized()
 	elif command is DashCommand:
 		_dash_pressed = true
+	elif command is AttackCommand:
+		_attack_pressed = true
 
 
 ## F-001/C15, step 2: one tick is one step that long. F-001's API, with its behavior.
@@ -121,16 +132,15 @@ func step(duration: float) -> void:
 	_fired_this_step = false
 
 	_update_facing()
-	if _dash_pressed:
-		_has_buffered_dash = true
-		_buffered_dash_age = 0.0
-		_dash_pressed = false
+	_take_presses()
 	_run_phases(duration)
 	if _has_buffered_dash and _buffered_dash_age > _buffer_window() + TIME_EPSILON:
 		_has_buffered_dash = false
+	if _has_buffered_attack and _buffered_attack_age > _buffer_window() + TIME_EPSILON:
+		_has_buffered_attack = false
 
 	_position += _tick_displacement
-	if _state != State.DASHING:
+	if _is_free():
 		var is_moving: bool = _velocity != Vector2.ZERO or _move_input != Vector2.ZERO
 		_state = State.MOVING if is_moving else State.IDLE
 	_update_invulnerability(step_start)
@@ -160,6 +170,9 @@ func to_dict() -> Dictionary:
 		"has_iframe_window": _has_iframe_window,
 		"iframe_start": _iframe_start,
 		"iframe_end": _iframe_end,
+		"has_buffered_attack": _has_buffered_attack,
+		"buffered_attack_age": _buffered_attack_age,
+		"attack_chain": _attack_chain.to_dict(),
 	}
 
 
@@ -185,6 +198,9 @@ func from_dict(snapshot: Dictionary) -> void:
 	_has_iframe_window = snapshot["has_iframe_window"]
 	_iframe_start = snapshot["iframe_start"]
 	_iframe_end = snapshot["iframe_end"]
+	_has_buffered_attack = snapshot["has_buffered_attack"]
+	_buffered_attack_age = snapshot["buffered_attack_age"]
+	_attack_chain.from_dict(snapshot["attack_chain"])
 	_clear_commands()
 	state_restored.emit()
 
@@ -224,12 +240,32 @@ func has_buffered_dash() -> bool:
 	return _has_buffered_dash
 
 
+func has_buffered_attack() -> bool:
+	return _has_buffered_attack
+
+
+## Read-only for callers: the chain changes only through commands (G8).
+func get_attack_chain() -> AttackChain:
+	return _attack_chain
+
+
+## F-003/C15: the exact check. is_invulnerable() never decides a hit.
+func is_dash_protected() -> bool:
+	return (
+		_has_iframe_window
+		and _time >= _iframe_start - TIME_EPSILON
+		and _time < _iframe_end - TIME_EPSILON
+	)
+
+
 func _accepts(class_data: ClassData, tunables: PlayerCombatTunables) -> bool:
 	if class_data == null or tunables == null:
 		push_error("PlayerMotor data rejected: missing resource")
 		return false
 	var errors: PackedStringArray = class_data.validate()
 	errors.append_array(tunables.validate())
+	errors.append_array(tunables.validate_combat())
+	errors.append_array(class_data.validate_combat(tunables.combat_step_rate))
 	if not errors.is_empty():
 		push_error("PlayerMotor data rejected: %s" % ", ".join(errors))
 		return false
@@ -254,6 +290,9 @@ func _reset_state() -> void:
 	_has_iframe_window = false
 	_iframe_start = 0.0
 	_iframe_end = 0.0
+	_has_buffered_attack = false
+	_buffered_attack_age = 0.0
+	_attack_chain.reset()
 	_tick_displacement = Vector2.ZERO
 	_clear_commands()
 
@@ -262,6 +301,43 @@ func _clear_commands() -> void:
 	_move_input = Vector2.ZERO
 	_aim_input = Vector2.ZERO
 	_dash_pressed = false
+	_attack_pressed = false
+
+
+func _build_live_hitbox() -> Hitbox:
+	return _attack_chain.build_hitbox(_combat_id, _team, _position)
+
+
+func _is_protected() -> bool:
+	return is_dash_protected()
+
+
+func _running_window() -> PackedFloat64Array:
+	return _attack_chain.get_running_window()
+
+
+func _hurtbox_radius() -> float:
+	return _class_data.hurtbox_radius_tiles
+
+
+func _is_free() -> bool:
+	return _state == State.IDLE or _state == State.MOVING
+
+
+func _is_in_recovery() -> bool:
+	return _state == State.ATTACKING and _attack_chain.get_phase() == AttackChain.Phase.RECOVERY
+
+
+## F-001/C15, F-003/C17: every press enters its buffer, and fires from there.
+func _take_presses() -> void:
+	if _dash_pressed:
+		_has_buffered_dash = true
+		_buffered_dash_age = 0.0
+		_dash_pressed = false
+	if _attack_pressed:
+		_has_buffered_attack = true
+		_buffered_attack_age = 0.0
+		_attack_pressed = false
 
 
 func _buffer_window() -> float:
@@ -280,29 +356,60 @@ func _update_facing() -> void:
 func _run_phases(delta: float) -> void:
 	var remaining: float = delta
 	while remaining > 0.0:
-		if _state != State.DASHING and _can_fire_buffered_dash():
-			_fire_dash()
+		_fire_buffered_actions()
 		var segment: float = 0.0
-		if _state == State.DASHING:
-			segment = _advance_dash(remaining)
-		else:
-			segment = _advance_normal(remaining)
+		match _state:
+			State.DASHING:
+				segment = _advance_dash(remaining)
+			State.ATTACKING:
+				segment = _advance_attack(remaining)
+			_:
+				segment = _advance_normal(remaining)
 		_time += segment
 		remaining -= segment
 		if _has_buffered_dash:
 			_buffered_dash_age += segment
+		if _has_buffered_attack:
+			_buffered_attack_age += segment
+
+
+## F-003/C17: the dash wins, whatever the press order, and an attack that could also fire
+## now is discarded. A dash that can't fire yet doesn't block an attack that can.
+func _fire_buffered_actions() -> void:
+	if _can_fire_buffered_dash():
+		if _can_fire_buffered_attack():
+			_has_buffered_attack = false
+		_fire_dash()
+	elif _can_fire_buffered_attack():
+		_fire_attack()
 
 
 func _can_fire_buffered_dash() -> bool:
 	return (
 		_has_buffered_dash
+		and (_is_free() or _is_in_recovery())
 		and _cooldown_remaining <= 0.0
 		and _buffered_dash_age <= _buffer_window() + TIME_EPSILON
 	)
 
 
+func _can_fire_buffered_attack() -> bool:
+	if not _has_buffered_attack or _buffered_attack_age > _buffer_window() + TIME_EPSILON:
+		return false
+	if _is_in_recovery():
+		return not _attack_chain.is_finisher()  # AC6: only a dash cancels a finisher's recovery.
+	return _is_free()
+
+
+func _fire_attack() -> void:
+	_has_buffered_attack = false
+	_attack_chain.start(_class_data.attack_chain, _facing)
+	_state = State.ATTACKING
+
+
 func _fire_dash() -> void:
 	_has_buffered_dash = false
+	_attack_chain.reset()  # F-003/C17: any dash that fires resets the chain.
 	_dash_distance = _class_data.dash_distance
 	_dash_duration = _class_data.dash_duration
 	_dash_iframe_duration = _class_data.dash_iframe_duration
@@ -336,19 +443,35 @@ func _end_dash() -> void:
 	dash_ended.emit()
 
 
-## Returns the time consumed. Stops exactly at cooldown expiry if a dash is waiting for it.
+## Returns the time consumed.
 func _advance_normal(limit: float) -> float:
-	var segment: float = limit
-	if _cooldown_remaining > 0.0 and _has_buffered_dash:
-		segment = minf(limit, _cooldown_remaining)
-	_integrate_movement(segment)
+	var segment: float = _stop_at_cooldown_expiry(limit)
+	_integrate_movement(segment, _move_input * _class_data.move_speed)
 	_cooldown_remaining = maxf(0.0, _cooldown_remaining - segment)
+	_attack_chain.advance_window(segment)
 	return segment
 
 
+## AC7: rooted, whatever the move input says. Returns the time consumed.
+func _advance_attack(limit: float) -> float:
+	var segment: float = minf(_stop_at_cooldown_expiry(limit), _attack_chain.get_phase_time_left())
+	_integrate_movement(segment, Vector2.ZERO)
+	_cooldown_remaining = maxf(0.0, _cooldown_remaining - segment)
+	_attack_chain.advance(segment, _class_data.attack_chain_window)
+	if _attack_chain.get_phase() == AttackChain.Phase.NONE:
+		_state = State.IDLE
+	return segment
+
+
+## A waiting dash fires at the exact instant its cooldown ends.
+func _stop_at_cooldown_expiry(limit: float) -> float:
+	if _cooldown_remaining > 0.0 and _has_buffered_dash:
+		return minf(limit, _cooldown_remaining)
+	return limit
+
+
 ## F-001/C15 step d: exact integral of piecewise-constant acceleration, not Euler steps.
-func _integrate_movement(duration: float) -> void:
-	var target: Vector2 = _move_input * _class_data.move_speed
+func _integrate_movement(duration: float, target: Vector2) -> void:
 	var time_left: float = _ramp_toward(
 		_slowdown_end(target), _class_data.move_decel_time, duration
 	)
