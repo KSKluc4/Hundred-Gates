@@ -1,8 +1,8 @@
 ---
 id: F-003
 title: Warrior sword chain + hit/hurt + hitstop + training dummy
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
 depends_on: [F-000, F-001, D-002, D-005]
@@ -264,6 +264,112 @@ Severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion. Example finding:>
 ### PR-1 🔴 <title>
 <What's wrong, where, why it matters, what you'd suggest.>
 > **Planner reply:** <accepted / rejected + reason / changed §X>
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Verdict:** CHANGES_REQUESTED — three blocking findings (PR-1–PR-3).
+
+The goal is one clear, isolated player outcome serving pillar 2, with explicit scope boundaries. The options explain real trade-offs and respect the project's offline-first architecture. The blocking issues are timing and action-rule conflicts; the remaining findings identify contracts the Builder would otherwise have to invent.
+
+### PR-1 🔴 Specify the hit timeline, including partial-tick active and invulnerable windows
+
+**Location:** §3 chosen resolver; §4 C1/C7/C11; §5 AC2/AC14/AC22; §6 T7/T9. Related: F-001 §4 C8/C15 and `src/core/player/player_motor.gd:199`.
+
+**Problem:** T9 resolves once after every motor has consumed the whole tick, and T7 exposes only the current active hitbox. There is no rule for a phase that starts and ends inside that tick, or for the exact instant at which i-frames protect against a hit. F-001's `is_invulnerable()` deliberately reports whether *any* dash i-frame interval overlapped the tick; it is not immunity at the hit instant. With the default 0.11 s window, the 30 Hz tick [0.10, 0.1333) reports invulnerable even though its tail is vulnerable. A contact at 0.12 s can therefore be rejected at 30 Hz and accepted at 120 Hz. Short attack phases introduced by tuning can also disappear before the resolver sees them. Per-entity hitstop further requires a rule for mapping these intervals between independently paused clocks.
+
+**Why it matters:** The described pipeline does not establish how to satisfy C1/G1, preserve F-001's exact dash contract, and still punish the vulnerable tail in AC14. Applying `delta` to timers alone does not resolve this conflict.
+
+**Suggested fix:** Specify the authoritative contact time/interval, partial-tick phase handling, hitstop overshoot handling and the mapping to each entity's clock. Require exact i-frame checks through the interval API rather than the presentation overlap flag. Add a common-time 30/60/120 Hz oracle covering a contact after i-frame expiry within the same tick, and an active phase wholly inside one tick.
+
+### PR-2 🔴 Hurt i-frames begin at two different points
+
+**Location:** §3 hit application step 4; §5 AC11 versus AC15; `studio/design/combat.md` → Hit / hurt system.
+
+**Problem:** AC11 and the design doc apply hurt i-frames on hit, after initializing knockback and hitstop. AC15 instead says they apply “Afterwards,” following the `KNOCKBACK` state. These produce different protection during knockback and different expiry times: with the defaults, starting the 0.6 s timer on hit leaves 0.48 s after the 0.12 s knockback, excluding paused hitstop; starting it afterwards leaves the full 0.6 s.
+
+**Why it matters:** This is an unflagged conflict with the department design doc and changes whether the player can be hit repeatedly during knockback.
+
+**Suggested fix:** Make AC15 agree with the on-hit rule and state explicitly whether the timer ages during knockback, preserving C7's pause during hitstop. If delayed i-frames are intended instead, explicitly reconcile the design doc and AC11 and define protection during knockback. Add boundary checks for the chosen rule.
+
+### PR-3 🔴 Immediate recovery dash cancels contradict the retained cooldown
+
+**Location:** §4 C11 and must-not-break; §5 AC8 and manual dash-cancel check. Related: F-001 AC11/AC12.
+
+**Problem:** AC8 requires a dash pressed during recovery to fire immediately, including a buffered dash at recovery start, without a cooldown condition. C11 preserves F-001's rule that a new dash cannot fire until cooldown ends. This occurs with default data: dash at 0, end at 0.15, start a missed hit at 1/6 s, then press dash during its recovery at 1/3 s. Cooldown lasts until 0.50 s, so both requirements cannot hold.
+
+**Why it matters:** The Builder must either bypass a required defensive cooldown or fail the new dash-cancel AC. The manual promise “instantly, every time” has the same conflict.
+
+**Suggested fix:** State that recovery cancellation fires immediately only when dash cooldown permits it; otherwise apply the existing buffer eligibility/expiry rules, without cancelling recovery until a dash actually fires. Qualify AC8 and the feel test, and cover recovery presses with cooldown ready, cooldown expiring within the buffer and cooldown expiring too late.
+
+### PR-4 🟡 Define arbitration between buffered actions and interrupted movement states
+
+**Location:** §5 AC4–AC8/AC15; §6 T7.
+
+**Problem:** An attack and a dash can both be buffered during active and both are required to fire at recovery start. After knockback, both may also be eligible. The spec gives neither priority nor a rule for clearing or retaining the losing buffer. A hit in a vulnerable dash tail enters `KNOCKBACK`, but it is also unspecified whether this interrupted dash starts its cooldown. Repeated hits on a dummy during knockback have no replacement-versus-accumulation rule for remaining knockback.
+
+**Why it matters:** These choices affect whether an intended escape becomes another attack, whether a stale attack fires after the escape, and whether interrupted dashes evade cooldown. They also change loose-dummy travel under a chain.
+
+**Suggested fix:** Add a transition/priority table for simultaneous eligible actions and incoming hits, including buffer disposal, dash interruption/cooldown and repeated knockback. Add focused tests for both buffers at recovery/knockback exit and for a hit during the vulnerable dash tail.
+
+### PR-5 🟡 Define eligibility while applying a batch of hit events
+
+**Location:** §3 chosen resolver; §4 C8; §5 AC10/AC11/AC14/AC18; §6 T5/T9.
+
+**Problem:** `resolve()` returns an array before any event is applied. Registration order orders that array, but does not say whether later events recheck i-frames, death and attack interruption after earlier events mutate state. Two simultaneous incoming hitboxes can both pass an initial eligibility check before the first hit grants hurt i-frames; marking both in their hit sets would also prevent the skipped one from hitting later. A sword hit and the dummy's pulse in the same tick leave the trade/interruption policy undefined.
+
+**Why it matters:** Ordered candidates alone do not establish deterministic damage semantics or C8's rule that an i-frame-skipped target remains hittable later.
+
+**Suggested fix:** Distinguish geometric candidates from successfully applied hits. Specify when eligibility is rechecked and hit sets are updated, and whether simultaneous outgoing attacks trade or are cancelled by an earlier event. Test two hitboxes against one player and a player/dummy exchange in one tick.
+
+### PR-6 🟡 Resolve geometry using an explicit authoritative position
+
+**Location:** §6 T9; §5 AC12. Related: `src/core/player/player_motor.gd:122` and `src/entities/player/player.gd:33`.
+
+**Problem:** The existing motor advances its predicted position inside `tick()`, then glue corrects it after `move_and_slide()`. T9 inserts hit resolution before that correction. Reading the ticked motor's position tests shapes at a position that may be inside or beyond a wall; reading the body instead tests the previous position. The spec does not choose either interpretation or another reconciliation step.
+
+**Why it matters:** Hits can be added or missed around walls because the hurtbox and the actual body disagree. Accepting sword arcs through walls in §3 does not establish permission to move their origins or target centers through walls.
+
+**Suggested fix:** Specify where shape positions come from and when collision-corrected positions become authoritative in the hit timeline from PR-1. Add a scene case where a dashing or knocked-back body reaches a wall while a hitbox is active, verifying the resolver uses the intended body position.
+
+### PR-7 🟡 Complete the new data validation and hot-reload contract
+
+**Location:** §4 C2; §5 AC4/AC12/AC24; §6 T2/T3. Related: F-001 §4 C17.
+
+**Problem:** AC24 lists the files to reload but does not extend F-001's atomic validation/latching policy to them. It leaves bounds and zero-duration behavior undefined for phases, arcs, knockback and pulse timers; likewise empty/null chain entries and a chain window shorter than recovery. Reloading an in-progress hit leaves its duration, damage, geometry and chain identity unspecified, and lowering `max_hp` leaves current HP unspecified. AC12 also multiplies by the *target's* `knockback_scale`, but T2 defines that field only for dummies, with no player source or explicit fixed player rule.
+
+**Why it matters:** Tuning is the purpose of the dummy scene. These gaps can produce partially updated combat, skipped phases or invalid state, and force the Builder to invent gameplay/data policy.
+
+**Suggested fix:** Extend the validation table and define the atomic reload group, latched versus immediately updated fields, current-HP handling and permitted chain edits. Reconcile the chain-window/recovery relationship and specify the player's knockback scaling source. Cover invalid new data and a valid reload during an attack and knockback.
+
+### PR-8 🟡 Define snapshot identity and the scene snapshot boundary
+
+**Location:** §3 owner IDs/registration order; §4 C5; §5 AC23; §6 T5/T9/T10.
+
+**Problem:** The hit set stores hurtbox identities, but the spec does not say how IDs and resolver registration order survive reconstruction in fresh objects. F-001's snapshot boundary is after an individual motor tick; T9 now performs hit application and collision correction afterwards, so that boundary can capture a partially processed scene. The dummy's pulse enable flag, phase, remaining interval/telegraph/active time and per-pulse hit set also need an explicit continuation check, beyond merely round-tripping its HP.
+
+**Why it matters:** A snapshot can restore the same scalar values yet hit a target twice, skip a target or resume a different pulse. That fails C5/G7 and AC23's continuation promise.
+
+**Suggested fix:** Define stable scene-supplied identities, registry restoration order and one snapshot boundary after the complete scene step with no pending events/commands. Include pulse state and reconstruct the player, both dummies and resolver as fresh objects in a partial-hit-set continuation test.
+
+### PR-9 🟡 Separate core coverage from scene coverage and give position tolerance units
+
+**Location:** §5 introduction/AC1/AC12/AC16/AC22/AC25; §6 T8/T9/T12.
+
+**Problem:** AC25 and T8 require AC2–AC17 at core level, but AC12's wall collision and AC16's debug-scene refill depend on glue/physics. T1's tint/HP/arc re-sync also requires presentation assertions; a core signal test alone cannot verify it. No new scene-test task covers these behaviors or the new runner's once-per-tick ownership. Finally, “Tolerance = one tick” supplies no distance unit or numeric bound for AC22's final positions and does not identify a common input/sample schedule across rates.
+
+**Why it matters:** Core tests can pass while the newly refactored scene moves twice, ignores collision or restores stale visuals. AC22 has no objective position pass/fail threshold.
+
+**Suggested fix:** Add a coverage map and scene-test task for new collision behavior, debug refill, actual view restoration and one runner step per physics tick, while retaining pure core tests for combat. Give AC22 a shared physical-time input/sample schedule, expected hit/damage totals, a numeric position tolerance in tiles and a separate timing tolerance.
+
+### PR-10 🟡 Specify the debug reset and pulse lifecycle
+
+**Location:** §5 AC18/AC19; §6 T10/T12.
+
+**Problem:** R is named and the loose dummy stays put “until the reset key,” but the reset operation has no defined state set. It could restore only positions or also HP, attacks, buffers, hitstop and pulse timers. Pulse interval could mean start-to-start or an idle delay plus telegraph/active time; toggling off during telegraph/active and killing/respawning the pulse dummy have no defined effect on its outgoing hitbox or next pulse.
+
+**Why it matters:** These choices change the repeatable timing and clean starting state needed for the documented dodge-tail feel test.
+
+**Suggested fix:** State the complete reset contract and pulse phase transitions, including toggle-off, KO and respawn, and define what `pulse_interval` measures. Add small core checks for the pulse lifecycle and a debug reset check.
 
 ---
 
