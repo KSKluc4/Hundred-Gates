@@ -2,6 +2,11 @@
 
 The rule: **point at the file, never summarize it.**
 
+**Most of this is automated now.** Once a spec is committed with `status: PLAN_REVIEW`,
+`owner_now: Auditor`: `tools/studio run F-XXX`, then `tools/studio approve F-XXX` at Gate A,
+`tools/studio run F-XXX`, then `tools/studio done F-XXX` at Gate B. See "Autopilot" in
+`README.md`. The lines below are for doing a step by hand.
+
 ---
 
 ### 1 · New feature → Planner (Claude chat, inside the Planner Project)

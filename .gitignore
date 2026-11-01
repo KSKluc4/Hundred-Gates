@@ -5,3 +5,5 @@
 # Python dev tooling (D-004)
 .venv/
 __pycache__/
+# Autopilot logs, lock and blocked markers (F-002/C19)
+.studio/
