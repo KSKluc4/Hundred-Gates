@@ -1,8 +1,8 @@
 ---
 id: F-002
 title: Studio autopilot (tools/studio)
-status: CODE_REVIEW   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-003, D-004]
@@ -758,6 +758,155 @@ git status --short                  # expect nothing, also after tools/test
 ### CR-1 🔴 <title>  ·  `path/to/file:line`
 <problem, why it matters, suggested fix>
 > **Builder reply:** <fixed in abc123 / disagree because …>
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+### Round 1 — Code review
+
+**Verdict:** `CHANGES_REQUESTED`
+**Reviewed:** 2026-10-31
+**Reviewed commit:** `6bb83204f769d7f153281f6be26e258c3f319fd0`
+**Comparison:** `main...feature/F-002-studio-autopilot`
+
+Three blocking correctness findings remain. The committed suite passes, but additional
+reproductions expose gaps in publication recovery, lock ownership and invalid-output
+handling. The review below concerns this commit; the earlier PENDING block is a retained
+template, not a completed review.
+
+### Verification
+
+- `tools/test_studio`: **211 tests passed**. Its first sandboxed run had one environment
+  error because the ntfy fixture could not bind a loopback socket; the approved rerun
+  outside that restriction passed all 211.
+- `tools/test`: **130/130 passed**; `tools/lint` and `tools/check_core_purity`: passed.
+- `tools/studio status` and `tools/studio next F-002`: correct read-only output for the
+  reviewed CODE_REVIEW/Auditor state and action D.
+- `git diff --check main...HEAD`: passed. The approved §§1–6, §7 review history and §11
+  Director notes match main exactly. No changes under `src/`, `scenes/`, `data/` or
+  `addons/`; F-000/F-001 are unchanged.
+- Additional reproductions used the existing `tools/tests/helpers.py` Sandbox/fake-agent
+  fixtures against disposable local bare remotes, plus two processes interleaved at the
+  stale-lock read. They changed no project source or committed tests.
+
+### AC evidence
+
+✅ means the specified behavior is supported by source and passing tests. ❌ identifies
+a reproduced failure of the criterion/associated hard constraint despite passing cases.
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC1 | ✅ | `engine.py:329`/`:346` implement status/next; `feature.py:343`/`:369` check verdict/board consistency. `test_dispatch.py` covers action combinations, stop states and mismatches; real read-only commands passed. |
+| AC2 | ✅ | `engine.py:383`, `:441`, `:532` run the state machine, create the first branch and dispatch prompts. `test_run.py:24` and `:44` exercise APPROVED → Builder → Auditor and plan audit → repair → audit, with one notification. |
+| AC3 | ❌ | `transition_errors()` and `_inspect()` reject the covered invalid states (`test_run.py:145`–`:214`). A truncated own board row instead raises an uncaught IndexError, leaving no blocked marker or notification: CR-3. |
+| AC4 | ✅ | `git.py:115`–`:130` records refs/HEAD and includes paths from every reachable new commit plus the working tree/index. `engine.py:569`/`:665` validate and preserve rejection evidence. `test_run.py:225` covers committed/whitespace/reverted-path violations and unblock. |
+| AC5 | ✅ | `feature.py:453`, `:472`, `:519` implement section/frontmatter, board-column and decision-entry restrictions. `test_feature.py:163`/`:266` and `test_run.py:310` cover permitted replies/PROPOSED decisions and forbidden changes. |
+| AC6 | ❌ | Clean-tree/readiness guards and restart/failure counters pass `test_readiness.py:18`–`:115`; fresh done calls reject later code in `test_gates.py:154`. A DONE retry skips those guards and publishes later code even with checks configured red: CR-1. |
+| AC7 | ✅ | `feature.py:192` parses machine markers; `engine.py:452`–`:474` enforce review caps, and `:503` plus readiness rows enforce the independent failure cap. `test_readiness.py:52`, `:70`, `:125` cover restart durability, reset, third approvals/rejections and refusal of a fourth audit. |
+| AC8 | ❌ | `engine.py:715`/`:748`/`:836` and `test_gates.py` cover rebase/push/merge/deletion recovery and verified publication before deletion. Recovery is not bound to the previously reviewed/tested branch revision, so a failed push followed by a code commit bypasses Gate B evidence: CR-1. |
+| AC9b | ✅ | `proc.py:264` applies the push guard; `:275` supplies CLI restrictions. `engine.py:631`/`:650` detects remote changes and records recovery. `test_containment.py:43`–`:95` exercises guarded origin push, explicit-URL push detection and role permissions. |
+| AC9c | ✅ | `engine.py:424` enforces feature branch, IN_PROGRESS ownership and answered blocking questions before resume. `test_containment.py:219`–`:290` covers answered/unanswered escalation, crash recovery, clean tree and permitted outputs. |
+| AC9 | ❌ | `proc.py:178` and the process-failure tests cover launch failure, nonzero exit, timeout, interruption and child cleanup. A failing child that leaves a truncated STATUS row crashes inspection before C15 rejection can block/notify: CR-3. |
+| AC10 | ❌ | Shared-lock participation and normal contention/stale cases pass `test_containment.py:294`. `proc.py:102` unlinks a lock using a stale record without protecting ownership against another contender; a two-process reproduction admits both owners: CR-2. |
+| AC11 | ✅ | Fixed pointer-only templates in `tools/studio_prompts/`, `engine.py:522`, the role sections in CLAUDE.md/AGENTS.md, department briefs and template updates match T9. `test_roles.py` covers prompts and each required document. |
+| AC12 | ✅ | All four required commands passed: 211 studio tests, 130 game tests, lint and purity. These passes do not cover the three additional reproduced failures. |
+| AC13 | ✅ | `README.md:61` documents setup, environment variables, commands, CLI flags and recovery; `studio/prompts/handoffs.md` points to the new commands. `test_roles.py:117`–`:135` checks documentation and gitignore. |
+
+Source paths in this table are under `tools/studio_lib/`; test paths are under
+`tools/tests/`, unless otherwise qualified.
+
+### Rejected options, constraints and implementation-log audit
+
+- **Rejected options:** No agent orchestrator, cloud runner or automatic Gate A approval
+  was introduced. Dispatch remains deterministic Python with fixed file-pointer prompts.
+- **Constraints:** C1/G4 and the game/content exclusions are respected; no dependency was
+  added. §11 authorizes the T9 role-document exceptions. C4's exclusion guarantee fails
+  in CR-2; C5/C11/C15/C20 rejection/notification behavior fails in CR-3; C14/C18 readiness
+  and review binding fail on the publication retry in CR-1.
+- **DEV-1–DEV-5:** Reviewed and justified. Keeping the Mac awake supports the unattended
+  goal; the Godot import helper addresses the observed whitespace problem without game
+  edits; merging instead of rebasing an already-created publication merge preserves
+  feature commits; template cleanup and added role guidance support append-only reviews
+  and the authorized T9 changes. The Godot helper changes are explicitly logged, tested
+  and left the real working tree clean during verification.
+- **ASSUMPTION-1–ASSUMPTION-14:** Reviewed. CLI permissions, durable counter anchoring,
+  post-cap behavior, units/environment variables, branch selection, commit handling,
+  notification policy and board-date policy are disclosed operational choices that can
+  be changed without a gameplay/data migration. ASSUMPTION-5 uses C18's specific
+  stop-on-failure behavior inside done; it does not justify skipping evidence checks
+  after the feature HEAD changes. Recovery commands in ASSUMPTION-13 are printed for
+  Lucas, not executed by the tool.
+- No additional intentional, unlogged implementation deviation was identified. The
+  three failures below are correctness gaps, not accepted deviations. The real-agent
+  end-to-end run described in §8 was not independently repeated; this review used fakes
+  and the actual local game checks.
+
+### Findings
+
+### CR-1 🔴 DONE retries can publish code added after the successful checks and review
+- **Location:** `tools/studio_lib/engine.py:755`–`:757`, `:836`–`:846`; C14/C18,
+  AC6/AC8.
+- **Problem:** Once done has written DONE, every retry returns directly into `_publish()`.
+  It skips `_gate_b_preconditions()`, `_require_reviewed_head()` and `_run_checks()`.
+  `_publish()` then selects the branch's current HEAD, without a checkpoint identifying
+  the revision that passed Gate B. Commits added after a failed publication are included.
+- **Reproduction:** With the existing Sandbox, call `prepare_gate_b()`, reject the first
+  feature push with `REJECT_FEATURE`, and run done. It exits 1 after committing DONE.
+  Remove the hook, commit `src/late.txt` on the feature branch, set the fake checks to
+  exit 1, then rerun done. The retry exits **0**, publishes `src/late.txt` to remote main
+  and deletes the branches. The checks-log count remains **1 → 1**: no new checks ran,
+  and the latest review still names the earlier code commit.
+- **Why it matters:** Retrying an ordinary Git failure can merge code with neither an
+  applicable review nor passing checks, defeating the central readiness guarantee.
+- **Suggested fix:** Bind publication/resumption to the feature revision that passed
+  Gate B, and validate that binding before every push/merge on retry. Refuse subsequent
+  code changes until they receive a fresh review and checks. Preserve the idempotent
+  path for the unchanged approved revision. Add a rejected-push → later-code-commit →
+  retry regression that verifies neither publication nor branch deletion occurs.
+
+### CR-2 🔴 Stale-lock cleanup can remove a different process's newly acquired lock
+- **Location:** `tools/studio_lib/proc.py:102`–`:109` and `:87`–`:98`; C4/AC10.
+- **Problem:** `_clear_if_stale()` reads a record, checks those recorded PIDs, then
+  unlinks the pathname without ensuring it still represents that stale lock. Two
+  contenders can both read the dead owner's record. After one removes it and acquires
+  a new lock, the other removes that live lock using its old snapshot and acquires too.
+- **Reproduction:** A deterministic two-process barrier paused contender A immediately
+  after reading a dead-PID record. Contender B cleared that record and entered its
+  Lock context. Resuming A let it unlink B's lock and enter its own context while B was
+  still inside. The lock record was overwritten with A's PID; both held the same lock.
+- **Why it matters:** After a crash, simultaneous run/gate commands can both mutate
+  the shared tree and run agents despite the one-command guarantee. Atomic link
+  creation alone does not protect the stale-record removal.
+- **Suggested fix:** Use an OS-held lock or serialize stale-lock recovery so a stale
+  reader cannot unlink a replacement owner's lock. Add a two-process barrier test
+  covering stale-read → competing acquisition → stale-clear, and assert that exactly
+  one contender enters and the live owner's lock survives.
+
+### CR-3 🔴 A truncated board row crashes validation before blocking or notification
+- **Location:** `tools/studio_lib/feature.py:311`–`:318`,
+  `tools/studio_lib/engine.py:549`–`:553` and `:618`–`:628`; C5/C11/C15/C20,
+  AC3/AC9.
+- **Problem:** `board_row()` indexes every header column without checking that a matching
+  row has that many cells. Although the content-lane validator already reports the
+  malformed row, `_file_errors()` continues into `consistency_errors()`, which raises
+  IndexError. That escapes `_inspect()` before `_reject()` is reached and is not caught
+  by the run refusal handler. A nonzero agent exit does not help: inspection happens
+  before the process-failure result is added to its errors.
+- **Reproduction:** Start the plan-audit Sandbox. Have the fake Auditor append a valid
+  approving round/state, then replace its board row with `| F-900 | truncated |`.
+  Run exits **1** with IndexError at `feature.py:318`, **no blocked marker** and
+  **zero notifications**. Repeating with fake-agent exit **7** produces the same result;
+  no tool commit is made in either case.
+- **Why it matters:** A partial or malformed agent write stops unattended work without
+  telling Lucas and omits the mandatory blocked/recovery record precisely when output
+  validation is meant to contain the error.
+- **Suggested fix:** Validate board-row width and report malformed structure as a
+  FormatError/validation finding. Ensure post-agent format failures are collected into
+  the rejected-step path even when the process itself failed. Add successful-exit and
+  nonzero-exit malformed-row regressions asserting one notification, a blocked record,
+  preserved edits/logs, no commit and no subsequent agent.
+
+**Round 1 verdict:** `CHANGES_REQUESTED`. Set `status: CODE_CHANGES`,
+`owner_now: Builder`; reply under CR-1–CR-3 after fixing them. Existing passing tests
+should remain green, with regressions for these three cases.
 
 ---
 
