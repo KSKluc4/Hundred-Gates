@@ -4,7 +4,7 @@ extends Camera2D
 ## the local player's body, and it listens to that player alone, so a hit shakes only the
 ## screen of a local player involved in it (F-003/C10, D-002). Core never emits shake.
 
-var enabled: bool = true
+var shake_enabled: bool = true
 
 var _player: Player
 var _settings: ScreenShakeSettings
@@ -29,23 +29,27 @@ func _process(delta: float) -> void:
 ## F-003/C18: takes the file's value, replacing the K toggle.
 func apply_settings(settings: ScreenShakeSettings) -> void:
 	_settings = settings
-	enabled = settings.screen_shake_enabled
-	if not enabled:
+	shake_enabled = settings.screen_shake_enabled
+	if not shake_enabled:
 		clear()
 
 
 func toggle() -> void:
-	enabled = not enabled
-	if not enabled:
+	shake_enabled = not shake_enabled
+	if not shake_enabled:
 		clear()
 
 
 ## AC21: nothing at all while disabled. A new shake takes the larger intensity, never the sum.
 func shake(intensity: float) -> void:
-	if not enabled:
+	if not shake_enabled:
 		return
 	_intensity = maxf(get_current_intensity(), intensity)
 	_time_left = _settings.decay_time
+
+
+func get_settings() -> ScreenShakeSettings:
+	return _settings
 
 
 func get_current_intensity() -> float:

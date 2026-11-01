@@ -84,9 +84,9 @@ func get_aim_mode() -> PlayerInputMapper.AimMode:
 ## valid. Returns the errors, empty when the reload was applied. F-003/C18: F-001's F5 path,
 ## so it never changes the sim's rate.
 func reload_data() -> PackedStringArray:
-	var new_class_data: ClassData = _load_ignoring_cache(_class_data_path) as ClassData
+	var new_class_data: ClassData = Tunables.load_fresh(_class_data_path) as ClassData
 	var new_tunables: PlayerCombatTunables = (
-		_load_ignoring_cache(tunables_path) as PlayerCombatTunables
+		Tunables.load_fresh(tunables_path) as PlayerCombatTunables
 	)
 	var errors: PackedStringArray = []
 	if new_class_data == null:
@@ -120,14 +120,6 @@ func apply_reloaded_data(new_class_data: ClassData, new_tunables: PlayerCombatTu
 func restore_snapshot(snapshot: Dictionary) -> void:
 	motor.from_dict(snapshot)
 	global_position = motor.get_position_px()
-
-
-func _load_ignoring_cache(path: String) -> Resource:
-	if not ResourceLoader.exists(path):
-		return null
-	# DEEP: warrior.tres references the attack files, and a plain IGNORE would take those
-	# from the cache, silently ignoring edits to them (F-003 §2).
-	return ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE_DEEP)
 
 
 func _on_invulnerability_changed(_is_invulnerable: bool) -> void:

@@ -9,3 +9,13 @@ const SCREEN_SHAKE_PATH: String = "res://data/tunables/screen_shake.tres"  # G5
 
 var game: GameTunables = preload(GAME_TUNABLES_PATH)
 var player_combat: PlayerCombatTunables = preload(PLAYER_COMBAT_PATH)
+
+
+## F-001/C17, F-003/C18: reads a data file from disk, never from the cache. Null if it's gone.
+## The file check comes first: ResourceLoader.exists() still says yes for a deleted file that
+## is in the cache. DEEP: warrior.tres references the attack files, and a plain IGNORE would
+## take those from the cache, silently ignoring edits to them (F-003 §2).
+func load_fresh(path: String) -> Resource:
+	if not FileAccess.file_exists(path):
+		return null
+	return ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE_DEEP)
