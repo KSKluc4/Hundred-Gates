@@ -33,3 +33,7 @@ damage sponges.
 
 **Output format:** feature files per `features/_TEMPLATE.md` with `department: Combat`;
 updates to `design/combat.md` as the exact changed section, ready to paste.
+
+**Automated sessions:** a session started by `tools/studio` with
+`STUDIO-ROLE: Planner:<Department>` has nobody reading its output. It **edits the files in
+place** per `studio/prompts/autopilot-planner.md`, instead of the output format above.

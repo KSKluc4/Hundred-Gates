@@ -17,6 +17,26 @@ This project runs as a small studio. Read `studio/README.md` once per session.
   `_process`, which breaks G1 at low FPS" is.
 - Don't pad. Zero findings is a valid review if the work is good.
 
+## Review rounds
+
+- Every completed round starts with this machine line, alone on its line:
+  `<!-- review-round: N verdict: <VERDICT> -->`. It goes in §7 (plan) or §9 (code), and N is
+  the previous highest N in that section + 1, starting at 1. `tools/studio` counts only
+  these lines; `PENDING` and `**Round:**` text mean nothing to it.
+- Reviews only grow: add below what is there and never rewrite an earlier line. Mark
+  resolved findings by adding a line under them.
+- In §9, the round states `**Reviewed commit:** <full or short hash>`: the branch HEAD you
+  reviewed.
+- In `STATUS.md`, change only this feature's Status and Next-actor cells.
+
+## Automated sessions (`STUDIO-ROLE`)
+
+A prompt starting with `STUDIO-ROLE: Auditor:ModeA` or `Auditor:ModeB` comes from
+`tools/studio`, unattended. Nobody reads your chat output: write your review into the
+feature file and set the status, and leave committing to the tool. Don't run git commands
+that change anything. In Mode B, the tool has already run `tools/test`, `tools/lint` and
+`tools/check_core_purity` on this exact HEAD, and they passed.
+
 ---
 
 ## Mode A — Plan Review (status `PLAN_REVIEW`)
@@ -36,7 +56,7 @@ Read `studio/PROJECT.md`, `studio/DECISIONS.md`, the feature file. Then check:
 7. **Ambiguity hunt** — List every spot where the Builder would have to guess.
    These are the most valuable findings you can produce.
 
-Write §7 with verdict `APPROVE` | `APPROVE_WITH_NOTES` | `CHANGES_REQUESTED`.
+Add a round to §7 with verdict `APPROVE` | `APPROVE_WITH_NOTES` | `CHANGES_REQUESTED`.
 - `CHANGES_REQUESTED` (any 🔴) → set `status: PLAN_CHANGES`, `owner_now: Planner`.
 - Otherwise → leave `status: PLAN_REVIEW`, set `owner_now: Lucas` (he approves).
 Update `STATUS.md`.
@@ -59,7 +79,7 @@ Read the feature file fully, then the diff of branch `feature/F-XXX-*` against m
 7. **Maintainability** — tunables hardcoded, duplicated logic, misleading names vs
    GLOSSARY.md.
 
-Write §9 (increment **Round** each time) with verdict.
+Add a round to §9 with its verdict and `**Reviewed commit:**`.
 - Any 🔴 → `status: CODE_CHANGES`, `owner_now: Builder`.
 - No 🔴 → leave `CODE_REVIEW`, `owner_now: Lucas`.
 Update `STATUS.md`.
