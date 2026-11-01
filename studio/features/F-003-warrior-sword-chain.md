@@ -1,8 +1,8 @@
 ---
 id: F-003
 title: Warrior sword chain + hit/hurt + hitstop + training dummy
-status: CODE_REVIEW          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
 depends_on: [F-000, F-001, D-002, D-005]
@@ -788,6 +788,88 @@ The previous Planner replies were checked first; PR-1–PR-10 are resolved as an
 ### CR-1 🔴 <title>  ·  `path/to/file:line`
 <problem, why it matters, suggested fix>
 > **Builder reply:** <fixed in abc123 / disagree because …>
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 7fcda79e5fa00e77a1706e7a591699173930b599
+
+**Verdict:** CHANGES_REQUESTED — three blocking contract violations, independently reproduced against the unchanged HEAD. This is the first code-review round; there are no earlier Builder replies to resolve.
+
+### CR-1 🔴 Resolve eligible buffered actions before the contact at their fire instant
+
+**Location:** `src/core/player/player_motor.gd:376–399`, especially the loop guard at line 380; `src/core/player/player_motor.gd:482–489`; `src/core/combat/combat_sim.gd:50–61`; §8 ASSUMPTION-1. Violates C17 and AC8.
+
+**Problem:** When recovery starts, cooldown expires, or hitstop ends exactly at the end of a combat step, `_run_phases()` exits without another `_fire_buffered_actions()` call. The resolver then observes the player before an already-eligible dash fires. ASSUMPTION-1 calls the next step's start the same clock time, but a contact has intervened and can damage/interrupt the player and add hitstop before that dash.
+
+**Reproduction:** At each of 30/60/120 ticks/s, use hit 1 with windup 0.05 and active 0.05, attack at 0, and buffer a ready dash at 1/30. Place the dummy at (0, 5) tiles, outside sword range, with a pulse enabled at 0: telegraph 0.1, active 0.2, radius 20, knockback 0. Recovery and the pulse both start at 0.1. The independent probe records player HP **80**, a hit at **0.1**, and the dash only at **0.15** after hitstop. C17/AC8 require the buffered dash to fire at recovery start, protecting against that contact.
+
+**Why it matters:** An eligible defensive input loses to a hit at its promised fire instant. The existing tests record the motor's eventual dash timestamp or sample after the transition, so they miss the intervening damaging contact. This is an observable rule change, not a harmless boundary convention.
+
+**Suggested fix:** Resolve actions that become eligible at an advance boundary before that instant's contact, including a hitstop ending with zero remainder, while preserving the legacy F-001 `tick()` contract where needed. Replace ASSUMPTION-1's contact ordering and add 30/60/120 Hz contact-level regressions for recovery start, cooldown expiry and hitstop end; assert HP/protection at the boundary as well as fire time and buffer priority.
+
+### CR-2 🔴 Re-sync the runner's pulse toggle when restoring a scene snapshot
+
+**Location:** `src/world/combat_runner.gd:46–57` and `src/world/combat_runner.gd:77–83`; `src/ui/debug/motor_debug_overlay.gd:75`. Violates C12/C19.
+
+**Problem:** A snapshot restores each dummy's `pulse_enabled`, but leaves the runner's duplicate `_pulse_on` flag unchanged. Reproduced in the real F-003 scene: toggle on, take a snapshot, toggle off, restore. `restore_snapshot()` returns true and the dummy is enabled again, while `is_pulse_on()` still returns false. The next toggle changes the runner to true and calls `set_pulse_enabled(true)` on an already-enabled dummy, so the pulse stays on.
+
+**Why it matters:** The overlay reports an inactive pulse while it can attack, and the first P press after restore cannot turn it off. Restoring into a fresh scene has the same mismatch because the runner starts with `_pulse_on = false`. Core-only continuation tests cannot catch this scene-state inconsistency.
+
+**Suggested fix:** Derive the runner's toggle/display from the restored pulsing combatant state, or explicitly reconcile it after a successful restore. Add scene tests restoring both on and off snapshots into opposite settings and into a fresh scene; assert the overlay and that one P press immediately toggles the actual pulse.
+
+### CR-3 🔴 Latch shake look values until the next shake
+
+**Location:** `src/world/camera/placeholder_shake.gd:23–34`, `src/world/camera/placeholder_shake.gd:44–56`. Violates C18's “Other shake values apply to the next shake” rule.
+
+**Problem:** `apply_settings()` replaces `_settings` immediately, while an existing shake retains its old `_time_left` and `_intensity`. Both the current amplitude and its decay denominator then read the replacement settings. Reproduced with a freshly started intensity-0.5 shake: changing valid `decay_time` from 0.2 to 0.01 changes `get_current_intensity()` immediately from **0.5 to 10.0**. With `max_offset_px = 6`, the next frame can use a 60 px radius instead of the running shake's 3 px limit. Editing `max_offset_px` also changes the running shake immediately.
+
+**Why it matters:** Valid F5 tuning can amplify an existing shake far beyond its specified intensity and changes its look before the next shake, contrary to the explicit reload contract. Current reload tests inspect the replacement settings but never reload during an active shake.
+
+**Suggested fix:** Keep the new settings for subsequent shakes and latch the active shake's decay/amplitude values when `shake()` starts or refreshes it. Continue applying `screen_shake_enabled` immediately and clearing when disabled. Add a scene reload regression changing both decay and maximum offset during a shake: its current envelope stays unchanged, then a new shake uses the replacement values.
+
+**AC evidence** (paths relative to the repository; ✅ means the named behavior has implementation/test evidence, with the scope of any exception stated):
+
+| AC | Result | Evidence at the reviewed HEAD |
+|---|---|---|
+| AC1 | ✅ | `PlayerMotor.from_dict()` emits `state_restored`; `Player._refresh_from_state()`, dummy refresh and state-derived debug arcs re-sync. Real-view assertions in `tests/scenes/test_f003_restore.gd` and `test_f003_views.gd`. The additional pulse-toggle view defect is CR-2. |
+| AC2 | ✅ | `AttackChain.start/advance/_cross_finished_phases/build_hitbox` latch and advance phases; `PlayerMotor._advance_attack` carries segment time. `tests/core/player/test_player_attack.gd` checks phases and hitbox lifetime. |
+| AC3 | ✅ | `AttackChain.start` stores facing in `_direction`; later aim updates only the motor's facing. Locked-direction test in `test_player_attack.gd`. |
+| AC4 | ✅ | `AttackChain.advance/advance_window/_finish_recovery` manage the window; `PlayerMotor._can_fire_buffered_attack` permits non-finisher recovery chaining regardless of window expiry. Recovery/post-recovery/expired/short-window cases in `test_player_attack.gd`. |
+| AC5 | ❌ | Both buffers, replacement and expiry exist in `PlayerMotor`; `test_player_attack.gd` and `test_player_hit_reaction.gd` cover ordinary transitions. Exact end-of-step firing is deferred until after contact (CR-1). |
+| AC6 | ✅ | `AttackChain.start` latches finisher values and wraps the next index; motor arbitration blocks attack cancellation of finisher recovery while permitting dash. Finisher tests in `test_player_attack.gd` and `test_player_dash_cancel.gd`. |
+| AC7 | ✅ | `PlayerMotor._advance_attack` integrates toward zero with class deceleration; normal integration resumes after recovery. Rooting/deceleration tests in `test_player_attack.gd`. |
+| AC8 | ❌ | Cooldown eligibility and cancellation are implemented and ordinary cases pass `test_player_dash_cancel.gd`; the ready buffered dash can lose to contact at recovery start (CR-1). |
+| AC9 | ✅ | `Geometry.circle_hits_sector` tests the apex, radial bound, angular interior and finite boundary segments. `tests/core/combat/test_geometry.gd` covers every requested case, including 360° and wide arcs. |
+| AC10 | ✅ | `Hitbox.hit_ids` shares the current attack instance's stable-id set; `HitResolver._touches` filters it, and `CombatSim._apply_contact` marks only landed hits. Once-per-hit/three-hit tests in `test_combat_sim.gd`. |
+| AC11 | ✅ | `CombatState.apply_hit` clamps HP and applies target damage/knockback/hitstop/i-frames; `CombatSim._apply_contact` also applies attacker hitstop/events. `HitEvent.from_candidate` carries the required fields. `test_combat_state.gd`, `test_hit_resolver.gd` and `test_combat_sim.gd` verify payloads and reactions; signal ordering is logged in ASSUMPTION-3. |
+| AC12 | ✅ | `HitEvent._direction_of`, target scaling and `CombatState`'s constant-speed remaining distance implement knockback. `CombatBody.move_with_combatant` collides and syncs authoritative positions. Core knockback tests and `tests/scenes/test_f003_physics.gd` cover direction, replacement and walls. |
+| AC13 | ✅ | `CombatState.consume_hitstop/_extend_hitstop`, motor/dummy step loops and `Combatant.get_live_hitbox` implement per-entity pauses and max-extension. `test_player_hitstop.gd`, `test_dummy_logic.gd` and `test_combat_sim.gd` cover timer pauses, bystanders and multiple targets. |
+| AC14 | ✅ | `PlayerMotor.is_dash_protected` uses the exact half-open window; `Combatant.can_be_hit` also checks hurt protection. Candidate marking happens after the recheck. Boundary/skip-then-hit tests in `test_combat_batches.gd` and `test_player_hit_reaction.gd`. |
+| AC15 | ✅ | `PlayerMotor.apply_hit/_advance_knockback` interrupt attacks/dashes, preserve buffers, start full interrupted-dash cooldown and handle zero distance. Tests in `test_player_hit_reaction.gd`. |
+| AC16 | ✅ | `CombatState.apply_hit` emits `died` only on a positive-to-zero transition; the F-003 runner explicitly connects debug refill. `test_combat_state.gd` and `test_f003_views.gd` assert both halves. |
+| AC17 | ✅ | `HitResolver._touches` rejects same-team candidates. `test_hit_resolver.gd` and `test_combat_batches.gd` cover self/same-team sword and pulse cases. |
+| AC18 | ✅ | `DummyLogic` owns KO/respawn and per-instance scaling; `TrainingDummy` derives HP/bar/KO views from state. `test_dummy_logic.gd`, `test_f003_presentation.gd` and `test_f003_debug_keys.gd` cover ignored hits, respawn and anchored/loose movement. |
+| AC19 | ❌ | `PulseCycle` and `DummyLogic.set_pulse_enabled/_enter_ko/_respawn` implement the requested phases/lifecycle, tested in `test_dummy_logic.gd`; real-scene toggle behavior after restore fails (CR-2). |
+| AC20 | ✅ | `DamageNumbers` listens to each dummy's `damaged`, with larger finisher fonts; `TrainingDummy` draws HP/bar and the overlay reads player HP. Assertions in `test_f003_presentation.gd` and `test_f003_views.gd`. |
+| AC21 | ❌ | Local-player signal listeners and disabling work in `PlaceholderShake`, covered by `test_f003_views.gd`. Reloading an active shake can exceed the specified intensity (CR-3). |
+| AC22 | ✅ | `CombatSim.tick` implements the shared grid. Exact four-hit/52-damage, dash-time and final-position oracles exist at all three rates in `test_combat_sim.gd` and over real physics in `test_f003_physics.gd`. |
+| AC23 | ✅ | `CombatSim.to_dict/from_dict`, motor/chain/combat/dummy/pulse snapshots preserve the requested core continuation and reject different ids/order/rate. `test_player_snapshot.gd` rebuilds fresh objects and compares 60 following ticks. Runner toggle/view reconciliation is separately blocked by CR-2. |
+| AC24 | ❌ | Runner validation, deep atomic loading, running-window rate checks, HP clamps and attack/pulse/knockback latching have core and scene coverage in validation tests, `test_rate_change.gd` and `test_f003_reload.gd`. Active shake settings violate the remaining C18 reload rule (CR-3). |
+| AC25 | ✅ | Core/mapper/scene coverage exists in the specified directories; exact input-map migration adds only P/K/R. No pre-existing F-001 tests changed apart from `tests/test_input_map.gd`. Mode B supplied passing test/lint/purity gates; independently ran `tools/test_studio`: 243 tests passed. The three new regression cases above are missing. |
+| AC26 | ✅ | `CombatTiming.window_errors` centralizes both minimum-duration bounds; the sim, exact dash check and hitstop remainder consumption implement the timeline. `test_combat_sim.gd` and validation tests cover the listed short/zero-lead/contact-boundary/overshoot/reach oracles at 30/60/120 Hz. |
+| AC27 | ❌ | Priority, cooldown retention, chain reset, interrupted dash and replacement/zero knockback have tests in `test_player_dash_cancel.gd`, `test_player_hit_reaction.gd` and `test_combat_batches.gd`. Arbitration at an exact end-of-step eligibility boundary is still deferred past contact (CR-1). |
+| AC28 | ✅ | `CombatSim._apply_contact` builds candidates once, rechecks only targets and uses max hitstop. Shared hit-set arrays survive interruption without contaminating a new instance. `test_combat_batches.gd` covers player/dummy batches, KO, unmarked skips and trades in both registration orders. |
+| AC29 | ✅ | `CombatRunner._move_bodies` runs before resolution; `CombatBody.move_with_combatant` synchronizes the collided position. `test_f003_physics.gd` checks wall/no-wall controls and motor/body agreement at contacts for dash and knockback. |
+| AC30 | ✅ | Runner/body reset methods rerun setup, restore start positions, retain debug toggles and clear transient views. `test_f003_debug_keys.gd` compares snapshots with fresh setup and checks pulse restart/shake retention. |
+| AC31 | ✅ | `CombatRunner._physics_process` alone submits/steps logic; `Player` has no physics tick. Both debug scenes register through the runner. `test_f003_runner.gd` counts 4/2/1 steps and checks single command delivery. |
+
+**Rejected options / constraints:** No rejected alternative from §3 was reintroduced: resolution remains per combat step, geometry stays in core, cooldown is retained, only landed hits mark targets, and no global hitstop, animation-driven hitboxes, Area2D combat or full-enemy dummy appears. G1/G3–G9 and the core architecture have supporting implementation/tests; the explicit constraint failures are C17 (CR-1), C12/C19 (CR-2) and C18 (CR-3). The default AC22 oracle passing does not establish C17 at other valid phase boundaries.
+
+**Deviation audit:** DEV-1/DEV-2 are justified API factoring with shared hit-set ownership; DEV-3 is staged history. DEV-4's helpers preserve the core/glue split; DEV-5 keeps F-001's overlay key behavior; DEV-6 adds a stateless deep loader. DEV-7's test split preserves the intended coverage. DEV-8 accurately documents non-buildable intermediate commits and is not a current-HEAD compile defect. No further intentional scope/API deviation was identified. CR-2/CR-3's behavior is not authorized by any logged deviation.
+
+**Assumptions:** ASSUMPTION-1 is not acceptable because it changes the outcome of a boundary contact (CR-1). ASSUMPTION-2's epsilon convention is small and reversible, but cannot authorize that ordering. ASSUMPTION-3's synchronous target-before-attacker signal sequencing is explicit and reversible; both reactions complete before the next candidate. ASSUMPTION-4 matches the stated “both can fire” condition. ASSUMPTION-5 is consistent with stored velocity being zeroed on an incoming hit; later hitstop must still preserve existing velocity under C7. ASSUMPTION-6 follows the deliberately deferred death flow. ASSUMPTION-7 keeps a diagnostic scene clock without affecting combatant resets. ASSUMPTION-8 follows the telegraph/live-hitbox contracts. No additional blocking assumption was found.
+
+**Verification:** Reviewed the feature in full, the branch diff against `main`, project decisions/design/glossary, implementation and relevant test assertions. Relied on the supplied passing Mode B `tools/test`, `tools/lint` and `tools/check_core_purity` results for this exact HEAD. Independently ran `tools/test_studio` (243/243 passed) and a temporary headless scene outside the repository that reproduced CR-1 at all three required rates and CR-2/CR-3 on the real scene/presentation nodes. No source or test files were changed. The manual KB/M/gamepad feel test remains for Lucas as logged in §8.
 
 ---
 
