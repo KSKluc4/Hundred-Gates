@@ -7,6 +7,8 @@ extends RefCounted
 signal dash_started
 signal dash_ended
 signal invulnerability_changed(is_invulnerable: bool)
+## F-003/C12: from_dict() sends no change signals, so views re-sync from state on this.
+signal state_restored
 
 enum State { IDLE, MOVING, DASHING }
 
@@ -178,6 +180,7 @@ func from_dict(snapshot: Dictionary) -> void:
 	_iframe_start = snapshot["iframe_start"]
 	_iframe_end = snapshot["iframe_end"]
 	_clear_commands()
+	state_restored.emit()
 
 
 func get_tick_displacement_px() -> Vector2:

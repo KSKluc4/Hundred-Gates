@@ -28,6 +28,8 @@ func _ready() -> void:
 	_tunables = Tunables.player_combat
 	motor.setup(class_data, _tunables, Units.vector_px_to_tiles(global_position))
 	motor.invulnerability_changed.connect(_on_invulnerability_changed)
+	motor.state_restored.connect(_refresh_from_state)
+	_refresh_from_state()
 
 
 ## F-001/C15: commands, motor tick, then physics. The physics result is authoritative.
@@ -89,5 +91,10 @@ func _load_ignoring_cache(path: String) -> Resource:
 	return ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
 
 
-func _on_invulnerability_changed(is_invulnerable: bool) -> void:
-	modulate = iframe_tint if is_invulnerable else Color.WHITE
+func _on_invulnerability_changed(_is_invulnerable: bool) -> void:
+	_refresh_from_state()
+
+
+## F-003/C12: the one place presentation reads motor state, so it can't go stale.
+func _refresh_from_state() -> void:
+	modulate = iframe_tint if motor.is_invulnerable() else Color.WHITE
