@@ -10,7 +10,7 @@ signal invulnerability_changed(is_invulnerable: bool)
 ## F-003/C12: from_dict() sends no change signals, so views re-sync from state on this.
 signal state_restored
 
-enum State { IDLE, MOVING, DASHING, ATTACKING }
+enum State { IDLE, MOVING, DASHING, ATTACKING, KNOCKBACK }
 
 ## F-003 T2: CombatTiming owns it, this name stays for F-001's code and tests.
 const TIME_EPSILON: float = CombatTiming.TIME_EPSILON
@@ -36,6 +36,7 @@ const SNAPSHOT_KEYS: Array[String] = [
 	"has_buffered_attack",
 	"buffered_attack_age",
 	"attack_chain",
+	"combat",
 ]
 
 var _class_data: ClassData
@@ -89,6 +90,7 @@ func setup(
 	_class_data = class_data
 	_tunables = tunables
 	_reset_state()
+	_combat.setup(class_data.max_hp, true)
 	_position = start_position_tiles
 	if initial_facing != Vector2.ZERO:
 		_facing = initial_facing.normalized()
@@ -102,6 +104,7 @@ func apply_data(class_data: ClassData, tunables: PlayerCombatTunables) -> bool:
 	_class_data = class_data
 	_tunables = tunables
 	_attack_chain.clamp_next_index(class_data.attack_chain.size())
+	_combat.set_max_hp(class_data.max_hp)
 	return true
 
 
@@ -133,7 +136,7 @@ func step(duration: float) -> void:
 
 	_update_facing()
 	_take_presses()
-	_run_phases(duration)
+	_run_phases(_combat.consume_hitstop(duration))  # F-003/C7, C15: hitstop goes first.
 	if _has_buffered_dash and _buffered_dash_age > _buffer_window() + TIME_EPSILON:
 		_has_buffered_dash = false
 	if _has_buffered_attack and _buffered_attack_age > _buffer_window() + TIME_EPSILON:
@@ -148,6 +151,17 @@ func step(duration: float) -> void:
 
 func finish_tick() -> void:
 	_clear_commands()
+
+
+## F-003/C17, AC15: a hit that landed. Interrupts any attack or dash, leaves the buffers.
+func apply_hit(event: HitEvent, tunables: PlayerCombatTunables) -> void:
+	if _state == State.DASHING:
+		_end_dash()  # Velocity 0, and the full cooldown starts here (F-001/C9).
+	_attack_chain.reset()
+	_velocity = Vector2.ZERO
+	# The motion itself starts when hitstop ends (F-003/C15).
+	_state = State.KNOCKBACK if event.knockback_tiles > 0.0 else State.IDLE
+	_combat.apply_hit(event, tunables)
 
 
 ## F-001/C5: valid only between ticks, with no pending commands.
@@ -173,6 +187,7 @@ func to_dict() -> Dictionary:
 		"has_buffered_attack": _has_buffered_attack,
 		"buffered_attack_age": _buffered_attack_age,
 		"attack_chain": _attack_chain.to_dict(),
+		"combat": _combat.to_dict(),
 	}
 
 
@@ -201,6 +216,7 @@ func from_dict(snapshot: Dictionary) -> void:
 	_has_buffered_attack = snapshot["has_buffered_attack"]
 	_buffered_attack_age = snapshot["buffered_attack_age"]
 	_attack_chain.from_dict(snapshot["attack_chain"])
+	_combat.from_dict(snapshot["combat"])
 	_clear_commands()
 	state_restored.emit()
 
@@ -247,6 +263,10 @@ func has_buffered_attack() -> bool:
 ## Read-only for callers: the chain changes only through commands (G8).
 func get_attack_chain() -> AttackChain:
 	return _attack_chain
+
+
+func get_knockback_scale() -> float:
+	return _class_data.knockback_scale
 
 
 ## F-003/C15: the exact check. is_invulnerable() never decides a hit.
@@ -363,10 +383,13 @@ func _run_phases(delta: float) -> void:
 				segment = _advance_dash(remaining)
 			State.ATTACKING:
 				segment = _advance_attack(remaining)
+			State.KNOCKBACK:
+				segment = _advance_knockback(remaining)
 			_:
 				segment = _advance_normal(remaining)
 		_time += segment
 		remaining -= segment
+		_combat.advance_hurt_iframes(segment)  # AC14: they run during knockback.
 		if _has_buffered_dash:
 			_buffered_dash_age += segment
 		if _has_buffered_attack:
@@ -459,6 +482,20 @@ func _advance_attack(limit: float) -> float:
 	_cooldown_remaining = maxf(0.0, _cooldown_remaining - segment)
 	_attack_chain.advance(segment, _class_data.attack_chain_window)
 	if _attack_chain.get_phase() == AttackChain.Phase.NONE:
+		_state = State.IDLE
+	return segment
+
+
+## AC12: at constant speed for its duration, and walls don't change when it ends. Returns
+## the time consumed.
+func _advance_knockback(limit: float) -> float:
+	var segment: float = minf(_stop_at_cooldown_expiry(limit), _combat.get_knockback_time_left())
+	_velocity = _combat.get_knockback_velocity()
+	_tick_displacement += _velocity * segment
+	_cooldown_remaining = maxf(0.0, _cooldown_remaining - segment)
+	_combat.advance_knockback(segment)
+	if not _combat.has_knockback():
+		_velocity = Vector2.ZERO
 		_state = State.IDLE
 	return segment
 
