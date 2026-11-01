@@ -373,9 +373,11 @@ func _update_facing() -> void:
 
 ## F-001/C15 step c: never rounds to step boundaries. A dash, its whole cooldown and the
 ## next dash can all fall inside one step.
-func _run_phases(delta: float) -> void:
-	var remaining: float = delta
-	while remaining > 0.0:
+func _run_phases(duration: float) -> void:
+	var remaining: float = duration
+	# F-003/C15: a remainder this small is rounding, not time. Without this, a buffer due on
+	# a step's end would fire before or after that contact depending on the rounding.
+	while remaining > TIME_EPSILON:
 		_fire_buffered_actions()
 		var segment: float = 0.0
 		match _state:
@@ -394,6 +396,7 @@ func _run_phases(delta: float) -> void:
 			_buffered_dash_age += segment
 		if _has_buffered_attack:
 			_buffered_attack_age += segment
+	_time += remaining
 
 
 ## F-003/C17: the dash wins, whatever the press order, and an attack that could also fire
