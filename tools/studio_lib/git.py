@@ -43,7 +43,12 @@ class Git:
     def run(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
         env = {**os.environ, "LC_ALL": "C", "GIT_TERMINAL_PROMPT": "0"}
         result = subprocess.run(
-            ["git", *args], cwd=self.root, env=env, capture_output=True, text=True
+            ["git", *args],
+            cwd=self.root,
+            env=env,
+            capture_output=True,
+            text=True,
+            errors="replace",  # An agent can leave bytes that aren't text.
         )
         if check and result.returncode != 0:
             raise GitError(args, result.returncode, result.stderr or result.stdout)

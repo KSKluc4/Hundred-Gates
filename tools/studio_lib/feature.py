@@ -308,14 +308,25 @@ def _board_columns(lines: list[str]) -> dict[str, int]:
     raise FormatError("no board table")
 
 
+def _row_cells(line: str, fid: str, columns: dict[str, int]) -> list[str] | None:
+    """The cells of this feature's row, or None if the line is another row."""
+    if not line.strip().startswith("|"):
+        return None
+    cells = _cells(line)
+    if not cells or cells[0] != fid:
+        return None
+    if len(cells) < len(columns):
+        raise FormatError(f"STATUS.md row for {fid} has {len(cells)} of {len(columns)} columns")
+    return cells
+
+
 def board_row(board_text: str, fid: str) -> dict[str, str] | None:
     lines = board_text.split("\n")
     columns = _board_columns(lines)
     for line in lines:
-        if line.strip().startswith("|"):
-            cells = _cells(line)
-            if cells and cells[0] == fid:
-                return {name: cells[index] for name, index in columns.items()}
+        cells = _row_cells(line, fid, columns)
+        if cells is not None:
+            return {name: cells[index] for name, index in columns.items()}
     return None
 
 
@@ -327,13 +338,12 @@ def set_board_row(board_text: str, fid: str, status: str, owner: str) -> str:
     lines = board_text.split("\n")
     columns = _board_columns(lines)
     for index, line in enumerate(lines):
-        if line.strip().startswith("|"):
-            cells = _cells(line)
-            if cells and cells[0] == fid:
-                cells[columns["Status"]] = status
-                cells[columns["Next actor"]] = next_actor_for(status, owner)
-                lines[index] = "| " + " | ".join(cells) + " |"
-                return "\n".join(lines)
+        cells = _row_cells(line, fid, columns)
+        if cells is not None:
+            cells[columns["Status"]] = status
+            cells[columns["Next actor"]] = next_actor_for(status, owner)
+            lines[index] = "| " + " | ".join(cells) + " |"
+            return "\n".join(lines)
     raise FormatError(f"no board row for {fid}")
 
 

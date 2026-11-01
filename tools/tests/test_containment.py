@@ -187,6 +187,83 @@ class AgentFailureTests(unittest.TestCase):
             self.assertIn("PLAN_REVIEW", box.read(FEATURE), "edits kept")
             self.assertNotEqual(box.dirty(), "", "edits kept, uncommitted")
 
+    def malformed_board_step(self):
+        return [
+            *auditor_plan(1, "APPROVE"),
+            ["replace", BOARD, "| F-900 | Demo feature | PLAN_REVIEW | Lucas | — |", "| F-900 | truncated |"],
+        ]
+
+    def assert_malformed_output_rejected(self, box, commits):
+        self.assertEqual(box.commit_count(), commits, "no commit")
+        self.assertEqual(len(box.calls()), 1, "no next agent")
+        self.assertTrue(box.is_blocked())
+        self.assertEqual(len(box.notifications()), 1)
+        self.assertFalse(box.lock_exists())
+        self.assertTrue((box.repo / box.blocked_record()["log"]).is_file(), "log kept")
+        self.assertIn("truncated", box.read(BOARD), "edits kept")
+
+    def test_a_truncated_board_row_is_rejected_after_a_clean_exit(self):
+        """CR-3."""
+        with Sandbox("PLAN_REVIEW", "Auditor") as box:
+            box.script(self.malformed_board_step(), auditor_plan(2))
+            commits = box.commit_count()
+            result = box.studio("run", "F-900")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assert_malformed_output_rejected(box, commits)
+
+    def test_a_truncated_board_row_is_rejected_after_a_failed_exit(self):
+        """CR-3: the failure must reach Lucas whichever problem is seen first."""
+        with Sandbox("PLAN_REVIEW", "Auditor") as box:
+            box.script([*self.malformed_board_step(), ["exit", 7]], auditor_plan(2))
+            commits = box.commit_count()
+            result = box.studio("run", "F-900")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assert_malformed_output_rejected(box, commits)
+            self.assertIn("exit code 7", box.blocked_record()["reason"])
+
+    def test_a_board_with_no_table_is_rejected(self):
+        with Sandbox("PLAN_REVIEW", "Auditor") as box:
+            box.script([*auditor_plan(1, "APPROVE"), ["write", BOARD, "gone\n"]], auditor_plan(2))
+            result = box.studio("run", "F-900")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertTrue(box.is_blocked())
+
+    def test_undecodable_output_is_rejected_not_a_crash(self):
+        with Sandbox("PLAN_REVIEW", "Auditor") as box:
+            bad = box.fake_dir / "bad"
+            bad.write_bytes(b"\xff\xfe not text")
+            box.script([["copy", str(bad), BOARD]], auditor_plan(2))
+            result = box.studio("run", "F-900")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertTrue(box.is_blocked())
+            self.assertEqual(len(box.notifications()), 1)
+
+    def test_an_unreadable_feature_stops_run_with_a_notification(self):
+        with Sandbox("PLAN_REVIEW", "Auditor") as box:
+            (box.repo / FEATURE).write_bytes(b"---\nid: F-900\n\xff\n---\n")
+            box.commit_all("broken feature", FEATURE)
+            result = box.studio("run", "F-900")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(len(box.notifications()), 1)
+            self.assertEqual(box.calls(), [])
+            self.assertFalse(box.lock_exists())
+            for command in (("status",), ("next", "F-900")):
+                self.assertNotIn("Traceback", box.studio(*command).stderr, command)
+
+    def test_a_corrupt_blocked_marker_still_refuses(self):
+        with Sandbox("PLAN_REVIEW", "Auditor") as box:
+            (box.repo / ".studio/blocked").mkdir(parents=True)
+            (box.repo / ".studio/blocked/F-900.json").write_text("{not json")
+            result = box.studio("run", "F-900")
+            self.assertEqual(result.returncode, 1)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(box.calls(), [])
+
     def test_launch_failure_blocks(self):
         with Sandbox("PLAN_REVIEW", "Auditor") as box:
             box.env["STUDIO_CODEX_BIN"] = str(box.base / "does-not-exist")

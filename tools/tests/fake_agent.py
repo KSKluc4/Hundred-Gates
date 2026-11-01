@@ -75,6 +75,8 @@ def apply(op, path, out):
     elif name == "write":
         Path(args[0]).parent.mkdir(parents=True, exist_ok=True)
         Path(args[0]).write_text(args[1])
+    elif name == "copy":
+        Path(args[1]).write_bytes(Path(args[0]).read_bytes())
     elif name == "git":
         subprocess.run(["git", *args], check=True, capture_output=True)
     elif name == "git_try":

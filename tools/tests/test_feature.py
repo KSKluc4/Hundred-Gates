@@ -144,6 +144,14 @@ class ConsistencyTests(unittest.TestCase):
         text = board().replace("| F-900 |", "| F-901 |")
         self.assertTrue(ft.consistency_errors(Feature(sample()), text))
 
+    def test_a_truncated_row_is_a_finding_not_a_crash(self):
+        text = board().replace("| F-900 | Demo feature | PLAN_REVIEW | Auditor | — |", "| F-900 | cut |")
+        self.assertTrue(ft.consistency_errors(Feature(sample()), text))
+        with self.assertRaises(FormatError):
+            ft.board_row(text, "F-900")
+        with self.assertRaises(FormatError):
+            ft.set_board_row(text, "F-900", "DONE", "Lucas")
+
     def test_done_row_may_show_a_dash(self):
         item = Feature(sample("DONE", "Lucas"))
         self.assertEqual(ft.consistency_errors(item, board("DONE", "—")), [])

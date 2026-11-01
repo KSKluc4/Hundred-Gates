@@ -11,7 +11,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from studio_lib import engine, notify, proc  # noqa: E402
-from studio_lib.feature import FormatError  # noqa: E402
 from studio_lib.git import GitError  # noqa: E402
 
 
@@ -80,7 +79,7 @@ def main() -> int:
         print(f"refused: {error.message}\nNext: {error.next_command}", file=sys.stderr)
     except GitError as error:
         print(f"failed: {error}\nNext: {recovery}", file=sys.stderr)
-    except FormatError as error:
+    except ValueError as error:  # FormatError, or a file that isn't text.
         print(f"failed: {error}", file=sys.stderr)
     except (KeyboardInterrupt, proc.Interrupted):
         print("interrupted", file=sys.stderr)

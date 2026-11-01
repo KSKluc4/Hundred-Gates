@@ -295,7 +295,10 @@ class Studio:
 
     def _refuse_if_blocked(self, ref: FeatureRef) -> None:
         if self.is_blocked(ref.fid):
-            record = json.loads(self._blocked_path(ref.fid).read_text())
+            try:
+                record = json.loads(self._blocked_path(ref.fid).read_text())
+            except (OSError, ValueError):
+                record = {"reason": f"unreadable marker in .studio/blocked/{ref.fid}.json"}
             raise Refused(
                 f"{ref.fid} is blocked: {record.get('reason')}",
                 record.get("recovery") or f"tools/studio unblock {ref.fid}",
@@ -332,7 +335,7 @@ class Studio:
             blocked = "BLOCKED" if self.is_blocked(ref.fid) else "ok"
             try:
                 view = self.view(ref)
-            except (FormatError, GitError) as error:
+            except (ValueError, GitError) as error:
                 lines.append(f"{ref.fid}  (unreadable: {error})  [{blocked}]")
                 continue
             feature = view.feature
@@ -374,7 +377,9 @@ class Studio:
                 return self._run_locked(ref, lock, resume, max_steps, timeout_minutes)
             except StepRejected as rejected:
                 return rejected.exit_code
-            except (Refused, FormatError, GitError) as error:
+            except proc.Interrupted:
+                raise
+            except Exception as error:  # noqa: BLE001 - F-002/C20: never stop without telling Lucas
                 message = error.message if isinstance(error, Refused) else str(error)
                 command = error.next_command if isinstance(error, Refused) else "git status"
                 notify.send(fid, f"stopped: {message}", command)
@@ -546,7 +551,10 @@ class Studio:
         result = proc.run_group(
             command, self.root, proc.agent_env(), log, timeout, lock.set_agent
         )
-        inspection = self._inspect(ref, step, start, before, before_board, before_decisions)
+        try:
+            inspection = self._inspect(ref, step, start, before, before_board, before_decisions)
+        except Exception as error:  # noqa: BLE001 - F-002/C15: after an agent, always reject
+            inspection = self._failed_inspection(start, error)
         if not result.ok:
             inspection.errors.insert(0, f"agent failed: {result.describe()}")  # F-002/C15
         if inspection.errors:
@@ -556,6 +564,16 @@ class Studio:
         dirty = self.git.dirty_paths()
         if dirty:  # F-002/C16
             self.git.commit_paths(dirty, self._commit_message(ref, key))
+
+    def _failed_inspection(self, start: Snapshot, error: Exception) -> Inspection:
+        """Validation itself broke on what the agent left. That can't pass, or stop silently."""
+        errors = [f"can't validate the step: {error}"]
+        try:
+            return Inspection(
+                errors, self.git.new_commits(start.head), self.git.changed_set(start.head), {}
+            )
+        except GitError:
+            return Inspection(errors, [], [], {})
 
     def _commit_message(self, ref: FeatureRef, key: str) -> str:
         feature = self._load_worktree(ref)
