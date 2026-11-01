@@ -1,8 +1,8 @@
 ---
 id: F-002
 title: Studio autopilot (tools/studio)
-status: IN_PROGRESS   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW   # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-10-31
 updated: 2026-10-31
 depends_on: [F-000, D-003, D-004]
@@ -627,29 +627,115 @@ may approve Gate A and set `APPROVED`.
 **Started:** 2026-10-31  ·  **Branch:** `feature/F-002-studio-autopilot`
 
 ### Progress
-- [ ] T1
-- [ ] T2
-- [ ] T3
-- [ ] T4
-- [ ] T5
-- [ ] T6
-- [ ] T7
-- [ ] T8
-- [ ] T9
-- [ ] T10
+- [x] T1 — a77781a
+- [x] T2 — dd23966
+- [x] T3 — 9b2cf79
+- [x] T4 — a8233fe
+- [x] T5 — 61302e9
+- [x] T6 — cfe56f1
+- [x] T7 — 096c51c
+- [x] T8 — 38ee51f
+- [x] T9 — 64a0b0f
+- [x] T10 — 6e5517d
+
+Fixes after T10, each found by verification: 9a3355f (Godot import), 1e2de78 (`done` rerun),
+ff7f9c6 (keep awake, hermetic tests).
 
 ### Deviations from plan
-<Every place the code differs from §3–§6, with reason. "None" if none.>
-- DEV-1: <what changed> — **Why:** <reason> — **Impact:** <what else this affects>
+- **DEV-1:** `run` keeps an idle Mac awake with `caffeinate -i -w <tool pid>` (`proc.keep_awake()`),
+  though §3 accepts "runs only while the Mac is awake". **Why:** in the real end-to-end run the Mac
+  idle-slept for 10 minutes under the readiness checks (`pmset`: sleep 21:39:51, wake 21:49:46),
+  which breaks §1's "walks away". **Impact:** macOS built-in, no dependency, absent elsewhere is a
+  no-op. A closed lid still sleeps; the README says so.
+- **DEV-2:** `tools/_godot.sh`, `tools/setup` and `tools/test` changed (`godot_import()`), though no
+  task lists them. **Why:** `godot --import` restores the editor's open tabs and saves them on
+  exit, converting indentation to tabs. `.godot/editor/editor_layout.cfg` on Lucas's checkout has
+  `studio/DECISIONS.md`, `README.md` and `requirements-dev.txt` open, so every `tools/test` rewrote
+  `DECISIONS.md`. That would have failed every C14 check and every Builder step on the real
+  checkout. It is also the cause of the whitespace incident §1 cites. **Impact:** the tab list is
+  hidden during the import and restored after, so the tabs stay. Tests: `test_godot_import.py`.
+- **DEV-3:** C18 step 4 says `pull --rebase`. A `done` rerun that holds an unpushed merge while
+  `origin/main` moved merges `origin/main` instead. **Why:** rebasing replays the feature's commits,
+  which put the work on `main` twice. **Impact:** that case leaves one extra `Merge origin/main`
+  commit. The normal path is `pull --rebase` as written.
+- **DEV-4:** T9 removed more of the template than the `**Round:**` line: the `PENDING` verdicts, §9's
+  checklist and the AC evidence stubs. **Why:** C13 makes §7 and §9 append-only, so a placeholder
+  could never be filled in. **Impact:** Mode B in `AGENTS.md` already lists those duties. Files
+  made earlier, including this one, keep their placeholders, which the tool ignores.
+- **DEV-5:** `AGENTS.md` also gained an "Automated sessions" section, and `CLAUDE.md` gained "commit
+  explicit paths, never `git add -A`" and "only this feature's cells in `STATUS.md`". **Why:** both
+  are rules the tool enforces, and an agent should learn them before a rejection. **Impact:** docs.
 
 ### Assumptions made (small, reversible)
-- ASSUMPTION-1: <the gap in the spec> → <what I chose> — **Why:** <reason>
+- **ASSUMPTION-1:** Flags (§2, C19) → Builder `--permission-mode dontAsk`, an allowlist with `Bash`,
+  and git push/checkout/switch/branch/rebase/reset denied. Planner gets no shell at all (`--tools`).
+  Auditor `codex exec --sandbox workspace-write` with network off. **Why:** `dontAsk` denies instead
+  of waiting for a person. Recorded in `README.md`, and checked against the real CLIs (below).
+- **ASSUMPTION-2:** C10(b) counts failures "since the last completed code review round", but §9 and
+  §10 can't be ordered by position → each row also carries `<!-- after-code-round: R -->`. The
+  required marker is unchanged. **Why:** durable in the file, as C10(b) asks.
+- **ASSUMPTION-3:** A failure after the 3rd red (Lucas handed it back by hand) escalates again.
+  **Why:** the count only resets on a completed review round.
+- **ASSUMPTION-4:** C10(a) "max 3 completed" with a 4th audit due → `run` stops and notifies, state
+  unchanged. **Why:** moving the owner to Lucas would claim a gate with no approving round; a test
+  caught exactly that (C6 mismatch).
+- **ASSUMPTION-5:** Red checks inside `done` → stop with state untouched (C18), not `CODE_CHANGES`
+  (C14). **Why:** C14's routing is about the Auditor call; `done` is Lucas at his terminal.
+- **ASSUMPTION-6:** Checks that leave the tree dirty → `run` refuses, without blocking. **Why:** no
+  agent caused it, and C21 forbids dispatching on a dirty tree.
+- **ASSUMPTION-7:** An Auditor or Planner that commits its own lane-valid edits is accepted, and the
+  tool commits only what is left. **Why:** C11/C12 judge content, and C16 doesn't forbid it.
+- **ASSUMPTION-8:** Remote unreachable before a step → refuse, no block. After a step → reject and
+  block. **Why:** C3's comparison needs both snapshots, and after a step nothing can be assumed.
+- **ASSUMPTION-9:** Actions C and D check out the feature branch from any clean branch, while A and
+  B refuse off `main`. `status` and `next` read the feature's branch tip when it has one. **Why:**
+  `main` still says `APPROVED` while the branch is further along.
+- **ASSUMPTION-10:** `--timeout` is in minutes (float). **Why:** matches C15's "90 min".
+- **ASSUMPTION-11:** Extra env vars `STUDIO_KILL_GRACE_SECONDS` and `STUDIO_NTFY_SERVER`. **Why:**
+  tests need a short grace and a local server. Documented in `README.md`.
+- **ASSUMPTION-12:** `run` also notifies on refusals; gates only print. **Why:** `run` is the
+  unattended one, and Lucas is at the terminal for gates.
+- **ASSUMPTION-13:** The recovery in notifications is `git reset --hard <start> && git clean -fd &&
+  tools/studio unblock F-XXX`. The tool prints it and never runs it (C11). `unblock` only clears
+  the marker. **Why:** C21 then refuses a dirty `run` anyway.
+- **ASSUMPTION-14:** `STATUS.md`'s `Last updated` line can't be changed by agents. **Why:** C13 says
+  only the row's two columns. The tool doesn't update it either.
 
 ### Things the Auditor should look at closely
-- <tricky spots, edge cases you're unsure about>
+- **Real end-to-end, on a throwaway clone with a local bare remote and the real `.godot/` tabs:**
+  `APPROVED` → real Claude built and committed (4 min) → real Godot checks → real Codex Mode B wrote
+  the marker and the right Reviewed commit (12 min) → one notification at Gate B → `done` merged,
+  pushed and deleted both branches. No step was rejected. Nothing reached GitHub.
+- **Not run end to end with real agents: actions A and B.** Their flags were checked with small
+  real calls, and Mode A shares Mode B's Codex command. Fakes cover those paths. F-003 is the first
+  real A → B → A.
+- **Real CLI containment, tested directly:** Builder `git push` denied by Claude; Planner has no
+  Bash; Codex's shell sees the guard, so `git push` fails, and it can't resolve github.com. `/tmp`
+  stays writable under `workspace-write` (Codex's default).
+- **A real Builder found one test bug:** `tools/test_studio` failed 149 tests inside its session, as
+  the sandbox inherited the push guard. Fixed in ff7f9c6.
+- **Lucas's Godot still has `DECISIONS.md` open.** Tools no longer touch it, but pressing save in the
+  editor would, and `run` then refuses the dirty tree (C21).
+- **Mutation check (not in the repo):** 45 deliberate breaks, plus an unmutated baseline that passed
+  under parallel load. 42 failed the suite. The 3 survivors exposed an assertion that could never
+  fail (`assert_published`), a force-delete test that proved nothing, and no test for children
+  outliving a successful step. All three are fixed and now caught, and the first hid a real bug
+  (DEV-3).
+- **Explicit-URL push from an agent can only be detected,** per C3 and the §11 note; the recovery
+  needs a force-push by Lucas.
+- `tools/test_studio` takes about 2.5 min, and C14 doesn't run it.
 
 ### How to test
-<exact steps / commands / scene to run>
+```sh
+tools/test_studio                   # expect 211 tests, OK
+tools/test                          # expect 130/130
+tools/lint                          # expect exit 0
+tools/check_core_purity             # expect "core purity ok"
+tools/studio status                 # F-000, F-001 DONE; F-002 CODE_REVIEW
+tools/studio next F-002             # expect action D
+tools/studio notify-test            # one macOS notification
+git status --short                  # expect nothing, also after tools/test
+```
 
 ---
 
