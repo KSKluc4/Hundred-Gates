@@ -1,8 +1,8 @@
 class_name PlayerMotor
-extends RefCounted
+extends Combatant
 ## Movement and dash logic for one player (F-001 §3). Pure: no nodes, no Input (G6).
 ## Player intentions arrive only through submit() (G8). Tiles and seconds inside (C7).
-## tick() consumes delta in exact segments (C15), so results don't depend on tick rate (G1).
+## step() consumes time in exact segments (C15), so results don't depend on tick rate (G1).
 
 signal dash_started
 signal dash_ended
@@ -14,6 +14,7 @@ enum State { IDLE, MOVING, DASHING }
 
 ## F-003 T2: CombatTiming owns it, this name stays for F-001's code and tests.
 const TIME_EPSILON: float = CombatTiming.TIME_EPSILON
+const DEFAULT_COMBAT_ID: StringName = &"player_1"
 const SNAPSHOT_KEYS: Array[String] = [
 	"time",
 	"position",
@@ -38,7 +39,6 @@ var _class_data: ClassData
 var _tunables: PlayerCombatTunables
 
 var _time: float = 0.0
-var _position: Vector2 = Vector2.ZERO
 var _velocity: Vector2 = Vector2.ZERO
 var _facing: Vector2 = Vector2.DOWN
 var _state: State = State.IDLE
@@ -59,12 +59,11 @@ var _has_iframe_window: bool = false
 var _iframe_start: float = 0.0
 var _iframe_end: float = 0.0
 
-# Per-tick only: never retained past tick(), so never in the snapshot (C5).
+# Per-tick only: never retained past finish_tick(), so never in the snapshot (C5).
 var _move_input: Vector2 = Vector2.ZERO
 var _aim_input: Vector2 = Vector2.ZERO
 var _dash_pressed: bool = false
-var _fired_this_tick: bool = false
-var _tick_displacement: Vector2 = Vector2.ZERO
+var _fired_this_step: bool = false
 
 
 ## F-001/C18. Returns false and changes nothing if the data is invalid.
@@ -72,10 +71,13 @@ func setup(
 	class_data: ClassData,
 	tunables: PlayerCombatTunables,
 	start_position_tiles: Vector2,
-	initial_facing: Vector2 = Vector2.DOWN
+	initial_facing: Vector2 = Vector2.DOWN,
+	combat_id: StringName = DEFAULT_COMBAT_ID
 ) -> bool:
 	if not _accepts(class_data, tunables):
 		return false
+	_combat_id = combat_id
+	_team = Team.PLAYER
 	_class_data = class_data
 	_tunables = tunables
 	_reset_state()
@@ -104,20 +106,26 @@ func submit(command: Command) -> void:
 		_dash_pressed = true
 
 
-## F-001/C15, step 2.
+## F-001/C15, step 2: one tick is one step that long. F-001's API, with its behavior.
 func tick(delta: float) -> void:
+	step(delta)
+	finish_tick()
+
+
+## F-003/C15: held commands stay for the next step, presses are consumed here.
+func step(duration: float) -> void:
 	if _class_data == null:
-		_clear_commands()
 		return
-	var tick_start: float = _time
+	var step_start: float = _time
 	_tick_displacement = Vector2.ZERO
-	_fired_this_tick = false
+	_fired_this_step = false
 
 	_update_facing()
 	if _dash_pressed:
 		_has_buffered_dash = true
 		_buffered_dash_age = 0.0
-	_run_phases(delta)
+		_dash_pressed = false
+	_run_phases(duration)
 	if _has_buffered_dash and _buffered_dash_age > _buffer_window() + TIME_EPSILON:
 		_has_buffered_dash = false
 
@@ -125,13 +133,11 @@ func tick(delta: float) -> void:
 	if _state != State.DASHING:
 		var is_moving: bool = _velocity != Vector2.ZERO or _move_input != Vector2.ZERO
 		_state = State.MOVING if is_moving else State.IDLE
-	_update_invulnerability(tick_start)
+	_update_invulnerability(step_start)
+
+
+func finish_tick() -> void:
 	_clear_commands()
-
-
-## F-001/C18: the physics result is authoritative in the scene.
-func sync_position(position_px: Vector2) -> void:
-	_position = Units.vector_px_to_tiles(position_px)
 
 
 ## F-001/C5: valid only between ticks, with no pending commands.
@@ -183,12 +189,9 @@ func from_dict(snapshot: Dictionary) -> void:
 	state_restored.emit()
 
 
-func get_tick_displacement_px() -> Vector2:
-	return Units.vector_tiles_to_px(_tick_displacement)
-
-
-func get_position_px() -> Vector2:
-	return Units.vector_tiles_to_px(_position)
+## F-003 T16: the body's velocity holds only one step's share once a tick has several.
+func get_velocity_tiles() -> Vector2:
+	return _velocity
 
 
 func get_facing() -> Vector2:
@@ -199,13 +202,14 @@ func get_state() -> State:
 	return _state
 
 
-## F-001/C8: true iff the i-frame window overlaps the last tick's interval.
+## F-001/C8: true iff the i-frame window overlaps the last step's interval. A presentation
+## flag: hits use is_dash_protected() (F-003/C15).
 func is_invulnerable() -> bool:
 	return _invulnerable
 
 
 ## F-001/C8: the exact window [start, end) in motor-clock seconds. Empty once the last
-## tick no longer overlaps it, or before any dash.
+## step no longer overlaps it, or before any dash.
 func get_iframe_window() -> PackedFloat64Array:
 	if _has_iframe_window:
 		return PackedFloat64Array([_iframe_start, _iframe_end])
@@ -271,8 +275,8 @@ func _update_facing() -> void:
 		_facing = _move_input.normalized()
 
 
-## F-001/C15 step c: never rounds to tick boundaries. A dash, its whole cooldown and the
-## next dash can all fall inside one tick.
+## F-001/C15 step c: never rounds to step boundaries. A dash, its whole cooldown and the
+## next dash can all fall inside one step.
 func _run_phases(delta: float) -> void:
 	var remaining: float = delta
 	while remaining > 0.0:
@@ -310,7 +314,7 @@ func _fire_dash() -> void:
 	_has_iframe_window = true
 	_iframe_start = _time
 	_iframe_end = _time + _dash_iframe_duration
-	_fired_this_tick = true
+	_fired_this_step = true
 	dash_started.emit()
 
 
@@ -393,12 +397,12 @@ func _ramp_toward(goal: Vector2, change_time: float, time_left: float) -> float:
 	return time_left - ramp_time
 
 
-## F-001/C8: a half-open interval overlap, so a fire tick always reports true.
-func _update_invulnerability(tick_start: float) -> void:
+## F-001/C8: a half-open interval overlap, so a fire step always reports true.
+func _update_invulnerability(step_start: float) -> void:
 	var overlapped: bool = (
-		_fired_this_tick
+		_fired_this_step
 		or (
-			_has_iframe_window and _iframe_start < _time and tick_start < _iframe_end - TIME_EPSILON
+			_has_iframe_window and _iframe_start < _time and step_start < _iframe_end - TIME_EPSILON
 		)
 	)
 	if not overlapped:

@@ -1,0 +1,55 @@
+class_name Combatant
+extends RefCounted
+## Anything that fights on the shared step grid (D-007). CombatSim only talks to this API.
+## Shared behavior lives here, so a rule like "no hitbox in hitstop" exists once.
+## Tiles and seconds inside, like PlayerMotor (F-001/C7).
+
+enum Team { PLAYER, ENEMY }
+
+var _combat_id: StringName = &""
+var _team: Team = Team.PLAYER
+var _position: Vector2 = Vector2.ZERO
+# Per-step only: never in a snapshot, like F-001's per-tick values (F-001/C5).
+var _tick_displacement: Vector2 = Vector2.ZERO
+
+
+## F-003/C19: stable, set in the scene.
+func get_combat_id() -> StringName:
+	return _combat_id
+
+
+func get_team() -> Team:
+	return _team
+
+
+## F-003/C15: advances by one step of `duration` seconds.
+func step(_duration: float) -> void:
+	pass
+
+
+## F-003/C15: the end of the tick, after its last step.
+func finish_tick() -> void:
+	pass
+
+
+## What the last step moved. Named for F-001's API, which it keeps.
+func get_tick_displacement_px() -> Vector2:
+	return Units.vector_tiles_to_px(_tick_displacement)
+
+
+func get_position_px() -> Vector2:
+	return Units.vector_tiles_to_px(_position)
+
+
+## F-001/C18: the physics result is authoritative in the scene.
+func sync_position(position_px: Vector2) -> void:
+	_position = Units.vector_px_to_tiles(position_px)
+
+
+## F-003/C19: valid only after finish_tick(), with nothing pending.
+func to_dict() -> Dictionary:
+	return {}
+
+
+func from_dict(_snapshot: Dictionary) -> void:
+	pass
