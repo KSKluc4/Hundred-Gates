@@ -10,7 +10,7 @@ import fnmatch
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -195,10 +195,15 @@ class View:
 
 @dataclass
 class Inspection:
-    errors: list[str]
-    commits: list[Commit]
-    paths: list[str]
-    remote_changes: dict[str, tuple[str | None, str | None]]
+    """What a step did. Starts at the worst case: unknown must never read as unchanged."""
+
+    errors: list[str] = field(default_factory=list)
+    commits: list[Commit] = field(default_factory=list)
+    paths: list[str] = field(default_factory=list)
+    remote_changes: dict[str, tuple[str | None, str | None]] = field(default_factory=dict)
+    remote_verified: bool = False
+    ref_changes: dict[str, str | None] = field(default_factory=dict)  # Ref -> where it was.
+    reset_needed: bool = True
 
 
 def next_step(ref: FeatureRef, feature: Feature, blocked: bool) -> tuple[str, str]:
@@ -289,6 +294,9 @@ class Studio:
 
     def _blocked_path(self, fid: str) -> Path:
         return self.state_dir / "blocked" / f"{fid}.json"
+
+    def _remote_record_path(self, fid: str) -> Path:
+        return self.state_dir / "blocked" / f"{fid}.remote"
 
     def is_blocked(self, fid: str) -> bool:
         return self._blocked_path(fid).exists()
@@ -551,10 +559,11 @@ class Studio:
         result = proc.run_group(
             command, self.root, proc.agent_env(), log, timeout, lock.set_agent
         )
+        inspection = self._evidence(start)
         try:
-            inspection = self._inspect(ref, step, start, before, before_board, before_decisions)
+            self._inspect(inspection, ref, step, start, before, before_board, before_decisions)
         except Exception as error:  # noqa: BLE001 - F-002/C15: after an agent, always reject
-            inspection = self._failed_inspection(start, error)
+            inspection.errors.append(f"can't validate the step: {error}")
         if not result.ok:
             inspection.errors.insert(0, f"agent failed: {result.describe()}")  # F-002/C15
         if inspection.errors:
@@ -565,16 +574,6 @@ class Studio:
         if dirty:  # F-002/C16
             self.git.commit_paths(dirty, self._commit_message(ref, key))
 
-    def _failed_inspection(self, start: Snapshot, error: Exception) -> Inspection:
-        """Validation itself broke on what the agent left. That can't pass, or stop silently."""
-        errors = [f"can't validate the step: {error}"]
-        try:
-            return Inspection(
-                errors, self.git.new_commits(start.head), self.git.changed_set(start.head), {}
-            )
-        except GitError:
-            return Inspection(errors, [], [], {})
-
     def _commit_message(self, ref: FeatureRef, key: str) -> str:
         feature = self._load_worktree(ref)
         if key == "A":
@@ -584,32 +583,74 @@ class Studio:
         department = feature.department.split()[0]
         return f"{ref.fid}: Planner revisions after round {len(feature.plan_rounds)} ({department})"
 
+    def _evidence(self, start: Snapshot) -> Inspection:
+        """What the step did, read before anything judges it (F-002/C3, C11). Validation can
+        break on what the agent left, and the recovery still needs all of this."""
+        inspection = Inspection()
+        try:
+            self._compare_remote(start, inspection)
+        except Exception as error:  # noqa: BLE001 - F-002/C15: after an agent, always reject
+            inspection.errors.append(f"can't verify the remote after the step: {error}")
+        try:
+            self._compare_local(start, inspection)
+        except Exception as error:  # noqa: BLE001 - F-002/C15: after an agent, always reject
+            inspection.errors.append(f"can't read what the step changed: {error}")
+        return inspection
+
+    def _compare_remote(self, start: Snapshot, inspection: Inspection) -> None:
+        """F-002/C3 backstop: explicit-URL pushes can only be detected, not prevented."""
+        now = self.git.remote_refs()
+        names = set(now) | set(start.remote_refs)
+        changes = {
+            name: (start.remote_refs.get(name), now.get(name))
+            for name in sorted(names)
+            if start.remote_refs.get(name) != now.get(name)
+        }
+        inspection.remote_changes = changes
+        inspection.remote_verified = True
+        if changes:
+            inspection.errors.append(
+                f"the remote changed during the step: {', '.join(changes)} (C3)"
+            )
+
+    def _compare_local(self, start: Snapshot, inspection: Inspection) -> None:
+        now = self.git.local_refs()
+        own_ref = f"refs/heads/{start.branch}"
+        changes = {
+            name: start.local_refs.get(name)
+            for name in sorted(set(now) | set(start.local_refs))
+            if start.local_refs.get(name) != now.get(name) and (name != own_ref or name not in now)
+        }
+        inspection.ref_changes = changes
+        if changes:
+            inspection.errors.append(
+                f"branches were created, moved or deleted: {', '.join(changes)} (C7)"
+            )
+        inspection.commits = self.git.new_commits(start.head)
+        inspection.paths = self.git.changed_set(start.head)
+        inspection.reset_needed = bool(
+            inspection.commits or inspection.paths or self.git.head() != start.head
+        )
+
     def _inspect(
         self,
+        inspection: Inspection,
         ref: FeatureRef,
         step: Step,
         start: Snapshot,
         before: Feature,
         before_board: str,
         before_decisions: str | None,
-    ) -> Inspection:
+    ) -> None:
         """Everything checked after a step, before anything is committed or dispatched."""
-        errors: list[str] = []
-        remote_changes = self._remote_changes(start, errors)
+        errors = inspection.errors
         branch = self.git.current_branch()
         if branch != start.branch:
             errors.append(f"branch changed from {start.branch} to {branch} (C7)")
         head = self.git.head()
         if not self.git.is_ancestor(start.head, head):
             errors.append("history isn't a fast-forward of the start HEAD (C11)")
-        refs_now = self.git.local_refs()
-        own_ref = f"refs/heads/{start.branch}"
-        others_before = {name: sha for name, sha in start.local_refs.items() if name != own_ref}
-        others_now = {name: sha for name, sha in refs_now.items() if name != own_ref}
-        if others_before != others_now or own_ref not in refs_now:
-            errors.append("branches were created, moved or deleted (C7)")
-        commits = self.git.new_commits(start.head)
-        paths = self.git.changed_set(start.head)
+        paths = inspection.paths
         outside = [path for path in paths if not path_allowed(step.role, path, ref.path)]
         if outside:
             errors.append(f"outside the {step.role} lane: {', '.join(outside)} (C12)")
@@ -618,7 +659,6 @@ class Studio:
             leftovers = self.git.dirty_paths()
             if leftovers:
                 errors.append(f"uncommitted files after the build: {', '.join(leftovers)} (C21)")
-        return Inspection(errors, commits, paths, remote_changes)
 
     def _file_errors(
         self,
@@ -646,35 +686,23 @@ class Studio:
         errors.extend(ft.consistency_errors(after, after_board))  # F-002/C6
         return errors
 
-    def _remote_changes(
-        self, start: Snapshot, errors: list[str]
-    ) -> dict[str, tuple[str | None, str | None]]:
-        """F-002/C3 backstop: explicit-URL pushes can only be detected, not prevented."""
-        try:
-            now = self.git.remote_refs()
-        except GitError as error:
-            errors.append(f"can't verify the remote after the step: {error}")
-            return {}
-        names = set(now) | set(start.remote_refs)
-        changes = {
-            name: (start.remote_refs.get(name), now.get(name))
-            for name in sorted(names)
-            if start.remote_refs.get(name) != now.get(name)
-        }
-        if changes:
-            errors.append(f"the remote changed during the step: {', '.join(changes)} (C3)")
-        return changes
-
     def _recovery(self, ref: FeatureRef, start: Snapshot, inspection: Inspection) -> str:
         parts = []
+        if not inspection.remote_verified:
+            # F-002/C3: the rest runs only once the remote is proved to be as it was.
+            record = self._relative(self._remote_record_path(ref.fid))
+            parts.append(f"git ls-remote --refs origin | diff {record} -")
         for name, (old, _new) in inspection.remote_changes.items():
             if old:  # F-002/C3: the only case that needs a force-push by Lucas.
                 parts.append(f"git push --force origin {old}:{name}")
             else:
                 parts.append(f"git push origin --delete {name}")
+        # F-002/C11: a reset moves one branch, and a gate pushes whatever local main holds.
+        for name, old in inspection.ref_changes.items():
+            parts.append(f"git update-ref {name} {old}" if old else f"git update-ref -d {name}")
         if self.git.current_branch() != start.branch and start.branch:
-            parts.append(f"git checkout {start.branch}")
-        if inspection.commits or inspection.paths:
+            parts.append(f"git checkout -f {start.branch}")
+        if inspection.reset_needed:
             parts.append(f"git reset --hard {start.head}")
             parts.append("git clean -fd")
         parts.append(f"tools/studio unblock {ref.fid}")
@@ -702,6 +730,8 @@ class Studio:
             "remote_changes": {
                 name: list(change) for name, change in inspection.remote_changes.items()
             },
+            "remote_verified": inspection.remote_verified,
+            "local_ref_changes": inspection.ref_changes,
             "start_head": start.head,
             "branch": start.branch,
             "log": self._relative(log),
@@ -711,6 +741,13 @@ class Studio:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(record, indent=2) + "\n")
         details = [f"step rejected ({step.role}): {'; '.join(inspection.errors)}"]
+        if not inspection.remote_verified:
+            self._remote_record_path(ref.fid).write_text(
+                "".join(f"{sha}\t{name}\n" for name, sha in start.remote_refs.items())
+            )
+            details.append("remote: not verified, it may hold what this step pushed")
+        for name, (old, new) in inspection.remote_changes.items():
+            details.append(f"remote: {name} {old or 'new'} -> {new or 'deleted'}")
         if commits:
             details.append(f"commits: {', '.join(commits)}")
         if inspection.paths:
@@ -728,6 +765,7 @@ class Studio:
             if not target.exists():
                 return [f"{ref.fid} isn't blocked."]
             target.unlink()
+            self._remote_record_path(ref.fid).unlink(missing_ok=True)
             return [f"{ref.fid} unblocked.", f"Next: tools/studio next {ref.fid}"]
 
     def approve(self, fid: str, note: str | None = None) -> list[str]:

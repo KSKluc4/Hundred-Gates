@@ -90,7 +90,8 @@ class Git:
 
     def remote_refs(self) -> dict[str, str]:
         refs = {}
-        for line in self._out("ls-remote", REMOTE).splitlines():
+        # `--refs`: HEAD and peeled tags aren't refs a recovery could repair.
+        for line in self._out("ls-remote", "--refs", REMOTE).splitlines():
             sha, name = line.split("\t", 1)
             refs[name] = sha
         return refs

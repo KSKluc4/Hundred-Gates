@@ -118,10 +118,15 @@ Every stop prints one next command, and notifications carry the same command.
   rewritten. The reason, commits, paths and log are in `.studio/blocked/F-XXX.json`. Fix the
   tree, then `tools/studio unblock F-XXX`. If the remote didn't change, the recovery is
   local: the notification's `git reset --hard <start> && git clean -fd && tools/studio unblock
-  F-XXX`.
+  F-XXX`. It also restores any other local branch the agent created, moved or deleted, since a
+  gate pushes whatever local `main` holds.
 - **The remote changed during a step:** `git push` to `origin` is blocked inside agents, but a
   push to an explicit URL can only be detected, not prevented. This is the one case that
   needs a force-push, and the notification gives the exact command.
+- **The remote couldn't be checked after a step:** the feature is blocked as if it may have
+  changed. The recovery starts with `git ls-remote --refs origin | diff
+  .studio/blocked/F-XXX.remote -`. That stops the rest while the remote is unreachable or
+  differs from before the step, and any difference it prints is what to repair by hand.
 - **`approve` or `done` failed partway:** run the same command again. Finished steps are
   skipped. `done` deletes branches only after `origin/main` is verified to hold the work.
 - **Merge conflict in `done`:** `git merge --abort`, fix `main`, run `done` again.

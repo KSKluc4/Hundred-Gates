@@ -14,6 +14,7 @@ from helpers import (
     BOARD,
     BRANCH,
     FEATURE,
+    TOOL,
     TOOLS_DIR,
     Sandbox,
     auditor_code,
@@ -21,7 +22,7 @@ from helpers import (
     builder_escalates,
     builder_ok,
 )
-from studio_lib import proc
+from studio_lib import engine, proc
 
 
 CONTENDER = """
@@ -129,6 +130,266 @@ class ChildPushTests(unittest.TestCase):
         command = proc.agent_command("claude", "planner", "x", Path("/tmp"))
         tools = command[command.index("--tools") + 1]
         self.assertNotIn("Bash", tools)
+
+
+class RecoveryEvidenceTests(unittest.TestCase):
+    """CR-4, AC9b: the recovery is built on evidence that a broken validation can't lose, and
+    unknown never reads as unchanged. Each test runs the printed recovery for real."""
+
+    REMOTE_RECORD = ".studio/blocked/F-900.remote"
+
+    def on_branch(self, box):
+        box.git("checkout", "-q", "-b", BRANCH)
+        return box.git("rev-parse", "HEAD")
+
+    def unreadable_output(self, box):
+        bad = box.fake_dir / "bad"
+        bad.write_bytes(b"\xff\xfe not text")
+        return ["copy", str(bad), BOARD]
+
+    def rogue_push(self, box, target):
+        return ["git", "push", str(box.remote), f"HEAD:{target}"]
+
+    def unreachable(self):
+        return ["git", "remote", "set-url", "origin", "/nonexistent/remote.git"]
+
+    def reconnect(self, box):
+        box.git("remote", "set-url", "origin", str(box.remote))
+
+    def recover(self, box):
+        command = box.blocked_record()["recovery"].replace(
+            "tools/studio", f"{sys.executable} {TOOL}"
+        )
+        return subprocess.run(
+            ["sh", "-c", command], cwd=box.repo, env=box.env, capture_output=True, text=True
+        )
+
+    def assert_recovered(self, box, start):
+        result = self.recover(box)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(box.is_blocked())
+        self.assertEqual(box.git("rev-parse", "HEAD"), start)
+        self.assertEqual(box.git("symbolic-ref", "--short", "HEAD"), BRANCH)
+        self.assertEqual(box.dirty(), "")
+
+    def test_a_new_remote_ref_survives_a_validation_failure(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            start = self.on_branch(box)
+            target = "refs/heads/rogue"
+            box.script([*builder_ok(), self.rogue_push(box, target), self.unreadable_output(box)])
+            result = box.studio("run", "F-900")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            new = box.remote_git("rev-parse", target)
+            record = box.blocked_record()
+            self.assertEqual(record["remote_changes"], {target: [None, new]})
+            self.assertTrue(record["remote_verified"])
+            errors = " ".join(record["errors"])
+            self.assertIn("the remote changed during the step", errors)
+            self.assertIn("can't validate the step", errors)
+            self.assertIn(f"git push origin --delete {target}", record["recovery"])
+            self.assertEqual(len(box.notifications()), 1)
+            self.assertIn(f"{target} new -> {new}", box.notifications()[0])
+            self.assertIn(record["recovery"], box.notifications()[0])
+            self.assert_recovered(box, start)
+            self.assertEqual(box.remote_git("for-each-ref", target), "")
+
+    def test_an_advanced_remote_ref_survives_a_validation_failure(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            start = self.on_branch(box)
+            target = "refs/heads/main"
+            box.script([*builder_ok(), self.rogue_push(box, target), self.unreadable_output(box)])
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            new = box.remote_git("rev-parse", target)
+            record = box.blocked_record()
+            self.assertEqual(record["remote_changes"], {target: [start, new]})
+            self.assertIn(f"git push --force origin {start}:{target}", record["recovery"])
+            self.assertIn(f"{target} {start} -> {new}", box.notifications()[0])
+            self.assert_recovered(box, start)
+            self.assertEqual(box.remote_git("rev-parse", target), start)
+
+    def test_an_annotated_tag_gets_one_repair(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            start = self.on_branch(box)
+            step = [
+                *builder_ok(),
+                ["git", "tag", "-a", "rogue", "-m", "rogue"],
+                ["git", "push", str(box.remote), "refs/tags/rogue"],
+            ]
+            box.script(step)
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            self.assertEqual(list(box.blocked_record()["remote_changes"]), ["refs/tags/rogue"])
+            self.assert_recovered(box, start)
+            self.assertEqual(box.remote_git("for-each-ref", "refs/tags"), "")
+
+    def test_a_failed_agent_keeps_the_remote_evidence(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            start = self.on_branch(box)
+            target = "refs/heads/rogue"
+            box.script(
+                [
+                    *builder_ok(),
+                    self.rogue_push(box, target),
+                    self.unreadable_output(box),
+                    ["exit", 7],
+                ]
+            )
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            record = box.blocked_record()
+            self.assertIn("exit code 7", record["reason"])
+            self.assertIn(target, record["remote_changes"])
+            self.assert_recovered(box, start)
+
+    def test_a_validation_failure_keeps_the_errors_found_before_it(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            self.on_branch(box)
+            step = [
+                ["write", "AGENTS.md", "# changed\n"],
+                ["git", "add", "--", "AGENTS.md"],
+                ["git", "commit", "-m", "outside the lane"],
+                self.unreadable_output(box),
+            ]
+            box.script(step)
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            errors = " ".join(box.blocked_record()["errors"])
+            self.assertIn("outside the builder lane: AGENTS.md", errors)
+            self.assertIn("can't validate the step", errors)
+
+    def test_an_unreachable_remote_is_never_reported_as_unchanged(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            start = self.on_branch(box)
+            refs = box.git("ls-remote", "--refs", "origin")
+            box.script([*builder_ok(), self.unreachable()])
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            built = box.git("rev-parse", "HEAD")
+            record = box.blocked_record()
+            self.assertFalse(record["remote_verified"])
+            self.assertEqual(record["remote_changes"], {})
+            self.assertIn("can't verify the remote", record["reason"])
+            self.assertTrue(
+                record["recovery"].startswith(
+                    f"git ls-remote --refs origin | diff {self.REMOTE_RECORD} -"
+                )
+            )
+            self.assertEqual(box.read(self.REMOTE_RECORD).strip(), refs)
+            self.assertIn("not verified", box.notifications()[0])
+
+            self.assertNotEqual(self.recover(box).returncode, 0, "still unreachable")
+            self.assertTrue(box.is_blocked())
+            self.assertEqual(box.git("rev-parse", "HEAD"), built, "nothing discarded")
+
+            self.reconnect(box)
+            self.assert_recovered(box, start)
+            self.assertFalse((box.repo / self.REMOTE_RECORD).exists())
+
+    def test_a_remote_that_moved_unseen_stops_the_recovery(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            self.on_branch(box)
+            target = "refs/heads/rogue"
+            box.script([*builder_ok(), self.rogue_push(box, target), self.unreachable()])
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            built = box.git("rev-parse", "HEAD")
+            self.reconnect(box)
+            result = self.recover(box)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(target, result.stdout)
+            self.assertTrue(box.is_blocked())
+            self.assertEqual(box.git("rev-parse", "HEAD"), built, "nothing discarded")
+
+    def test_an_unreachable_remote_and_a_validation_failure_both_report(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            self.on_branch(box)
+            box.script([*builder_ok(), self.unreachable(), self.unreadable_output(box)])
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            record = box.blocked_record()
+            errors = " ".join(record["errors"])
+            self.assertIn("can't verify the remote", errors)
+            self.assertIn("can't validate the step", errors)
+            self.assertFalse(record["remote_verified"])
+
+    def test_unreadable_git_state_assumes_the_worst(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            start = self.on_branch(box)
+            box.script([*builder_ok(), ["write", ".git/HEAD", "garbage\n"]])
+            result = box.studio("run", "F-900")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            record = box.blocked_record()
+            self.assertFalse(record["remote_verified"])
+            self.assertIn(f"git reset --hard {start}", record["recovery"])
+            self.assertEqual(len(box.notifications()), 1)
+
+    def test_evidence_that_raises_anything_is_still_unknown(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            studio = engine.Studio(box.repo)
+            start = studio.git.snapshot()
+            with (
+                patch.object(studio.git, "remote_refs", side_effect=ValueError("odd line")),
+                patch.object(studio.git, "local_refs", side_effect=OSError("gone")),
+            ):
+                inspection = studio._evidence(start)
+            self.assertFalse(inspection.remote_verified)
+            self.assertTrue(inspection.reset_needed)
+            self.assertEqual(len(inspection.errors), 2)
+
+    def test_a_rewound_head_gets_the_reset(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            self.on_branch(box)
+            box.write("src/old.txt", "old\n")
+            start = box.commit_all("existing work", "src/old.txt")
+            box.script([["git", "reset", "-q", "--hard", "HEAD~1"]])
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            self.assertIn(f"git reset --hard {start}", box.blocked_record()["recovery"])
+            self.assert_recovered(box, start)
+
+    def test_a_moved_local_main_is_restored(self):
+        """A gate pushes local main, so a rejected step can't leave it moved."""
+        with Sandbox("APPROVED", "Builder") as box:
+            start = self.on_branch(box)
+            box.script([*builder_ok(), ["git", "update-ref", "refs/heads/main", "HEAD"]])
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            record = box.blocked_record()
+            self.assertEqual(record["local_ref_changes"], {"refs/heads/main": start})
+            self.assertIn("refs/heads/main", record["reason"])
+            self.assert_recovered(box, start)
+            self.assertEqual(box.git("rev-parse", "main"), start)
+
+    def test_a_moved_local_main_survives_a_validation_failure(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            start = self.on_branch(box)
+            step = [
+                *builder_ok(),
+                ["git", "update-ref", "refs/heads/main", "HEAD"],
+                self.unreadable_output(box),
+            ]
+            box.script(step)
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            self.assert_recovered(box, start)
+            self.assertEqual(box.git("rev-parse", "main"), start)
+
+    def test_a_branch_the_agent_created_and_stayed_on_is_removed(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            start = self.on_branch(box)
+            box.script([["git", "checkout", "-q", "-b", "side"], *builder_ok()])
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            self.assert_recovered(box, start)
+            self.assertEqual(box.git("branch", "--list", "side"), "")
+
+    def test_a_commit_on_main_after_switching_to_it_is_undone(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            main = self.on_branch(box)
+            box.write("src/new.txt", "the feature's version\n")
+            start = box.commit_all("existing work", "src/new.txt")
+            box.script([["git", "checkout", "-q", "main"], *builder_ok()])
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            self.assert_recovered(box, start)
+            self.assertEqual(box.git("rev-parse", "main"), main)
+
+    def test_a_deleted_feature_branch_is_restored(self):
+        with Sandbox("APPROVED", "Builder") as box:
+            start = self.on_branch(box)
+            box.script([["git", "checkout", "-q", "--detach"], ["git", "branch", "-D", BRANCH]])
+            self.assertEqual(box.studio("run", "F-900").returncode, 1)
+            self.assert_recovered(box, start)
 
 
 class KeepAwakeTests(unittest.TestCase):
