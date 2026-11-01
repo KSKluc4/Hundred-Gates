@@ -26,4 +26,5 @@ var right_sticks: Dictionary[int, Vector2] = {}
 ## From the player to the mouse's world position.
 var mouse_offset_tiles: Vector2 = Vector2.ZERO
 var dodge_pressed: bool = false
+var attack_pressed: bool = false
 var device_events: Array[DeviceEvent] = []

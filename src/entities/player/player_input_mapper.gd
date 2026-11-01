@@ -37,6 +37,8 @@ func map(sample: InputSample, stick_deadzone: float) -> Array[Command]:
 	]
 	if sample.dodge_pressed:
 		commands.append(DashCommand.new())
+	if sample.attack_pressed:
+		commands.append(AttackCommand.new())
 	return commands
 
 

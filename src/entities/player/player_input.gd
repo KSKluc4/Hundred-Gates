@@ -3,6 +3,7 @@ extends Node
 ## Thin device layer (F-001 §3): fills an InputSample from Godot and submits the mapper's
 ## commands. Every decision lives in PlayerInputMapper.
 
+const ATTACK_ACTION: StringName = &"attack"
 const DODGE_ACTION: StringName = &"dodge"
 const MOVE_UP_ACTION: StringName = &"move_up"
 const MOVE_DOWN_ACTION: StringName = &"move_down"
@@ -68,6 +69,7 @@ func _build_sample(mouse_offset_px: Vector2) -> InputSample:
 		sample.right_sticks[device] = _right_stick(device)
 	sample.mouse_offset_tiles = Units.vector_px_to_tiles(mouse_offset_px)
 	sample.dodge_pressed = Input.is_action_just_pressed(DODGE_ACTION)
+	sample.attack_pressed = Input.is_action_just_pressed(ATTACK_ACTION)
 	sample.device_events = _device_events.duplicate()
 	return sample
 
