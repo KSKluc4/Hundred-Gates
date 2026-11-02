@@ -80,7 +80,7 @@ Current phase: **1**.
 project.godot
 src/
   core/        # pure game logic — RefCounted/Resource only, no visuals (G6)
-  commands/    # player/AI action commands (G8)
+  commands/    # player action commands (G8). AI decides through intents in core/enemies/ (F-004)
   entities/    # scenes + glue: player/, enemies/, bosses/ (presentation)
   world/       # floors, rooms, town hub scenes
   ui/          # HUD, menus, debug overlay

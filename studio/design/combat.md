@@ -3,7 +3,8 @@
 > Living document. Owned by the Combat & Bosses department.
 > Source of truth for how fighting works. Specs must match it; if they don't, one of
 > them changes explicitly.
-> **Status:** core player decisions set (CQ1–CQ8, 2026-10-31). Enemies and bosses next.
+> **Status:** core player decisions set (CQ1–CQ8, 2026-10-31). Phase 1 enemy archetypes set
+> (CQ10–CQ12, 2026-11-01; chaser → F-004, caster → F-005, brute → F-006). Bosses next.
 
 ## Fixed so far (from PROJECT.md / Lucas)
 - Real-time action, top-down camera.
@@ -28,6 +29,9 @@
 | CQ6 | Death (phase 1) | **Return to town** (promoted to D-006). Cleared floors stay cleared. Once a floor's boss room is reached, the player may re-enter **directly at that boss**. Loot is kept (phase 1 default; loss rules → Items & Economy). |
 | CQ7 | Combo | **3-hit chain**; hit 3 is a slower, stronger finisher. Dash may cancel any hit's recovery. |
 | CQ8 | Hitstop / shake | **Hitstop yes, day one** — per-entity, part of logic state, never global time scale. **Screen shake yes**, emitted as an event with intensity; look owned by Art & Game Feel; player can disable it. |
+| CQ10 | Enemy hurt rules (F-003 Q3) | **Planted while committed:** during windup, active and recovery a hit deals damage and hitstop but no knockback and no interrupt. Outside an attack, knockback applies normally. No enemy hurt i-frames. |
+| CQ11 | Enemy aim | **Track, then lock:** aim follows the target during the first part of windup, then locks for at least `min_locked_telegraph` before active. |
+| CQ12 | Enemy bodies | Enemies collide with walls and each other, **never with players**. No contact damage. |
 
 ### Still open
 | # | Question | Answer |
@@ -44,6 +48,10 @@
 - **Hearts (3–5)** — cannot scale with gear over 100 floors (pillar 3). *Tempting because:* very readable.
 - **Restart whole floor on death** — trains the hallway, not the boss; slows pattern learning. *Tempting because:* feels "fair" and simple.
 - **Global hitstop (`Engine.time_scale`)** — in co-op one player's hit would freeze everyone (D-002). *Tempting because:* one line of code.
+- **Hits interrupt enemy attacks (flinch/stagger)** — attacking first always wins, so mashing beats reading; the 3-hit chain could lock a chaser forever. *Tempting because:* feels powerful.
+- **Contact damage** — an attack with no telegraph (principle 1). *Tempting because:* classic and cheap.
+- **Hard body collision between players and enemies** — packs corner you with bodies, dashes get eaten, co-op body-blocking. *Tempting because:* feels solid.
+- **Enemy aim that tracks until active** — a last-instant snap can't be read. *Tempting because:* looks smart.
 
 ## Player
 
@@ -89,7 +97,95 @@
 - Presentation listens to signals (`hit_landed`, `damaged`, `died`) for shake, flash, numbers and sound — only for hits involving a local player. Shake can be disabled by the player.
 
 ## Enemies (phase 1)
-_(3 archetypes — next Combat session)_
+
+Three archetypes, one skill each. Together they cover the three things pillar 2 asks of the
+player: **read and dodge** (chaser), **close distance and move under fire** (caster),
+**don't trade, bait and punish** (brute). Names are working names (→ Lore).
+
+### Rules shared by every enemy
+- **Telegraph floor (principle 1).** Every enemy attack has `windup ≥ min_telegraph` (0.30 s)
+  and at least `min_locked_telegraph` (0.15 s) between aim lock and active. Data that breaks
+  this is rejected, not clamped (`data/tunables/enemy_combat.tres`).
+- **Track, then lock (CQ11).** During windup the aim follows the target until
+  `aim_track_time`, then never changes. The target is fixed for the whole attack.
+- **Planted while committed (CQ10).** In windup, active and recovery a hit deals damage and
+  hitstop, but no knockback and no interrupt. Outside an attack, knockback ×
+  `knockback_scale` applies and the enemy can't act until it ends. Hitstop pauses an enemy's
+  windup too, so hitting a winding-up enemy delays its swing but never cancels it.
+- **No hurt i-frames.** Once per attack instance is the only protection.
+- **One punish window per attack:** its recovery. Long enough to land at least hit 1 safely.
+- **Never faster than the player on foot.** Every enemy's `move_speed` is below the Warrior's
+  `move_speed`, so walking away always works. Attacks (lunges, charges) may be faster.
+- **Bodies (CQ12).** Enemies collide with walls and each other, never with players. No
+  contact damage. Enemies never hit enemies.
+- **Perception and decisions.** At each combat step start, every combatant senses the same
+  read-only view (positions, teams, alive) before anyone advances. An enemy decides only at
+  a step start, and only when free. Registration order never changes a decision.
+- **Targets (co-op ready).** Nearest living player; ties by registration order. Re-picked at
+  every decision, fixed during an attack. Nothing assumes one player.
+- **Aggro.** Starts when a living player is within `aggro_radius_tiles`, or when the enemy
+  takes damage. No leash in phase 1.
+- **Attack cooldown.** Starts when recovery ends. The enemy keeps moving during it.
+- **Death.** `died` once, then inert: no hitbox, can't be hit, no body collision. Stays in
+  the sim (snapshots match by id and order).
+- **Damage band, floor 1:** 18–25 per hit, so a Warrior with 100 HP dies in 4–6 hits (CQ5).
+- **Data.** One `EnemyData` per archetype in `data/enemies/`, attacks in `data/attacks/`
+  (`EnemyAttackData`, an `AttackData` with `aim_track_time` and `lunge_tiles`). Behavior is
+  a small stateless brain per archetype, picked by `EnemyData.brain` (F-004 §3).
+
+### Chaser — melee pressure (F-004)
+- **Concept:** walks straight at you and swipes. The enemy that teaches the loop: read,
+  dodge, punish.
+- **Movement:** chases at 3.0 tiles/s, holds at 1.0 tile. Slides along walls, no pathfinding.
+- **Attack — Lunging swipe:** starts when the target is within 1.6 tiles.
+  - Telegraph: 0.50 s windup. Tracks for 0.30 s, then the locked direction shows for 0.20 s.
+  - Hitbox: 90° sector, 1.2 tiles, active 0.10 s, lunging 0.8 tiles along the aim.
+  - Hit: 20 damage, 0.8 tiles knockback.
+  - Punish window: 0.60 s recovery, then a 0.8 s cooldown during which it walks back in.
+- **Body:** 50 HP (a full chain + one hit), hurtbox 0.4 tiles, `knockback_scale` 1.0.
+- **What it teaches:** that a telegraph means *move now*, and that its recovery is yours.
+  Mashing into it trades 20 damage for 10.
+
+### Caster — ranged area denial (F-005)
+- **Concept:** keeps its distance and fires slow bolts. Teaches closing in and moving under fire.
+- **Movement:** keeps a band of 4–6 tiles from the target. Backs off when closer than
+  3 tiles, at 2.5 tiles/s (slower than the player, so it can be caught).
+- **Attack — Bolt:** starts when the target is within 7 tiles.
+  - Telegraph: 0.60 s windup with a visible aim line. Tracks for 0.35 s, locked for 0.25 s.
+  - Projectile: circle of 0.25 tiles at 6 tiles/s, up to 10 tiles; stopped by walls.
+  - Hit: 18 damage, 0.5 tiles knockback. A projectile is its own attack instance and
+    disappears on the hit that lands. Skipped by i-frames → it flies on (the dash goes *through*).
+  - Punish window: 0.80 s recovery, then a 1.2 s cooldown.
+- **Body:** 30 HP, hurtbox 0.35 tiles, `knockback_scale` 1.2.
+- **What it teaches:** dash through attacks, use walls as cover, prioritize targets in a group.
+- **For F-005 to decide:** projectiles are a new hitbox kind with no owner body — how they
+  live in the sim (identity, snapshots, order), and how core knows a wall stopped them (G6).
+  Whether the sword can destroy a bolt (default: no).
+
+### Brute — heavy space control (F-006)
+- **Concept:** slow, tough, never pushed. Its charge punishes standing in line; missing
+  near a wall stuns it. Teaches baiting and not trading.
+- **Movement:** chases at 2.0 tiles/s, holds at 1.5 tiles. `knockback_scale` 0.
+- **Attack 1 — Charge:** when the target is 3–7 tiles away.
+  - Telegraph: 0.80 s windup. Tracks for 0.50 s, locked for 0.30 s, with a visible lane.
+  - Hitbox: 120° frontal sector, 0.9 tiles, while charging up to 6 tiles at 12 tiles/s.
+  - Hit: 25 damage, 1.5 tiles knockback. The charge doesn't stop on the hit.
+  - Punish window: 0.9 s recovery. If the charge is stopped by a wall: **stunned 1.5 s**
+    instead (the big punish).
+- **Attack 2 — Stomp:** when the target is within 1.5 tiles (so hugging it isn't safe).
+  - Telegraph: 0.60 s windup (raises a foot), no aim (360°).
+  - Hitbox: full circle, 1.6 tiles, active 0.10 s.
+  - Hit: 20 damage, 1.2 tiles knockback.
+  - Punish window: 0.7 s recovery.
+- **Body:** 120 HP, hurtbox 0.6 tiles. Attack cooldown 1.0 s, shared by both attacks.
+- **What it teaches:** dash sideways out of a lane, bait charges into walls, punish only when it's open.
+- **For F-006 to decide:** how an enemy picks between several attacks. How a wall stop is
+  detected in core, from the authoritative position falling short of the planned move
+  (F-003/C15), never by reading physics.
+
+### Floor mix (proposal → Direction, CX6)
+Floor 1: chasers only. Floor 2: chasers + casters. Floor 3: all three. Each boss reuses its
+floor's lesson.
 
 ## Bosses (floors 1–3)
 Template per boss:
@@ -139,7 +235,14 @@ Template per boss:
 | Dummy pulse `interval` (start to start) / `telegraph` / `active` | 2.0 / 0.6 / 0.1 s | `data/enemies/training_dummy.tres` |
 | Dummy pulse `radius` / `damage` / `knockback` | 2.5 tiles / 20 / 1.0 tile | same |
 | `screen_shake_enabled` / `max_offset_px` / `decay_time` | true / 6 / 0.2 s | `data/tunables/screen_shake.tres` (placeholder → Art) |
-| Enemy damage, floor 1 | 18–25 (→ ~4–6 hits) | `data/enemies/*.tres` (next session) |
+| Enemy damage, floor 1 | 18–25 (→ ~4–6 hits) | `data/enemies/*.tres` per archetype below |
+| `min_telegraph` / `min_locked_telegraph` (all enemies) | 0.30 / 0.15 s | `data/tunables/enemy_combat.tres` |
+| Chaser `max_hp` / `hurtbox_radius_tiles` / `knockback_scale` | 50 / 0.4 / 1.0 | `data/enemies/chaser.tres` |
+| Chaser `move_speed` / `aggro_radius_tiles` / `attack_range_tiles` / `stop_distance_tiles` | 3.0 tiles/s / 6.0 / 1.6 / 1.0 | same |
+| Chaser `attack_cooldown` | 0.8 s (from recovery end) | same |
+| Chaser swipe windup / `aim_track_time` / active / recovery | 0.50 / 0.30 / 0.10 / 0.60 s | `data/attacks/chaser_swipe.tres` |
+| Chaser swipe damage / arc / range / knockback / `lunge_tiles` | 20 / 90° / 1.2 / 0.8 / 0.8 tiles | same |
+| Caster, brute | design values in *Enemies* above; files set by F-005 / F-006 | `data/enemies/` |
 
 ## Open questions (cross-department)
 | # | To | Question | Blocking? |
@@ -148,3 +251,6 @@ Template per boss:
 | CX2 | → Art & Game Feel | Look of screen shake, hit flash, and dash VFX. Combat only emits the events and intensities. | No |
 | CX3 | → Items & Economy (phase 2) | Should death lose loot or currency? Phase 1 keeps everything. | No |
 | CX4 | → Direction | The death/re-entry rule (CQ6) affects Floors and Items later — promote to a D-###? | **Answered:** yes → D-006 |
+| CX5 | → Art & Game Feel | Look and sound of enemy telegraphs: windup cue, lock cue, active, "open" recovery; caster aim line and brute charge lane. Combat fixes only the timing. | No |
+| CX6 | → Direction | Floor mix for floors 1–3 (proposal in *Enemies*). Floors starts in phase 2, but phase 1 needs it. | No |
+| CX7 | → Lore | Names for chaser, caster, brute (working names only; no SAO names). | No |
