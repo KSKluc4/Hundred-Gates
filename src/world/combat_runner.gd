@@ -5,6 +5,19 @@ extends Node
 ## atomic reload (F-003/C18), the reset (C20) and scene snapshots (C19). Debug calls arrive
 ## from input, so they act between ticks.
 
+
+## F-003/C18, F-004/C12: everything one F5 reads, before any of it counts.
+class ReloadGroup:
+	extends RefCounted
+	var class_data: ClassData
+	var tunables: PlayerCombatTunables
+	var dummy_data: DummyData
+	var settings: ScreenShakeSettings
+	var enemy_rules: EnemyCombatTunables
+	## Path to EnemyData: each distinct file once, however many enemies use it.
+	var enemies: Dictionary = {}
+
+
 ## F-003/C19: the order here is the registration order.
 @export var combatant_paths: Array[NodePath] = []
 ## AC16: only the debug scene refills. Death itself is out of scope (D-006).
@@ -13,10 +26,12 @@ extends Node
 
 var dummy_data_path: String = Tunables.TRAINING_DUMMY_PATH
 var shake_settings_path: String = Tunables.SCREEN_SHAKE_PATH
+var enemy_combat_path: String = Tunables.ENEMY_COMBAT_PATH
 
 var _sim: CombatSim = CombatSim.new()
 var _bodies: Array[CombatBody] = []
 var _shake: PlaceholderShake
+var _setup_errors: PackedStringArray = []
 
 
 func _ready() -> void:
@@ -30,6 +45,7 @@ func _ready() -> void:
 		_sim.register(body.get_combatant())
 		if body is Player:
 			_attach_player(body as Player)
+	_stop_if_setup_failed()
 
 
 func _physics_process(delta: float) -> void:
@@ -40,6 +56,11 @@ func _physics_process(delta: float) -> void:
 
 func get_sim() -> CombatSim:
 	return _sim
+
+
+## F-004/C12: why this scene's fight didn't start. Empty when it did.
+func get_setup_errors() -> PackedStringArray:
+	return _setup_errors
 
 
 ## F-003/C12: read from the dummies, never stored here, so a restore can't leave it stale.
@@ -54,6 +75,18 @@ func is_shake_on() -> bool:
 	return _shake != null and _shake.shake_enabled
 
 
+func has_enemies() -> bool:
+	return not _enemies().is_empty()
+
+
+## F-004/C4: read from the enemies, never stored here, so a restore can't leave it stale.
+func is_ai_on() -> bool:
+	for enemy: Enemy in _enemies():
+		if enemy.logic.is_ai_enabled():
+			return true
+	return false
+
+
 func toggle_pulse() -> void:
 	var enabled: bool = not is_pulse_on()
 	for dummy: TrainingDummy in _dummies():
@@ -65,7 +98,14 @@ func toggle_shake() -> void:
 		_shake.toggle()
 
 
-## F-003/C20: a fresh setup() on every combatant. Only pulse and shake on/off survive.
+func toggle_ai() -> void:
+	var enabled: bool = not is_ai_on()
+	for enemy: Enemy in _enemies():
+		enemy.logic.set_ai_enabled(enabled)
+
+
+## F-003/C20, F-004/C15: a fresh setup() on every combatant. Only pulse, shake and AI on/off
+## survive.
 func reset() -> void:
 	for body: CombatBody in _bodies:
 		body.reset_to_start()
@@ -86,22 +126,19 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	return true
 
 
-## F-003/C18: all of it or nothing. Returns the errors, empty when the reload was applied.
+## F-003/C18, F-004/C12: all of it or nothing. Returns the errors, empty when the reload was
+## applied.
 func reload_data() -> PackedStringArray:
 	var player: Player = _players()[0]
-	var class_data: ClassData = Tunables.load_fresh(player.get_class_data_path()) as ClassData
-	var tunables: PlayerCombatTunables = Tunables.load_fresh(player.tunables_path)
-	var dummy_data: DummyData = Tunables.load_fresh(dummy_data_path) as DummyData
-	var settings: ScreenShakeSettings = Tunables.load_fresh(shake_settings_path)
-
-	var errors: PackedStringArray = _load_errors(player, class_data, tunables, dummy_data, settings)
+	var group: ReloadGroup = _load_group(player)
+	var errors: PackedStringArray = _load_errors(player, group)
 	if errors.is_empty():
-		var rate: int = tunables.combat_step_rate
-		errors = _validation_errors(class_data, tunables, dummy_data, settings)
+		var rate: int = group.tunables.combat_step_rate
+		errors = _validation_errors(group)
 		if errors.is_empty() and rate != _sim.get_step_rate():
 			errors = _sim.rate_change_errors(rate)
 	if errors.is_empty():
-		_apply_reload(player, class_data, tunables, dummy_data, settings)
+		_apply_reload(player, group)
 	return errors
 
 
@@ -111,6 +148,31 @@ func _attach_player(player: Player) -> void:
 	if refill_player_on_died:
 		var state: CombatState = player.motor.get_combat_state()
 		state.died.connect(state.refill)
+
+
+## F-004/C12: nothing steps until the files are right. Restarting the scene is the way back.
+func _stop_if_setup_failed() -> void:
+	_setup_errors = _enemy_setup_errors()
+	if _setup_errors.is_empty():
+		return
+	for error: String in _setup_errors:
+		push_error("CombatRunner: %s" % error)
+	set_physics_process(false)
+
+
+## F-004/C12: every enemy against every player's class. An enemy that refused its data has
+## nothing to compare, and can't fight either.
+func _enemy_setup_errors() -> PackedStringArray:
+	var errors: PackedStringArray = []
+	for enemy: Enemy in _enemies():
+		var data: EnemyData = enemy.logic.get_data()
+		if data == null:
+			errors.append("%s: setup refused its data" % enemy.combat_id)
+			continue
+		for player: Player in _players():
+			for error: String in data.validate_against_class(player.class_data):
+				errors.append("%s: %s" % [enemy.combat_id, error])
+	return errors
 
 
 func _move_bodies(physics_delta: float) -> void:
@@ -134,62 +196,82 @@ func _dummies() -> Array[TrainingDummy]:
 	return dummies
 
 
+func _enemies() -> Array[Enemy]:
+	var enemies: Array[Enemy] = []
+	for body: CombatBody in _bodies:
+		if body is Enemy:
+			enemies.append(body as Enemy)
+	return enemies
+
+
 ## F-003/C19: damage numbers clear with the dummy's own view.
 func _clear_transient_views() -> void:
 	if _shake != null:
 		_shake.clear()
 
 
-func _load_errors(
-	player: Player,
-	class_data: ClassData,
-	tunables: PlayerCombatTunables,
-	dummy_data: DummyData,
-	settings: ScreenShakeSettings
-) -> PackedStringArray:
+func _load_group(player: Player) -> ReloadGroup:
+	var group: ReloadGroup = ReloadGroup.new()
+	group.class_data = Tunables.load_fresh(player.get_class_data_path()) as ClassData
+	group.tunables = Tunables.load_fresh(player.tunables_path)
+	group.dummy_data = Tunables.load_fresh(dummy_data_path) as DummyData
+	group.settings = Tunables.load_fresh(shake_settings_path)
+	group.enemy_rules = Tunables.load_fresh(enemy_combat_path) as EnemyCombatTunables
+	for enemy: Enemy in _enemies():
+		var path: String = enemy.get_data_path()
+		if not group.enemies.has(path):
+			group.enemies[path] = Tunables.load_fresh(path) as EnemyData
+	return group
+
+
+func _load_errors(player: Player, group: ReloadGroup) -> PackedStringArray:
 	var errors: PackedStringArray = []
-	if class_data == null:
+	if group.class_data == null:
 		errors.append("could not load %s" % player.get_class_data_path())
-	if tunables == null:
+	if group.tunables == null:
 		errors.append("could not load %s" % player.tunables_path)
-	if dummy_data == null:
+	if group.dummy_data == null:
 		errors.append("could not load %s" % dummy_data_path)
-	if settings == null:
+	if group.settings == null:
 		errors.append("could not load %s" % shake_settings_path)
+	if group.enemy_rules == null:
+		errors.append("could not load %s" % enemy_combat_path)
+	for path: String in group.enemies:
+		if group.enemies[path] == null:
+			errors.append("could not load %s" % path)
 	return errors
 
 
-## F-003/C18: a reload is checked against its own new rate.
-func _validation_errors(
-	class_data: ClassData,
-	tunables: PlayerCombatTunables,
-	dummy_data: DummyData,
-	settings: ScreenShakeSettings
-) -> PackedStringArray:
-	var rate: int = tunables.combat_step_rate
-	var errors: PackedStringArray = class_data.validate()
-	errors.append_array(class_data.validate_combat(rate))
-	errors.append_array(tunables.validate())
-	errors.append_array(tunables.validate_combat())
-	errors.append_array(dummy_data.validate(rate))
-	errors.append_array(settings.validate())
+## F-003/C18: a reload is checked against its own new rate. F-004/C12: the speed rule compares
+## the candidates, so edits to both sides in one F5 count together.
+func _validation_errors(group: ReloadGroup) -> PackedStringArray:
+	var rate: int = group.tunables.combat_step_rate
+	var errors: PackedStringArray = group.class_data.validate()
+	errors.append_array(group.class_data.validate_combat(rate))
+	errors.append_array(group.tunables.validate())
+	errors.append_array(group.tunables.validate_combat())
+	errors.append_array(group.dummy_data.validate(rate))
+	errors.append_array(group.settings.validate())
+	errors.append_array(group.enemy_rules.validate())
+	for path: String in group.enemies:
+		var data: EnemyData = group.enemies[path]
+		for error: String in data.validate(rate, group.enemy_rules):
+			errors.append("%s: %s" % [path, error])
+		errors.append_array(data.validate_against_class(group.class_data))
 	return errors
 
 
-func _apply_reload(
-	player: Player,
-	class_data: ClassData,
-	tunables: PlayerCombatTunables,
-	dummy_data: DummyData,
-	settings: ScreenShakeSettings
-) -> void:
-	var rate: int = tunables.combat_step_rate
-	player.apply_reloaded_data(class_data, tunables)
+func _apply_reload(player: Player, group: ReloadGroup) -> void:
+	var rate: int = group.tunables.combat_step_rate
+	player.apply_reloaded_data(group.class_data, group.tunables)
 	player.combat_step_rate = rate
 	for dummy: TrainingDummy in _dummies():
-		dummy.apply_reloaded_data(dummy_data, rate)
+		dummy.apply_reloaded_data(group.dummy_data, rate)
+	Tunables.enemy_combat = group.enemy_rules
+	for enemy: Enemy in _enemies():
+		enemy.apply_reloaded_data(group.enemies[enemy.get_data_path()], group.enemy_rules, rate)
 	if _shake != null:
-		_shake.apply_settings(settings)
+		_shake.apply_settings(group.settings)
 	_sim.set_step_rate(rate)
 
 
