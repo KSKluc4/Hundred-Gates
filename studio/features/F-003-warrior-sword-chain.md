@@ -2,7 +2,7 @@
 id: F-003
 title: Warrior sword chain + hit/hurt + hitstop + training dummy
 status: CODE_REVIEW          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
 depends_on: [F-000, F-001, D-002, D-005]
@@ -818,6 +818,8 @@ The previous Planner replies were checked first; PR-1–PR-10 are resolved as an
 
 > **Builder reply:** fixed in 50aa9ca. `CombatSim.tick()` now calls `Combatant.fire_due_actions()` after every combatant has stepped and before the bodies move, so the contact sees the dash or attack. It respects hitstop, and a waiting dash treats a cooldown within `TIME_EPSILON` as ended. `tick()` keeps F-001's timeline (DEV-9, ASSUMPTION-10), and ASSUMPTION-1 is withdrawn. Your reproduction now records HP 100 at 0.1 and the dash at 0.1, at all three rates. `test_boundary_actions.gd` covers recovery start, cooldown expiry, hitstop end, buffer priority and a zero-windup attack. ASSUMPTION-9 records the one related case this leaves as it is.
 
+✔ resolved (round 2) — Verified 50aa9ca and the contact-level regressions for recovery start, cooldown expiry, hitstop end, buffer priority and zero-windup attacks. The original reproduction now records HP 100 and dash time 0.1 at all three required rates. DEV-9 preserves the legacy `tick()` contract while the sim resolves due actions before contact.
+
 ### CR-2 🔴 Re-sync the runner's pulse toggle when restoring a scene snapshot
 
 **Location:** `src/world/combat_runner.gd:46–57` and `src/world/combat_runner.gd:77–83`; `src/ui/debug/motor_debug_overlay.gd:75`. Violates C12/C19.
@@ -830,6 +832,8 @@ The previous Planner replies were checked first; PR-1–PR-10 are resolved as an
 
 > **Builder reply:** fixed in 87a26b7. `_pulse_on` is gone: `is_pulse_on()` reads the dummies, and `toggle_pulse()` flips what it reads, so there's no second copy to go stale. `test_f003_pulse_restore.gd` restores on and off snapshots over the opposite setting and into a fresh scene, and asserts the overlay and that one P press acts on the real pulse.
 
+✔ resolved (round 2) — Verified 87a26b7 and all four pulse-restore scene tests. The toggle and overlay derive from restored logic; the original reproduction now reports pulse on after restore and off after one toggle. The loose dummy remains excluded from the debug pulse.
+
 ### CR-3 🔴 Latch shake look values until the next shake
 
 **Location:** `src/world/camera/placeholder_shake.gd:23–34`, `src/world/camera/placeholder_shake.gd:44–56`. Violates C18's “Other shake values apply to the next shake” rule.
@@ -841,6 +845,8 @@ The previous Planner replies were checked first; PR-1–PR-10 are resolved as an
 **Suggested fix:** Keep the new settings for subsequent shakes and latch the active shake's decay/amplitude values when `shake()` starts or refreshes it. Continue applying `screen_shake_enabled` immediately and clearing when disabled. Add a scene reload regression changing both decay and maximum offset during a shake: its current envelope stays unchanged, then a new shake uses the replacement values.
 
 > **Builder reply:** fixed in 6a4d7ba. `shake()` now latches `decay_time` and `max_offset_px`, and `_process()` and `get_current_intensity()` read those latched values, so F5 only reaches the next shake. `screen_shake_enabled` still applies at once. The new regression in `test_f003_reload.gd` goes through the real F5 key and changes both values mid-shake: intensity stays 0.5 (not 10.0), the limit stays 3 px, the old decay keeps running, and the next shake takes the new look.
+
+✔ resolved (round 2) — Verified 6a4d7ba and the real-F5 regression changing both decay and maximum offset during a running shake. The current envelope and limit retain their latched values; the next shake uses the new settings, and disabling still clears immediately. The original reproduction now retains intensity 0.5 after the decay edit.
 
 **AC evidence** (paths relative to the repository; ✅ means the named behavior has implementation/test evidence, with the scope of any exception stated):
 
@@ -885,6 +891,56 @@ The previous Planner replies were checked first; PR-1–PR-10 are resolved as an
 **Assumptions:** ASSUMPTION-1 is not acceptable because it changes the outcome of a boundary contact (CR-1). ASSUMPTION-2's epsilon convention is small and reversible, but cannot authorize that ordering. ASSUMPTION-3's synchronous target-before-attacker signal sequencing is explicit and reversible; both reactions complete before the next candidate. ASSUMPTION-4 matches the stated “both can fire” condition. ASSUMPTION-5 is consistent with stored velocity being zeroed on an incoming hit; later hitstop must still preserve existing velocity under C7. ASSUMPTION-6 follows the deliberately deferred death flow. ASSUMPTION-7 keeps a diagnostic scene clock without affecting combatant resets. ASSUMPTION-8 follows the telegraph/live-hitbox contracts. No additional blocking assumption was found.
 
 **Verification:** Reviewed the feature in full, the branch diff against `main`, project decisions/design/glossary, implementation and relevant test assertions. Relied on the supplied passing Mode B `tools/test`, `tools/lint` and `tools/check_core_purity` results for this exact HEAD. Independently ran `tools/test_studio` (243/243 passed) and a temporary headless scene outside the repository that reproduced CR-1 at all three required rates and CR-2/CR-3 on the real scene/presentation nodes. No source or test files were changed. The manual KB/M/gamepad feel test remains for Lucas as logged in §8.
+
+<!-- review-round: 2 verdict: APPROVE -->
+
+**Reviewed commit:** 981ebedd11f5859d17321bed01d1f373f95fae56
+
+**Verdict:** APPROVE — no new findings. Checked each Builder reply first; CR-1–CR-3 are resolved as annotated above. The feature remains `CODE_REVIEW`, with Lucas next for Gate B.
+
+**AC evidence** (repository-relative paths; current-HEAD evidence for every criterion):
+
+| AC | Result | Evidence at the reviewed HEAD |
+|---|---|---|
+| AC1 | ✅ | `PlayerMotor.from_dict()` emits `state_restored`; `Player._refresh_from_state()`, `TrainingDummy.refresh_view()` and `CombatDebugDraw` derive their views from state. Real tint, HP and arc restoration assertions are in `tests/scenes/test_f003_restore.gd` and `test_f003_views.gd`. |
+| AC2 | ✅ | `src/core/player/attack_chain.gd` latches and advances windup/active/recovery; `PlayerMotor._advance_attack()` carries exact segment time and exposes a hitbox only during active. Phase/lifetime assertions: `tests/core/player/test_player_attack.gd`. |
+| AC3 | ✅ | `AttackChain.start()` locks `_direction` from facing; later aim updates only the motor's facing. Locked-aim assertions: `test_player_attack.gd`. |
+| AC4 | ✅ | `AttackChain.advance/advance_window/_finish_recovery` manage the recovery-start window; motor arbitration allows chaining throughout non-finisher recovery. Recovery, short-window, post-recovery and expired-window cases: `test_player_attack.gd`. |
+| AC5 | ✅ | `PlayerMotor._take_presses/_fire_buffered_actions` retain only the newest press, pause ages in hitstop and check eligibility/expiry at transitions. `CombatSim.tick()` now fires boundary-due actions before contact. Evidence: `test_player_attack.gd`, `test_player_hit_reaction.gd`, `test_player_hitstop.gd` and `tests/core/combat/test_boundary_actions.gd`. |
+| AC6 | ✅ | The chain latches finisher values and wraps its next index; motor arbitration prevents attack cancellation of finisher recovery while allowing a ready dash. Evidence: `test_player_attack.gd` and `test_player_dash_cancel.gd`. |
+| AC7 | ✅ | `PlayerMotor._advance_attack()` integrates velocity toward zero using class deceleration; normal movement resumes after recovery. Rooting and deceleration assertions: `test_player_attack.gd`. |
+| AC8 | ✅ | Motor cooldown checks, segmented expiry and the new pre-contact due-action hook fire eligible recovery cancels at the required instant without refunding cooldown. Ordinary/expired cases: `test_player_dash_cancel.gd`; exact recovery/cooldown contacts at 30/60/120 Hz: `test_boundary_actions.gd`. |
+| AC9 | ✅ | `src/core/combat/geometry.gd` checks sector interior, apex, finite radial edges and range. `tests/core/combat/test_geometry.gd` covers all requested cases, full circles and wide arcs. |
+| AC10 | ✅ | `Hitbox.hit_ids` shares the attack instance's stable-id array; `HitResolver` filters it and `CombatSim._apply_contact()` marks only landed hits. Once-per-instance and separate-chain-hit evidence: `test_combat_sim.gd` and `test_combat_batches.gd`. |
+| AC11 | ✅ | `CombatState.apply_hit()` clamps HP, initializes knockback/hitstop/hurt protection and emits damage/death; the sim applies attacker hitstop and `hit_landed`. `HitEvent.from_candidate()` supplies the payload. Assertions: `test_combat_state.gd`, `test_hit_resolver.gd` and `test_combat_sim.gd`. |
+| AC12 | ✅ | `HitEvent._direction_of()`, target scale and `CombatState` implement fixed-speed, replaceable knockback after hitstop. `CombatBody.move_with_combatant()` collides and syncs position. Core reaction/dummy tests and `tests/scenes/test_f003_physics.gd` cover scaling, direction, replacement and walls. |
+| AC13 | ✅ | `CombatState.consume_hitstop/_extend_hitstop`, motor/dummy phase loops and `Combatant.get_live_hitbox()` implement per-entity pauses, remainder carry and max-extension. Evidence: `test_player_hitstop.gd`, `test_dummy_logic.gd`, `test_combat_state.gd` and `test_combat_sim.gd`. |
+| AC14 | ✅ | `PlayerMotor.is_dash_protected()` checks the exact half-open window; `Combatant.can_be_hit()` also checks hurt protection before marking. Protection expiry and skipped-target retry assertions: `test_player_hit_reaction.gd` and `test_combat_batches.gd`. |
+| AC15 | ✅ | `PlayerMotor.apply_hit/_advance_knockback` interrupt attacks/dashes, reset the chain, retain buffers and start the full interrupted-dash cooldown. `test_player_hit_reaction.gd` covers these rules and zero knockback. |
+| AC16 | ✅ | `CombatState.apply_hit()` emits `died` only on a positive-to-zero transition; the debug runner explicitly connects refill. Assertions: `test_combat_state.gd` and `test_f003_views.gd`. |
+| AC17 | ✅ | `HitResolver._touches()` rejects same-team pairs. Self/sword/pulse cases: `test_hit_resolver.gd` and `test_combat_batches.gd`. |
+| AC18 | ✅ | `DummyLogic` owns KO, protected respawn and instance-scaled knockback; `TrainingDummy` derives HP/bar/KO views from state. Evidence: `test_dummy_logic.gd`, `test_f003_presentation.gd` and `test_f003_debug_keys.gd`. |
+| AC19 | ✅ | `PulseCycle` implements telegraph/active/wait with start-to-start timing and latched values; dummy lifecycle handles toggles/KO/respawn. `CombatRunner.is_pulse_on()` now derives from restored logic. Evidence: `test_dummy_logic.gd`, `test_f003_debug_keys.gd` and `test_f003_pulse_restore.gd`. |
+| AC20 | ✅ | `DamageNumbers` listens to dummy damage and enlarges finishers; dummy views draw HP/bar and the overlay reads player HP. Real-view assertions: `test_f003_presentation.gd` and `test_f003_views.gd`. |
+| AC21 | ✅ | `PlaceholderShake` listens to the local player's hit/damage signals, reads configured intensities and clears/skips while disabled. Active look values are now latched. Signal/toggle/envelope assertions: `test_f003_views.gd` and the new reload regression in `test_f003_reload.gd`. |
+| AC22 | ✅ | `CombatSim.tick()` preserves the shared step schedule. The exact four-hit/52-damage oracle, dash times and final position are asserted at 30/60/120 Hz in `test_combat_sim.gd` and over real physics in `test_f003_physics.gd`. |
+| AC23 | ✅ | Sim/motor/chain/combat/dummy/pulse snapshots preserve core continuation and reject mismatched ids/order/rate. `test_player_snapshot.gd` restores fresh objects and compares 60 subsequent ticks; scene restoration and transient clearing are covered by `test_f003_views.gd` and `test_f003_pulse_restore.gd`. |
+| AC24 | ✅ | `CombatRunner.reload_data()` deep-loads and validates the atomic group, checks running latched windows and applies only after success. The legacy player reload rejects rate changes; active shake look now remains latched. Evidence: validation tests, `test_rate_change.gd`, `test_f003_runner.gd` and `test_f003_reload.gd`, including real F5 during an active shake. |
+| AC25 | ✅ | Core, mapper and real-scene tests match the coverage map. The diff leaves all pre-existing F-001 tests unchanged except the three-action input-map migration. Supplied Mode B test/lint/purity gates passed; independently ran 34 focused GUT tests and all 243 studio tests successfully. |
+| AC26 | ✅ | `CombatTiming.window_errors()` centralizes the two duration bounds; the sim, exact protection check and hitstop consumption implement the timeline. Short/zero-lead/start-boundary/overshoot/reach oracles at all three rates: `test_combat_sim.gd` and validation tests. |
+| AC27 | ✅ | Motor arbitration preserves priority, cooldown, chain reset and interrupted-dash rules; knockback replaces and zero distance skips the state. Evidence: `test_player_dash_cancel.gd`, `test_player_hit_reaction.gd`, `test_combat_batches.gd` and the new contact-level `test_boundary_actions.gd`. |
+| AC28 | ✅ | `CombatSim._apply_contact()` creates candidates once and rechecks targets only; shared instance hit sets survive interruption without contaminating a new attack. `test_combat_batches.gd` covers multi-target batches, KO skips, unmarked protection skips and trades in either registration order; hitstop remains a max. |
+| AC29 | ✅ | The runner moves bodies and syncs logic before resolution through `CombatBody.move_with_combatant()`. `test_f003_physics.gd` checks wall/no-wall controls and motor/body agreement at contact during dash and knockback. |
+| AC30 | ✅ | Runner/body reset methods rerun setup, restore scene starts, retain debug toggles and clear transient views. `test_f003_debug_keys.gd` compares snapshots with fresh setup and checks pulse restart/shake retention. |
+| AC31 | ✅ | `CombatRunner._physics_process()` alone submits/steps logic; `Player` has no physics tick and both debug scenes register through a runner. Step-count and single-command-delivery assertions: `test_f003_runner.gd`. |
+
+**Rejected-option / constraint check:** No rejected option from §3 appears in the implementation. The new due-action hook completes Advance before Move/Contact; it adds no contact and does not bypass cooldown or change the half-open active-window rule. The core/glue split, scene-owned combat state, serializable state, command input, data resources, unchanged input bindings and collision-corrected contacts remain consistent with C1–C20, G1–G9 and D-002/D-005/D-007. No new dependency or animation/physics-driven combat decision was introduced.
+
+**Deviation audit:** DEV-1–DEV-7 remain justified factoring, loading and test-organization choices. DEV-8 documents intermediate-history defects, with no current-HEAD defect found. DEV-9 is justified: the sim's due-action hook enforces C17 before contact while `PlayerMotor.tick()` retains the required F-001 boundary behavior, pinned by `test_player_motor_steps.gd`. No additional undocumented deviation found.
+
+**Assumptions:** ASSUMPTION-1 is explicitly withdrawn. ASSUMPTION-2/10 apply C15's epsilon boundary convention and have regression coverage. ASSUMPTION-3's synchronous target-before-attacker signals, ASSUMPTION-4's finisher-buffer interpretation, ASSUMPTION-5's knockback speed display, ASSUMPTION-6's deferred death behavior, ASSUMPTION-7's diagnostic scene clock and ASSUMPTION-8's state-derived pulse/arc visibility remain reasonable and reversible. ASSUMPTION-9 follows the existing C15 ordering: the prior tick's last contact precedes new-tick presses, so a new press cannot retroactively participate in that contact's arbitration. Its 30/60/120 Hz regression pins the behavior; no additional gameplay rule is needed.
+
+**Verification:** Read the entire feature, project decisions/design/glossary, full branch diff against `main` and the fixes since round 1. Relied on the supplied passing Mode B `tools/test`, `tools/lint` and `tools/check_core_purity` gates for this exact HEAD. Independently reran the original temporary reproduction: CR-1 now yields HP 100 and dash time 0.1 at 30/60/120 Hz; CR-2 toggles correctly after restore; CR-3 retains intensity 0.5 after reload. Independently ran four focused GUT scripts (34/34 tests, 388 assertions) and `tools/test_studio` (243/243 passed). No source or test files changed. The manual KB/M/gamepad feel test remains for Lucas as recorded in §8.
 
 ---
 
