@@ -2,7 +2,7 @@
 id: F-004
 title: Enemy base + melee chaser
 status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
 depends_on: [F-003, D-002, D-005, D-007]
@@ -416,6 +416,8 @@ The goal is a clear player-facing outcome serving pillar 2, with explicit scope 
 
 > **Planner reply (Combat):** accepted. C4 now states the promise exactly: swapping enemies' registration order never changes what they decide from a given view. It keeps F-003/C16's candidate order, keeps one-by-one body movement, and says target ties go by the players' order. Collision-order independence is outside the promise: §1 out of scope, §3 Rejected, no new task. §5 AC5 now has a defined fixture: a walking player registered between the chasers, so a live read would fail, compared by id at every tick, with no hit candidate in the run. New AC5b covers the simultaneous hit in both orders. Also changed §2, §3's chosen option and costs, AC13, AC24, T6 and "Must not break", and the *Perception and decisions* rule in `design/combat.md`.
 
+✔ resolved (round 2): C4 scopes the invariant to decisions from the same view, AC5 excludes hit candidates and bodies, and AC5b explicitly preserves competing-hit priority in both registration orders. Collision-order independence is expressly rejected and out of scope.
+
 ### PR-2 🔴 Preserve the design's enemy/player walking-speed relationship
 
 **Location:** §4 C12 validation/reload group; §5 AC1/AC20 and "Walk away" feel test; §6 T1/T8. Related: `studio/design/combat.md:117`.
@@ -427,6 +429,8 @@ The goal is a clear player-facing outcome serving pillar 2, with explicit scope 
 **Suggested fix:** Specify a cross-resource check at scene setup and before committing a reload: every scene enemy's walking speed must be strictly below the applicable Warrior speed, using the candidate class and enemy resources together. Alternatively obtain an explicit design exception. Add boundary coverage for equal/faster enemy speed and for lowering Warrior speed, including atomic rejection with no state changes.
 
 > **Planner reply (Combat):** accepted, no design exception. C12 adds `EnemyData.validate_against_class()`, strict, and `CombatRunner` runs it at both points. At `_ready()`, any failure pushes the errors, keeps them in `get_setup_errors()` and stops the fight. On reload, it checks the candidate class against the candidate enemies before anything is applied, so one F5 changing both sides is judged together. `CombatRunner.reload_data()` is the only reload path in a scene with enemies (§2). §3 rejects checking inside `validate()` alone, and clamping. New AC1b covers the boundaries in core, AC20 covers atomic rejection from both sides, and new AC20b covers scene setup. Also changed T1, T8, AC24 and the shared rule in `design/combat.md`.
+
+✔ resolved (round 2): C12 checks the strict enemy/class speed relationship before setup can step and before an atomic reload applies anything. AC1b, AC20 and AC20b cover equal/faster enemies, a slower Warrior, jointly valid edits and rejection without state changes; T1/T8 assign the work.
 
 ### PR-3 🟡 Define the zero-knockback hit path
 
@@ -440,7 +444,19 @@ The goal is a clear player-facing outcome serving pillar 2, with explicit scope 
 
 > **Planner reply (Combat):** accepted. C7 splits the uncommitted row by distance after scaling. At zero, damage and hitstop stay, any running push is cleared, the state becomes `IDLE` at the contact instant and `KNOCKBACK` is never entered, so it can't be left with no push behind it. The enemy resumes at the first free step start under C4. New AC12b covers `knockback_tiles` 0 and `knockback_scale` 0, each on a chasing chaser and during an existing push. AC6 now includes hitstop ending mid-step. Also changed §2, T4 and the *Planted* rule in `design/combat.md`.
 
+✔ resolved (round 2): C7 explicitly clears an existing push and enters `IDLE` for an uncommitted zero-distance hit, while committed enemies retain their attack. AC12b covers both zero-distance sources and replacement of a running push; AC6/C4 define when decisions resume after hitstop.
+
 **Source-reference correction (round 1):** PR-1's `_apply_contact()` starts at `src/core/combat/combat_sim.gd:121`; PR-3's `_start_knockback()` starts at `src/core/combat/combat_state.gd:149`. These replace the source-line anchors in their Location paragraphs; the findings are unchanged.
+
+<!-- review-round: 2 verdict: APPROVE -->
+
+**Verdict:** APPROVE — PR-1, PR-2 and PR-3 resolved; no new findings.
+
+Checked each Planner reply against the revised constraints, acceptance criteria, tasks and shared combat design. The plan defines one player-facing outcome serving pillar 2, with explicit scope boundaries and specific reasons for rejecting alternatives. It preserves D-007's step grid, F-003's contact and snapshot rules, the core/presentation separation, serializable enemy state and data-driven content. Direction's Q2 answer resolves the AI-command question.
+
+The revised acceptance criteria distinguish shared perception from order-dependent hit and body outcomes, exercise the cross-resource speed check at both entry points, and cover zero-distance hit reactions. The task breakdown assigns those changes and preserves the existing test suites. Independently checked AC16's step-count arithmetic and AC17's stopping position against C4/C5 and the default values; they agree. Placeholder telegraph art and encounter composition remain explicitly delegated and do not block this plan.
+
+Gate A remains with Lucas. Status stays `PLAN_REVIEW`; next actor is `Lucas`.
 
 ---
 
