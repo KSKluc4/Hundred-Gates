@@ -76,6 +76,19 @@ func test_attack_with_no_windup_lands_on_the_contact_at_its_fire_instant() -> vo
 		_assert_times(arena.hit_times, [0.05, 0.15], "%d Hz: hit 2 fires and lands" % rate)
 
 
+func test_dash_pressed_as_a_due_attack_fires_stays_buffered_at_every_rate() -> void:
+	for rate: int in Combat.RATES:
+		var arena: CombatArena = _short_hit_arena(CombatArena.new())
+		arena.class_data.attack_chain[0].windup = 2.0 / 30.0
+		arena.class_data.attack_chain[0].active = 2.0 / 30.0  # Recovery starts at 4/30.
+		arena.build(SOUTH)
+		arena.play(rate, 0, 5, [0, 1], [4])
+		assert_eq(arena.player.get_attack_chain().get_attack_id(), &"sword_hit_2", "%d Hz" % rate)
+		assert_eq(arena.player.get_attack_chain().get_phase(), AttackChain.Phase.WINDUP)
+		assert_true(arena.player.has_buffered_dash(), "%d Hz: C17's windup row" % rate)
+		_assert_times(arena.dash_times, [], "%d Hz: no dash yet" % rate)
+
+
 func _pulse_arena(telegraph: float) -> CombatArena:
 	var arena: CombatArena = CombatArena.new()
 	arena.dummy_data = CombatArena.dummy_values()
