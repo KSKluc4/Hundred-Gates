@@ -1,8 +1,8 @@
 ---
 id: F-004
 title: Enemy base + melee chaser
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
+status: APPROVED         # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
 depends_on: [F-003, D-002, D-005, D-007]
