@@ -6,9 +6,13 @@ const PLAYER_COMBAT_PATH: String = "res://data/tunables/player_combat.tres"  # G
 const WARRIOR_PATH: String = "res://data/classes/warrior.tres"  # G5
 const TRAINING_DUMMY_PATH: String = "res://data/enemies/training_dummy.tres"  # G5
 const SCREEN_SHAKE_PATH: String = "res://data/tunables/screen_shake.tres"  # G5
+const ENEMY_COMBAT_PATH: String = "res://data/tunables/enemy_combat.tres"  # G5
+const CHASER_PATH: String = "res://data/enemies/chaser.tres"  # G5
+const CHASER_SWIPE_PATH: String = "res://data/attacks/chaser_swipe.tres"  # G5
 
 var game: GameTunables = preload(GAME_TUNABLES_PATH)
 var player_combat: PlayerCombatTunables = preload(PLAYER_COMBAT_PATH)
+var enemy_combat: EnemyCombatTunables = preload(ENEMY_COMBAT_PATH)
 
 
 ## F-001/C17, F-003/C18: reads a data file from disk, never from the cache. Null if it's gone.

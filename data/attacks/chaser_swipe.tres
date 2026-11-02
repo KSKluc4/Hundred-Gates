@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="EnemyAttackData" format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+aim_track_time = 0.3
+lunge_tiles = 0.8
+id = &"chaser_swipe"
+windup = 0.5
+active = 0.1
+recovery = 0.6
+damage = 20
+arc_angle_deg = 90.0
+range_tiles = 1.2
+knockback_tiles = 0.8
+is_finisher = false
