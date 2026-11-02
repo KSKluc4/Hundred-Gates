@@ -125,6 +125,11 @@ func advance_knockback(seconds: float) -> void:
 		_knockback_remaining -= _knockback_speed * seconds
 
 
+## F-004/C11: a dead enemy never moves again, whatever the killing hit started.
+func stop_knockback() -> void:
+	_clear_knockback()
+
+
 func to_dict() -> Dictionary:
 	return {
 		"hp": _hp,
