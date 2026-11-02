@@ -8,6 +8,7 @@ const RELOAD_ACTION: StringName = &"debug_reload_tunables"
 const PULSE_ACTION: StringName = &"debug_pulse_toggle"
 const SHAKE_ACTION: StringName = &"debug_shake_toggle"
 const RESET_ACTION: StringName = &"debug_reset"
+const AI_ACTION: StringName = &"debug_ai_toggle"
 
 @export var player: Player
 @export var runner: CombatRunner
@@ -32,6 +33,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		runner.toggle_shake()
 	elif event.is_action_pressed(RESET_ACTION):
 		runner.reset()
+	elif event.is_action_pressed(AI_ACTION):
+		runner.toggle_ai()
 
 
 func _reload() -> void:
@@ -73,6 +76,8 @@ func _combat_lines(motor: PlayerMotor) -> PackedStringArray:
 	if runner != null:
 		lines.append("shake: %s" % _on_off(runner.is_shake_on()))
 		lines.append("pulse: %s" % _on_off(runner.is_pulse_on()))
+		if runner.has_enemies():
+			lines.append("ai: %s" % _on_off(runner.is_ai_on()))
 	return lines
 
 
