@@ -110,17 +110,22 @@ player: **read and dodge** (chaser), **close distance and move under fire** (cas
   `aim_track_time`, then never changes. The target is fixed for the whole attack.
 - **Planted while committed (CQ10).** In windup, active and recovery a hit deals damage and
   hitstop, but no knockback and no interrupt. Outside an attack, knockback ×
-  `knockback_scale` applies and the enemy can't act until it ends. Hitstop pauses an enemy's
-  windup too, so hitting a winding-up enemy delays its swing but never cancels it.
+  `knockback_scale` applies and the enemy can't act until it ends. Zero distance after
+  scaling works as for players: no knockback state, any running push is cleared, and the
+  enemy acts again after hitstop (F-004/C7). Hitstop pauses an enemy's windup too, so hitting
+  a winding-up enemy delays its swing but never cancels it.
 - **No hurt i-frames.** Once per attack instance is the only protection.
 - **One punish window per attack:** its recovery. Long enough to land at least hit 1 safely.
 - **Never faster than the player on foot.** Every enemy's `move_speed` is below the Warrior's
   `move_speed`, so walking away always works. Attacks (lunges, charges) may be faster.
+  Checked across both resources at scene setup and on every reload (F-004/C12).
 - **Bodies (CQ12).** Enemies collide with walls and each other, never with players. No
   contact damage. Enemies never hit enemies.
 - **Perception and decisions.** At each combat step start, every combatant senses the same
   read-only view (positions, teams, alive) before anyone advances. An enemy decides only at
-  a step start, and only when free. Registration order never changes a decision.
+  a step start, and only when free. Swapping enemies' registration order never changes what
+  they decide from a given view. Hits on one player at one instant and body collisions still
+  resolve in registration order (F-003/C16, F-004/C4).
 - **Targets (co-op ready).** Nearest living player; ties by registration order. Re-picked at
   every decision, fixed during an attack. Nothing assumes one player.
 - **Aggro.** Starts when a living player is within `aggro_radius_tiles`, or when the enemy

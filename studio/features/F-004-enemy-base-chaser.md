@@ -1,8 +1,8 @@
 ---
 id: F-004
 title: Enemy base + melee chaser
-status: PLAN_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
 depends_on: [F-003, D-002, D-005, D-007]
@@ -40,6 +40,7 @@ except a debug pulse. The enemy base built here is what the caster (F-005) and t
 - Final art, animation, telegraph look, sound (→ Art & Game Feel). Placeholders only.
 - Floor scaling of enemy stats, elites, variants.
 - Changing the training dummy. `DummyData` / `DummyLogic` stay as they are.
+- Order-independent body collision. Bodies keep moving one by one in registration order (C4).
 
 ---
 
@@ -49,11 +50,13 @@ What the Builder needs to know that isn't obvious from the code:
 - **Source of truth:** `studio/design/combat.md` → *Enemies (phase 1)* (shared enemy rules + Chaser), *Hit / hurt system*, *Tunables index*.
 - **Existing systems this touches (checked on `main`):**
   - `src/core/combat/combatant.gd` (`Combatant`): the API `CombatSim` talks to. Enemies are a new `Combatant` subclass. It has no perception hook today; T3 adds one with a no-op default.
-  - `src/core/combat/combat_sim.gd` (`CombatSim.tick`): per step, `step()` on every combatant, then `fire_due_actions()`, `move_bodies`, `_apply_contact()`. T3 adds one perception pass at the start of each step, before any `step()`.
-  - `src/core/combat/combat_state.gd` (`CombatState`): HP, hitstop, knockback, hurt i-frames. Enemies use it with `has_hurt_iframes = false`, like the dummy. Hitstop and `knockback_duration` come from `PlayerCombatTunables` for every hit, enemy hits included. That stays.
+  - `src/core/combat/combat_sim.gd` (`CombatSim.tick`): per step, `step()` on every combatant, then `fire_due_actions()`, `move_bodies`, `_apply_contact()`. T3 adds one perception pass at the start of each step, before any `step()`. `_apply_contact()` takes candidates in attacker registration order (F-003/C16). That stays.
+  - `src/core/combat/combat_state.gd` (`CombatState`): HP, hitstop, knockback, hurt i-frames. Enemies use it with `has_hurt_iframes = false`, like the dummy. Hitstop and `knockback_duration` come from `PlayerCombatTunables` for every hit, enemy hits included. That stays. `_start_knockback()` clears any running push first, and starts none at zero distance.
+  - `src/core/player/player_motor.gd` (`PlayerMotor.apply_hit`): picks `KNOCKBACK` or `IDLE` from `event.knockback_tiles > 0.0`. `EnemyLogic` follows the same pattern (C7).
   - `src/core/combat/hit_event.gd`: `HitEvent.from_candidate()` reads `target.get_knockback_scale()` at the moment the hit is applied. The planted rule (C7) uses exactly this hook.
   - `src/core/combat/hitbox.gd`: hitboxes are built fresh at every contact, so a lunging attack's origin follows the body for free.
-  - `src/world/combat_runner.gd` (`CombatRunner`): registers the exported `combatant_paths` in order, owns reload (`reload_data()` is hard-coded to the warrior, player tunables, dummy and shake files), reset and snapshots. `_dummies()` / `_players()` filter bodies by type.
+  - `src/world/combat_runner.gd` (`CombatRunner`): registers the exported `combatant_paths` in order, owns reload (`reload_data()` is hard-coded to the warrior, player tunables, dummy and shake files, and reads `_players()[0]` only), reset and snapshots. `_dummies()` / `_players()` filter bodies by type. `_move_bodies()` moves bodies one by one in registration order, so a body sees the earlier ones already moved.
+  - `src/ui/debug/motor_debug_overlay.gd`: F5 goes to the runner when the scene has one. `Player.reload_data()` runs only in F-001's scene, which has no runner and no enemies. So `CombatRunner.reload_data()` is the only reload that can change the Warrior's speed in a scene with enemies.
   - `src/entities/combat_body.gd` (`CombatBody`): `move_with_combatant()` sets velocity from the step displacement and calls `move_and_slide()`, then `sync_position()`.
   - Collision layers in `project.godot`: layer 1 `world`, layer 2 `player`. The player body is on layer 2. The dummy body is on layer 0 with mask 1. No `enemy` layer exists yet.
   - Input map: `debug_toggle`, `debug_reload_tunables` (F5), `debug_pulse_toggle` (P), `debug_shake_toggle` (K), `debug_reset` (R) exist. The `I` key is unbound. `tests/test_input_map.gd` asserts the exact action set, so adding `debug_ai_toggle` needs the same migration as F-003 T4.
@@ -78,8 +81,9 @@ What the Builder needs to know that isn't obvious from the code:
 - **Why chosen:**
   - Logic stays in `src/core/`, unit-testable without a scene and runnable headless (G6, phase 3 server).
   - New enemies on later floors are mostly new data on an existing brain (G9). Only a new *kind* of behavior needs code, and it's one small class.
-  - Sensing once per step for everyone means registration order never changes a decision, the same promise F-003/C16 makes for hits.
+  - Sensing once per step for everyone means swapping enemies' registration order never changes what they decide from a given view (C4). Hits and bodies keep their existing order rules.
 - **Costs we're accepting:**
+  - Registration order still decides competing hits on one player (F-003/C16) and body collisions (C4). Those outcomes change later views, so two runs with swapped orders can differ after them.
   - AI reacts on the 1/120 s grid, not at exact instants. That's below what anyone can feel.
   - An enemy that becomes free mid-step (recovery, knockback or hitstop ending) holds still for the rest of that step.
   - A brain with no state is enough for the chaser. F-005/F-006 may need brain state; they add it to the enemy snapshot then.
@@ -110,6 +114,21 @@ What the Builder needs to know that isn't obvious from the code:
 - **How it would work:** a brain reads other combatants' current state while the sim is advancing them one by one.
 - **Why rejected:** an enemy registered after the player would see the player's new position, one registered before would see the old one. Registration order would change decisions.
 - **Tempting because:** no extra pass and no view object.
+
+### ❌ Rejected: Order-independent body collision (solving every body's move at once)
+- **How it would work:** all bodies plan their step, then a solver resolves them together, so swapping registration order can't change who gets a gap.
+- **Why rejected:** `move_and_slide()` moves one body at a time, so this means replacing how F-003 moves bodies. When two chasers contest a gap, either one taking it is fair to the player, and a fixed order already gives the same result every run.
+- **Tempting because:** it would extend the order promise from decisions to positions.
+
+### ❌ Rejected: Checking the speed rule only inside `EnemyData.validate()`
+- **How it would work:** the enemy's own validation compares `move_speed` to a stored or shipped Warrior speed.
+- **Why rejected:** `setup()` has no class, and a reload that lowers the Warrior's speed never re-runs enemy validation against it. The rule involves two resources, so it's checked where both are known (C12).
+- **Tempting because:** one validation function, and the shipped chaser passes.
+
+### ❌ Rejected: Clamping an enemy's speed below the Warrior's
+- **How it would work:** at load, a too-fast enemy is quietly slowed to just under the player.
+- **Why rejected:** Lucas would tune a number and the game would ignore it. Bad data is rejected, as with C8.
+- **Tempting because:** the scene always runs.
 
 ### ❌ Rejected: Hits interrupt an enemy's attack (flinch / stagger)
 - **How it would work:** any landed hit cancels the windup and stuns the enemy briefly.
@@ -188,6 +207,14 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 - An enemy that becomes free mid-step holds still for the rest of that step, and decides at the next step start.
 - With `ai_enabled` false (debug), a free enemy makes no decision: it holds still and starts no attack. A running attack and knockback still finish.
 
+What this promises, exactly: **swapping enemies' registration order never changes what any enemy decides from a given view.** It promises nothing about what happens after the decision:
+
+- **Competing hits stay F-003/C16.** Candidates apply in attacker registration order. When two enemies first touch one player at one instant, the first registered lands, its hurt i-frames skip the other, and the other stays unmarked and gets no hitstop. Swapping the order swaps who lands, and so the knockback direction.
+- **Body movement stays F-003/C15.** Bodies move one by one in registration order, so two chasers contesting one gap resolve by order. Collision-order independence is outside this promise (§3).
+- **Target ties stay C9.** Equal distances go to the *player* registered first. That's the rule working, not a leak: swapping enemies doesn't touch it.
+
+Once any of these changes a position or a hit, later views differ, and so may later decisions. With one fixed order, every run still gives the same result.
+
 **C5 — Enemy timeline**
 
 States: `IDLE`, `CHASE`, `WINDUP`, `ACTIVE`, `RECOVERY`, `KNOCKBACK`, `DEAD`. Phase ends fall at exact times inside a step and overshoot is carried (F-003/C15). Hitstop is consumed first in every step and pauses every enemy timer, including windup, lunge and cooldown (F-003/C7).
@@ -213,10 +240,15 @@ The cooldown runs in every state except `DEAD`, and pauses in hitstop. "Ready" m
 | Enemy state when hit | Damage | Hitstop | Knockback | Interrupts |
 |---|---|---|---|---|
 | `WINDUP`, `ACTIVE`, `RECOVERY` (committed) | yes | yes | **no** | **no** |
-| Anything else alive | yes | yes | `knockback × knockback_scale` | yes: `KNOCKBACK` until it ends, no decisions |
+| Anything else alive, distance after scaling > 0 | yes | yes | `knockback × knockback_scale`, replacing any running push | yes: `KNOCKBACK` until it ends, no decisions |
+| Anything else alive, distance after scaling = 0 | yes | yes | none, and any running push is cleared | yes: `IDLE` at the contact instant, never enters `KNOCKBACK` |
 | `DEAD` | — (can't be hit) | — | — | — |
 
 - Implemented through `get_knockback_scale()`, which returns 0 while committed. F-003's existing knockback code then skips the push.
+- **Zero distance** adopts F-003/C17's rule. It means `event.knockback_tiles` is not > 0, whether from the attack's `knockback_tiles` = 0 or the enemy's `knockback_scale` = 0. `EnemyLogic.apply_hit()` first leaves a committed enemy's state alone, then picks `KNOCKBACK` or `IDLE` from that value, like `PlayerMotor.apply_hit()`. So `KNOCKBACK` always has a push behind it, and can't get stuck waiting for one.
+- **A zero-distance hit during `KNOCKBACK`** ends the push at that contact instant: `CombatState` drops the remaining distance, and the state becomes `IDLE`. The enemy stops where it is.
+- After a zero-distance hit, the enemy resumes by C4: it decides at the first step start where it's free, so after hitstop has ended. If hitstop ends mid-step, it holds still for the rest of that step.
+- A committed enemy never has a running push, because an attack starts only when free and `KNOCKBACK` isn't free.
 - No hurt i-frames for enemies (`has_hurt_iframes = false`). F-003/C8's once-per-instance rule is the only protection.
 - The hitstop rules are F-003's: both sides, `max(remaining, new)`, and they pause the windup too. Hitting a winding-up chaser delays its swing by the hitstop. It never cancels it.
 
@@ -234,8 +266,12 @@ The cooldown runs in every state except `DEAD`, and pauses in hitstop. "Ready" m
 | `EnemyAttackData` (extends `AttackData`) | Every `AttackData` rule from F-003/C18, plus: `aim_track_time` ≥ 0; `windup` ≥ `min_telegraph`; `windup − aim_track_time` ≥ `min_locked_telegraph`; `lunge_tiles` ≥ 0; `is_finisher` is false |
 | `EnemyData` | `id` not empty; `brain` is a known value; `max_hp` ≥ 1; `hurtbox_radius_tiles` > 0; `knockback_scale` ≥ 0; `move_speed` ≥ 0; `aggro_radius_tiles` ≥ 0; `attack_range_tiles` > 0; `stop_distance_tiles` ≥ 0; `attack_cooldown` ≥ 0; `attack` not null and valid |
 | `EnemyCombatTunables` | `min_telegraph` ≥ 0; `min_locked_telegraph` ≥ 0; `min_locked_telegraph` ≤ `min_telegraph` |
+| Enemy against class (speed rule) | `EnemyData.validate_against_class(class_data)`: `enemy.move_speed` < `class_data.move_speed`, strictly. Equal is rejected. Plain float comparison: both are authored values, so no epsilon |
 
 - `EnemyData.validate(step_rate, enemy_tunables)` checks its attack. Comparisons use `TIME_EPSILON`, so exact minimums pass.
+- **Speed rule.** The design doc's "never faster than the player on foot". It covers walking `move_speed` only: lunges and later charges may be faster. It isn't part of `EnemyData.validate()`, because `setup()` has no class (§3). `CombatRunner` runs it at two points:
+  - **Scene setup.** In `_ready()`, after registering everyone: every enemy against every player's `class_data`. On any failure it calls `push_error` for each one, naming the enemy and both speeds, keeps them in `get_setup_errors()`, and calls `set_physics_process(false)`, so nothing steps. The fix is to correct the file and restart the scene; F5 doesn't restart a stopped fight. A scene with no enemies has nothing to check and behaves as today.
+  - **Reload.** Inside the atomic group, before anything is applied: the candidate `ClassData` against every candidate `EnemyData`, so changes made in the same F5 count together. A failure rejects the whole group. F-003's reload handles one player, and this check goes with it; a second class in one scene extends both.
 - **Reload group.** F5 (`CombatRunner.reload_data()`) adds to F-003's atomic group: `enemy_combat.tres` and every distinct `EnemyData` used by the scene's enemies (with their attack files), loaded with `CACHE_MODE_IGNORE_DEEP`. If any file fails, nothing changes and the overlay shows the errors.
 - **Rate check.** An enemy in `WINDUP` or `ACTIVE` reports its latched `[windup, active]` from `get_running_window_errors()`, so F-003's rate check covers it.
 
@@ -247,7 +283,7 @@ The cooldown runs in every state except `DEAD`, and pauses in hitstop. "Ready" m
 | Movement, aggro, range, stop distance, `knockback_scale`, `hurtbox_radius_tiles` | From the next step start (radius: next contact, and the body shape follows it) |
 | `enemy_combat.tres` | Applies to validation only. Running attacks are never re-checked against it |
 
-**Must not break:** all F-001 and F-003 behavior and tests, with their test files unedited, except the input-map migration (T9). F-003's debug scene (`f003_sword.tscn`) and F-001's scene behave as today. `tools/test`, `tools/lint`, the core purity check and `tools/test_studio` pass.
+**Must not break:** all F-001 and F-003 behavior and tests, with their test files unedited, except the input-map migration (T9). That includes F-003/C16's candidate order and the one-by-one body movement. F-003's debug scene (`f003_sword.tscn`) and F-001's scene behave as today. `tools/test`, `tools/lint`, the core purity check and `tools/test_studio` pass.
 
 ---
 
@@ -259,14 +295,16 @@ Testable, observable. The Auditor checks each one.
 
 **Data**
 - [ ] AC1 — **Validation:** every C12 bound is tested on both sides, including C8's two telegraph rules with exact minimums passing. An enemy with invalid data fails `setup()` and changes nothing.
+- [ ] AC1b — **Speed rule (C12), in core:** against a class at 5.0, an enemy at 3.0 or 4.99 passes, and one at 5.0 or 6.0 is rejected. Against a class lowered to 3.0, an enemy at 3.0 is rejected, and one at 2.99 passes. Each error names the enemy and both speeds.
 
 **Decisions**
 - [ ] AC2 — **Aggro:** a chaser stays `IDLE` until a living player is within `aggro_radius_tiles`, or until it takes damage (aggroed from the next step start). Once aggroed, moving out of the radius doesn't stop it.
 - [ ] AC3 — **Target (C9):** with two player motors, the chaser targets the nearer one. Equal distances → the one registered first. A target at HP 0 is skipped. The target doesn't change during an attack.
 - [ ] AC4 — **Chase:** straight toward the target at `move_speed`, never ending a step closer than `stop_distance_tiles`, and holding still there.
 - [ ] AC4b — **Distance boundaries (C5):** a target at exactly `attack_range_tiles`, `aggro_radius_tiles` or `stop_distance_tiles` after accumulated chase steps counts as in range / arrived at 30, 60 and 120 ticks/s; one at `value + 1e-4` does not.
-- [ ] AC5 — **Perception order (C4):** two chasers chasing one player. Swapping their registration order gives identical positions, states and hits for 3 s.
-- [ ] AC6 — **Decision timing (C4):** a chaser whose recovery or knockback ends mid-step holds still for the rest of that step and decides at the next step start.
+- [ ] AC5 — **Perception order (C4):** in core, at each tick rate, for 3 s. Player at (0, 0), walking right the whole run. `chaser_a` at (3, 2), `chaser_b` at (3, −3). Run 1 registers `[chaser_a, player, chaser_b]`, run 2 `[chaser_b, player, chaser_a]`, so an enemy reading the live player would see a different position in each run. Compared by id at every tick: position, state, aim and target. Within one rate the values match exactly. Both chasers start a windup (at about 0.32 and 0.56) and both swings miss. The test asserts that no hit candidate ever appears, so the run has no competing hits and, in core, no bodies.
+- [ ] AC5b — **Simultaneous hits keep F-003/C16:** player at (0, 0), registered first, never moves. `chaser_1` at (0, 3), `chaser_2` at (3, 0). Both start a windup at 56/120 and both first touch the player at 117/120. Registered `[player, chaser_1, chaser_2]`: `chaser_1` lands, the player has 80 HP and is knocked to (0, −0.8), and `chaser_1` gets the hitstop. `chaser_2` is skipped by the new hurt i-frames: no hitstop, the player isn't in its hit set, and its active ends at 128/120 without a hit. Registered `[player, chaser_2, chaser_1]`: `chaser_2` lands and the player is knocked to (−0.8, 0). Exactly one hit lands in each run.
+- [ ] AC6 — **Decision timing (C4):** a chaser whose recovery, knockback or hitstop ends mid-step holds still for the rest of that step and decides at the next step start.
 
 **Attack**
 - [ ] AC7 — **Start:** when free, aggroed, cooldown ready and target distance ≤ `attack_range_tiles`, `WINDUP` begins at that step start and the chaser is rooted.
@@ -277,7 +315,11 @@ Testable, observable. The Auditor checks each one.
 
 **Hit / hurt**
 - [ ] AC12 — **Planted (C7):** a sword hit during windup, active or recovery deals damage and hitstop, moves the chaser 0 tiles and doesn't change its phase timeline except for the hitstop pause. A hit while it's chasing pushes it `knockback × knockback_scale`, puts it in `KNOCKBACK` (no movement, no decisions) and it chases again after.
-- [ ] AC13 — **Chaser hits the player:** every F-003 rule applies unchanged: damage, knockback direction (chaser → player), hitstop on both, hurt i-frames, dash i-frames, vulnerable dash tail, once per attack instance.
+- [ ] AC12b — **Zero distance (C7):** each case runs once with a sword hit of `knockback_tiles` 0 and once with `knockback_scale` 0 on the chaser.
+  - A chasing chaser that is hit takes damage and hitstop, never enters `KNOCKBACK`, doesn't move during hitstop, and chases again from the first free step start after hitstop ends.
+  - A chaser in the middle of a push takes a zero-distance hit: the rest of the push is dropped at that contact instant, it leaves `KNOCKBACK` for `IDLE`, and it stays where it stopped until the same first free step start. (For `knockback_scale` 0, the push comes first and a reload sets the scale before the hit.)
+  - A committed chaser's phase timeline is unchanged, as in AC12.
+- [ ] AC13 — **Chaser hits the player:** every F-003 rule applies unchanged: damage, knockback direction (chaser → player), hitstop on both, hurt i-frames, dash i-frames, vulnerable dash tail, once per attack instance, and candidate order (AC5b).
 - [ ] AC14 — **Teams (C13):** a chaser's hitbox overlapping another chaser or a dummy produces no candidate.
 - [ ] AC15 — **Death (C11):** 50 HP: a full chain (42) plus one hit 1 kills a chaser. `died` once. After that: no hitbox, no hurtbox hit, no movement, no decisions, body layer and mask 0, still in the sim's order. A chaser killed at a contact where its own hitbox also touched the player still lands that hit.
 
@@ -301,15 +343,16 @@ Testable, observable. The Auditor checks each one.
 
 **State and data**
 - [ ] AC19 — **Serialization:** snapshot at the C19 boundary while a chaser is mid-windup (before and after lock), mid-active with the lunge half done, mid-recovery, mid-cooldown, in knockback, in hitstop, and dead. Restore into fresh objects registered in the same order: the next 60 ticks match an unbroken run.
-- [ ] AC20 — **Hot-reload (C12):** an invalid value in `chaser.tres`, `chaser_swipe.tres` or `enemy_combat.tres` rejects the whole group. A valid change to `chaser_swipe.tres` mid-attack lets that attack finish on latched values, and the next attack uses the new ones. Lowering `max_hp` clamps HP. A step-rate change that would break a running enemy window is rejected and names that enemy.
+- [ ] AC20 — **Hot-reload (C12):** an invalid value in `chaser.tres`, `chaser_swipe.tres` or `enemy_combat.tres` rejects the whole group. A valid change to `chaser_swipe.tres` mid-attack lets that attack finish on latched values, and the next attack uses the new ones. Lowering `max_hp` clamps HP. A step-rate change that would break a running enemy window is rejected and names that enemy. The speed rule reads the candidate files together: chaser `move_speed` 5.0 or 6.0, or Warrior `move_speed` 3.0 or 2.0, rejects the whole group, and nothing changes, including valid edits to other files in that reload. Chaser 6.0 with Warrior 7.0 in one reload is accepted, and so is Warrior 2.0 with chaser 1.5.
+- [ ] AC20b — **Speed rule at scene setup (C12):** a scene whose chaser has `move_speed` 5.0, or whose player class has `move_speed` 3.0, doesn't start: an error is pushed, `CombatRunner.get_setup_errors()` names the enemy and both speeds, and `CombatSim.get_time()` is still 0 after 10 physics ticks. With default data the list is empty and the fight runs.
 
 **Scene**
 - [ ] AC21 — **Bodies (C10):** in a scene, the player walks and dashes through a chaser. Three chasers converging on the player never overlap (center distance ≥ 2 × radius − 0.01 tiles). A chaser chasing or lunging into a wall stops at it, and its logic position equals its body position at every contact instant.
 - [ ] AC22 — **Debug:** I toggles `ai_enabled` for every enemy (between ticks). R resets per C15. F5 reloads per C12. Each enemy shows an HP bar, a damage number on hit, a death look, a debug label (state, cooldown, target) and the telegraph view below. Every view re-syncs after restore and reset.
 - [ ] AC23 — **Telegraph view (placeholder):** during windup an outline of the attack sector points along the current aim. From the lock instant it's drawn locked (brighter or filled). During active the sector is solid. During recovery the body is tinted "open". Look → Art & Game Feel (§10 Q1).
 - [ ] AC24 — **Coverage map:**
-  - **Core tests, no scene** (`tests/core/enemies/`): AC1–AC17 (incl. AC4b), AC19, AC20's validation, latching and rate check.
-  - **Scene tests** (`tests/scenes/test_f004_*.gd`): AC18's physics runs, AC20 end to end, AC21–AC23.
+  - **Core tests, no scene** (`tests/core/enemies/`): AC1–AC17 (incl. AC1b, AC4b, AC5b, AC12b), AC19, AC20's validation, latching and rate check.
+  - **Scene tests** (`tests/scenes/test_f004_*.gd`): AC18's physics runs, AC20 end to end, AC20b, AC21–AC23.
   - **Input map:** `debug_ai_toggle` added, every existing assertion kept.
   - F-001 and F-003 tests pass unedited, except the input-map migration.
 
@@ -331,14 +374,14 @@ Small, ordered, each independently committable.
 
 | # | Task | Files likely touched | Notes |
 |---|---|---|---|
-| T1 | Data types | `src/core/combat/geometry.gd` (`DISTANCE_EPSILON`, C5), `src/core/enemies/enemy_data.gd` (`EnemyData`), `src/core/enemies/enemy_attack_data.gd` (`EnemyAttackData extends AttackData`), `src/core/tunables/enemy_combat_tunables.gd` (`EnemyCombatTunables`) | Fields from the design doc's *Tunables index*. `EnemyData.Brain` enum: `CHASER`. All C12 validation, using `CombatTiming` for the window rules. `AttackData` itself is unchanged. |
+| T1 | Data types | `src/core/combat/geometry.gd` (`DISTANCE_EPSILON`, C5), `src/core/enemies/enemy_data.gd` (`EnemyData`), `src/core/enemies/enemy_attack_data.gd` (`EnemyAttackData extends AttackData`), `src/core/tunables/enemy_combat_tunables.gd` (`EnemyCombatTunables`) | Fields from the design doc's *Tunables index*. `EnemyData.Brain` enum: `CHASER`. All C12 validation, using `CombatTiming` for the window rules, plus `EnemyData.validate_against_class(class_data)`. `AttackData` itself is unchanged. |
 | T2 | Data files + paths | `data/enemies/chaser.tres`, `data/attacks/chaser_swipe.tres`, `data/tunables/enemy_combat.tres`, `src/autoload/tunables.gd` | Values from the design doc. Path constants (G5). |
 | T3 | Perception hook, no behavior change | `src/core/combat/combatant.gd`, `src/core/combat/combat_view.gd` (`CombatView`), `src/core/combat/combat_sim.gd` | `Combatant.sense(view)` no-op. `CombatSim.tick` builds the view and calls `sense` on all combatants at each step start, before `step()` (C4). All F-003 core tests pass unedited. |
-| T4 | `EnemyLogic` | `src/core/enemies/enemy_logic.gd`, `src/core/enemies/enemy_intent.gd`, `src/core/enemies/enemy_brain.gd` | `Combatant` subclass per C4, C5, C7, C9, C11. `setup(data, enemy_tunables, step_rate, start_position_tiles, combat_id)`, `apply_data()`, `set_ai_enabled()`. Brain factory from `EnemyData.brain`. Serialization (C6) and `state_restored` signal like `DummyLogic`. `get_running_window_errors()` per C12. |
+| T4 | `EnemyLogic` | `src/core/enemies/enemy_logic.gd`, `src/core/enemies/enemy_intent.gd`, `src/core/enemies/enemy_brain.gd` | `Combatant` subclass per C4, C5, C7, C9, C11. `setup(data, enemy_tunables, step_rate, start_position_tiles, combat_id)`, `apply_data()`, `set_ai_enabled()`. Brain factory from `EnemyData.brain`. `apply_hit()` picks the state per C7, zero distance included, like `PlayerMotor.apply_hit()`. Serialization (C6) and `state_restored` signal like `DummyLogic`. `get_running_window_errors()` per C12. |
 | T5 | `ChaserBrain` | `src/core/enemies/chaser_brain.gd` | Stateless. Implements C5's decision order. Returns an `EnemyIntent` (move direction, max move distance, start attack). |
-| T6 | Core tests | `tests/core/enemies/test_enemy_data.gd`, `test_enemy_logic.gd`, `test_chaser_brain.gd`, `test_enemy_combat.gd`, `test_enemy_snapshot.gd`, `test_enemy_oracle.gd` | AC24's core row. Uses real `PlayerMotor`s as targets, two of them for AC3. |
+| T6 | Core tests | `tests/core/enemies/test_enemy_data.gd`, `test_enemy_logic.gd`, `test_chaser_brain.gd`, `test_enemy_combat.gd`, `test_enemy_snapshot.gd`, `test_enemy_oracle.gd` | AC24's core row. Uses real `PlayerMotor`s as targets, two of them for AC3. AC5 and AC5b each run both registration orders. |
 | T7 | Enemy body + views | `src/entities/enemies/enemy.gd` (`Enemy extends CombatBody`), `src/entities/enemies/enemy.tscn`, `project.godot` (layer 3 `enemy`) | One generic scene for every enemy: `@export var data: EnemyData`, `combat_id`. Body circle radius from data. Layers per C10, both 0 when dead (C11). Placeholder visuals: body circle, HP bar, damage numbers (reuse `DamageNumbers`), death look, debug label, telegraph view (AC23). All derived from state (C14). |
-| T8 | Runner | `src/world/combat_runner.gd` | `_enemies()` filter. Reload group and validation per C12. Reset per C15. `toggle_ai()`. Existing dummy paths unchanged. |
+| T8 | Runner | `src/world/combat_runner.gd` | `_enemies()` filter. Reload group and validation per C12, including the speed rule against the candidate class. Speed rule at `_ready()`, with `get_setup_errors()` and `set_physics_process(false)` on failure (C12). Reset per C15. `toggle_ai()`. Existing dummy paths and `_move_bodies()` order unchanged. |
 | T9 | Input | `project.godot`, `tests/test_input_map.gd`, debug overlay key handling | Add `debug_ai_toggle` (I). Migrate the input-map test like F-003 T4. |
 | T10 | Debug scene | `scenes/debug/f004_chaser.tscn` | Walled room with one inner pillar. Player, `chaser_1` about 5 tiles away, `chaser_2` and `chaser_3` further back. A `CombatRunner` last, with `refill_player_on_died` on. Shake and overlay as in F-003's scene. |
 | T11 | Scene tests | `tests/scenes/test_f004_*.gd` | AC24's scene row. `user://` data copies for reload, like F-003. |
@@ -371,6 +414,8 @@ The goal is a clear player-facing outcome serving pillar 2, with explicit scope 
 
 **Suggested fix:** Define AC5 as a perception/decision test using identical starting views and a fixture without competing hits or body collisions. Compare decisions before order-dependent outcomes occur. Explicitly retain F-003's candidate priority, and add a simultaneous two-chaser hit case expecting the first registered attacker to land. State whether collision-order independence is outside this promise; if it is required, specify and task the additional body-resolution work.
 
+> **Planner reply (Combat):** accepted. C4 now states the promise exactly: swapping enemies' registration order never changes what they decide from a given view. It keeps F-003/C16's candidate order, keeps one-by-one body movement, and says target ties go by the players' order. Collision-order independence is outside the promise: §1 out of scope, §3 Rejected, no new task. §5 AC5 now has a defined fixture: a walking player registered between the chasers, so a live read would fail, compared by id at every tick, with no hit candidate in the run. New AC5b covers the simultaneous hit in both orders. Also changed §2, §3's chosen option and costs, AC13, AC24, T6 and "Must not break", and the *Perception and decisions* rule in `design/combat.md`.
+
 ### PR-2 🔴 Preserve the design's enemy/player walking-speed relationship
 
 **Location:** §4 C12 validation/reload group; §5 AC1/AC20 and "Walk away" feel test; §6 T1/T8. Related: `studio/design/combat.md:117`.
@@ -381,6 +426,8 @@ The goal is a clear player-facing outcome serving pillar 2, with explicit scope 
 
 **Suggested fix:** Specify a cross-resource check at scene setup and before committing a reload: every scene enemy's walking speed must be strictly below the applicable Warrior speed, using the candidate class and enemy resources together. Alternatively obtain an explicit design exception. Add boundary coverage for equal/faster enemy speed and for lowering Warrior speed, including atomic rejection with no state changes.
 
+> **Planner reply (Combat):** accepted, no design exception. C12 adds `EnemyData.validate_against_class()`, strict, and `CombatRunner` runs it at both points. At `_ready()`, any failure pushes the errors, keeps them in `get_setup_errors()` and stops the fight. On reload, it checks the candidate class against the candidate enemies before anything is applied, so one F5 changing both sides is judged together. `CombatRunner.reload_data()` is the only reload path in a scene with enemies (§2). §3 rejects checking inside `validate()` alone, and clamping. New AC1b covers the boundaries in core, AC20 covers atomic rejection from both sides, and new AC20b covers scene setup. Also changed T1, T8, AC24 and the shared rule in `design/combat.md`.
+
 ### PR-3 🟡 Define the zero-knockback hit path
 
 **Location:** §4 C7 reaction table and C12 valid ranges; §5 AC12. Related: `src/core/combat/combat_state.gd:161` and F-003 §4 C17.
@@ -390,6 +437,8 @@ The goal is a clear player-facing outcome serving pillar 2, with explicit scope 
 **Why it matters:** The Builder must invent a state transition for valid data, risking an enemy stuck waiting for knockback that never started or resuming decisions at a different instant than C4 permits.
 
 **Suggested fix:** Explicitly adopt F-003's zero-distance rule: clear the previous push, skip `KNOCKBACK`, retain damage/hitstop, and resume decisions at the next step start where C4 says the enemy is free. Cover both zero attack distance and zero target scale, including a zero-distance hit during an existing knockback.
+
+> **Planner reply (Combat):** accepted. C7 splits the uncommitted row by distance after scaling. At zero, damage and hitstop stay, any running push is cleared, the state becomes `IDLE` at the contact instant and `KNOCKBACK` is never entered, so it can't be left with no push behind it. The enemy resumes at the first free step start under C4. New AC12b covers `knockback_tiles` 0 and `knockback_scale` 0, each on a chasing chaser and during an existing push. AC6 now includes hitstop ending mid-step. Also changed §2, T4 and the *Planted* rule in `design/combat.md`.
 
 **Source-reference correction (round 1):** PR-1's `_apply_contact()` starts at `src/core/combat/combat_sim.gd:121`; PR-3's `_start_knockback()` starts at `src/core/combat/combat_state.gd:149`. These replace the source-line anchors in their Location paragraphs; the findings are unchanged.
 
