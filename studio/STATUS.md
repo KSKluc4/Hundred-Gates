@@ -9,7 +9,7 @@
 | F-000 | Project setup & architecture skeleton | DONE | — | — |
 | F-001 | Warrior movement + dash | DONE | — | — |
 | F-002 | Studio autopilot (tools/studio) | DONE | — | — |
-| F-003 | Warrior sword chain + hit/hurt + hitstop + training dummy | CODE_REVIEW | Lucas | — |
+| F-003 | Warrior sword chain + hit/hurt + hitstop + training dummy | DONE | — | — |
 
 ## Open questions waiting on Lucas
 - _none_

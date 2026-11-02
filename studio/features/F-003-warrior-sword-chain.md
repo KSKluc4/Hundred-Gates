@@ -1,7 +1,7 @@
 ---
 id: F-003
 title: Warrior sword chain + hit/hurt + hitstop + training dummy
-status: CODE_REVIEW          # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: DONE                 # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Lucas     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
@@ -959,3 +959,4 @@ The previous Planner replies were checked first; PR-1–PR-10 are resolved as an
 
 <Overrides, priorities, gut calls. Everyone obeys these.>
 - **2026-11-01 (Gate A):** Gate A: plan approved after 3 autopilot rounds. D-007 (120 Hz combat step grid) ACCEPTED.
+- **2026-11-01 (Gate B):** Gate B: playtested, feel approved.
