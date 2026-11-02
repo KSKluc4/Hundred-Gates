@@ -10,6 +10,9 @@ var _player: Player
 var _settings: ScreenShakeSettings
 var _intensity: float = 0.0
 var _time_left: float = 0.0
+# F-003/C18: the running shake's look, latched by shake(), so a reload reaches the next one.
+var _decay_time: float = 0.0
+var _max_offset_px: float = 0.0
 
 
 func _ready() -> void:
@@ -22,8 +25,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_time_left = maxf(0.0, _time_left - delta)
-	var strength: float = get_current_intensity() * _settings.max_offset_px
-	offset = Vector2.RIGHT.rotated(randf() * TAU) * randf() * strength
+	offset = Vector2.RIGHT.rotated(randf() * TAU) * randf() * get_offset_limit_px()
 
 
 ## F-003/C18: takes the file's value, replacing the K toggle.
@@ -46,6 +48,8 @@ func shake(intensity: float) -> void:
 		return
 	_intensity = maxf(get_current_intensity(), intensity)
 	_time_left = _settings.decay_time
+	_decay_time = _settings.decay_time
+	_max_offset_px = _settings.max_offset_px
 
 
 func get_settings() -> ScreenShakeSettings:
@@ -53,7 +57,14 @@ func get_settings() -> ScreenShakeSettings:
 
 
 func get_current_intensity() -> float:
-	return _intensity * _time_left / _settings.decay_time
+	if _time_left <= 0.0:
+		return 0.0
+	return _intensity * _time_left / _decay_time
+
+
+## The largest offset the running shake can reach right now.
+func get_offset_limit_px() -> float:
+	return get_current_intensity() * _max_offset_px
 
 
 ## F-003/C19: transient presentation, a restore or reset clears it.

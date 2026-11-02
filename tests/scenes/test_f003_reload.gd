@@ -135,6 +135,25 @@ func test_c18_the_file_replaces_the_k_toggle() -> void:
 	assert_true(_shake.shake_enabled, "screen_shake_enabled = true in the file")
 
 
+func test_c18_a_reload_leaves_a_running_shake_alone_and_the_next_one_takes_the_new_look() -> void:
+	await spawn(_use_copies)
+	_shake.set_process(false)  # This test drives the time itself.
+	_shake.shake(0.5)
+	_write_shake_look(0.01, 60.0)
+	press_key(KEY_F5)
+	assert_string_contains(await overlay_text(), "reload: ok")
+	assert_eq(_shake.get_settings().decay_time, 0.01, "the new file is in")
+	assert_almost_eq(_shake.get_current_intensity(), 0.5, 0.000001, "not 10.0")
+	assert_almost_eq(_shake.get_offset_limit_px(), 3.0, 0.000001, "not 60 px, or 300")
+	_shake._process(0.1)  # Half of the running shake's 0.2 s.
+	assert_almost_eq(_shake.get_current_intensity(), 0.25, 0.000001, "the old decay still runs")
+	assert_lte(_shake.offset.length(), 1.5 + 0.000001)
+	_shake.shake(0.2)
+	assert_almost_eq(_shake.get_offset_limit_px(), 15.0, 0.000001, "0.25 × the new 60 px")
+	_shake._process(0.005)  # Half of the new 0.01 s.
+	assert_almost_eq(_shake.get_current_intensity(), 0.125, 0.000001, "the new decay")
+
+
 func test_ac24_rate_240_to_120_is_rejected_during_a_short_hit() -> void:
 	await _spawn_at_240()
 	var times: Array[float] = _record_hits()
@@ -259,6 +278,13 @@ func _write(path: String, resource: Resource, field: String, value: Variant) -> 
 	var copy: Resource = resource.duplicate()
 	copy.set(field, value)
 	assert_eq(ResourceSaver.save(copy, path), OK)
+
+
+func _write_shake_look(decay_time: float, max_offset_px: float) -> void:
+	var settings: ScreenShakeSettings = (load(Tunables.SCREEN_SHAKE_PATH) as Resource).duplicate()
+	settings.decay_time = decay_time
+	settings.max_offset_px = max_offset_px
+	assert_eq(ResourceSaver.save(settings, SHAKE_PATH), OK)
 
 
 func _write_class(field: String, value: Variant) -> void:
