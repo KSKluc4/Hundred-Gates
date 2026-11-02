@@ -5,8 +5,11 @@ extends RefCounted
 
 
 ## Null for a value this build doesn't know. EnemyData.validate() rejects that first.
-static func for_data(_data: EnemyData) -> EnemyBrain:
-	return EnemyBrain.new()
+static func for_data(data: EnemyData) -> EnemyBrain:
+	match data.brain:
+		EnemyData.Brain.CHASER:
+			return ChaserBrain.new()
+	return null
 
 
 ## F-004/C9: the nearest living player, ties to the one registered first. Null if there's none.
