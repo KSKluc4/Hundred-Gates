@@ -65,6 +65,16 @@ func get_running_window_errors(step_rate: int) -> PackedStringArray:
 	return CombatTiming.window_errors(window[0], window[1], step_rate)
 
 
+## F-004/C4: what a CombatView reports. HP is what every combatant shares.
+func is_alive() -> bool:
+	return _combat.get_hp() > 0
+
+
+## F-004/C4: at each step start, before anyone advances. Only enemies have a use for it.
+func sense(_view: CombatView) -> void:
+	pass
+
+
 ## F-003/C15: advances by one step of `duration` seconds.
 func step(_duration: float) -> void:
 	pass
@@ -88,6 +98,10 @@ func get_tick_displacement_px() -> Vector2:
 
 func get_position_px() -> Vector2:
 	return Units.vector_tiles_to_px(_position)
+
+
+func get_position_tiles() -> Vector2:
+	return _position
 
 
 ## F-001/C18: the physics result is authoritative in the scene.
