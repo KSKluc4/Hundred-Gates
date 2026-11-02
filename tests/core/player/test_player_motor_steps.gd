@@ -79,8 +79,36 @@ func test_step_on_an_unstarted_motor_does_nothing() -> void:
 	var motor: PlayerMotor = PlayerMotor.new()
 	motor.submit(MoveCommand.new(Vector2.RIGHT))
 	motor.step(STEP)
+	motor.fire_due_actions()
 	motor.finish_tick()
 	assert_eq(motor.get_position_px(), Vector2.ZERO)
+
+
+func test_tick_leaves_a_dash_due_on_its_end_for_the_next_tick() -> void:
+	var motor: PlayerMotor = Harness.motor_with()
+	var fire_times: Array[float] = Harness.record_fire_times(motor)
+	var presses: Array[float] = [0.0, 0.4]
+	Harness.run_with_presses(motor, 30, 0.5, presses)
+	assert_eq(fire_times.size(), 1, "F-001: tick() checks eligibility at segment starts")
+	assert_eq(motor.get_state(), PlayerMotor.State.IDLE)
+	assert_true(motor.has_buffered_dash())
+	Harness.step(motor, 30)
+	assert_eq(fire_times.size(), 2)
+	assert_almost_eq(fire_times[1], 0.5, 0.000001, "the same instant")
+
+
+func test_a_dash_due_on_a_steps_end_fires_there_and_is_flagged() -> void:
+	var motor: PlayerMotor = Harness.motor_with()
+	var first_press: Array[float] = [0.0]
+	Harness.run_with_presses(motor, 30, 0.4, first_press)
+	motor.submit(DashCommand.new())
+	for _i: int in 12:
+		motor.step(STEP)
+	assert_false(motor.is_dash_protected(), "the step's end comes first")
+	motor.fire_due_actions()
+	assert_eq(motor.get_state(), PlayerMotor.State.DASHING)
+	assert_true(motor.is_dash_protected())
+	assert_true(motor.is_invulnerable(), "F-001/C8: the step a dash fires in reports true")
 
 
 func test_the_motor_is_a_combatant_with_its_id_and_team() -> void:

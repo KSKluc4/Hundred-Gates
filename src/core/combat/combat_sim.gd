@@ -53,9 +53,11 @@ func tick(delta: float, move_bodies: Callable = Callable()) -> void:
 	for _i: int in steps:
 		for combatant: Combatant in _combatants:
 			combatant.step(duration)
+		_time += duration
+		for combatant: Combatant in _combatants:
+			combatant.fire_due_actions()  # On the contact's own instant, so it sees them.
 		if move_bodies.is_valid():
 			move_bodies.call()
-		_time += duration
 		_apply_contact()
 	for combatant: Combatant in _combatants:
 		combatant.finish_tick()

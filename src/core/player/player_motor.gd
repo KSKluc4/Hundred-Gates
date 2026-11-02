@@ -324,6 +324,15 @@ func _clear_commands() -> void:
 	_attack_pressed = false
 
 
+## F-003/C7, C17: a buffer stays stored through hitstop, and one ending on this instant is over.
+func _fire_due_actions() -> void:
+	if _class_data == null or _combat.is_in_hitstop():
+		return
+	_fire_buffered_actions()
+	if _fired_this_step:
+		_update_invulnerability(_time)  # F-001/C8: the step a dash fires in reports true.
+
+
 func _build_live_hitbox() -> Hitbox:
 	return _attack_chain.build_hitbox(_combat_id, _team, _position)
 
@@ -414,7 +423,8 @@ func _can_fire_buffered_dash() -> bool:
 	return (
 		_has_buffered_dash
 		and (_is_free() or _is_in_recovery())
-		and _cooldown_remaining <= 0.0
+		# F-003/C15: rounding must not move a fire past the contact on its expiry instant.
+		and _cooldown_remaining <= TIME_EPSILON
 		and _buffered_dash_age <= _buffer_window() + TIME_EPSILON
 	)
 

@@ -70,6 +70,12 @@ func step(_duration: float) -> void:
 	pass
 
 
+## F-003/C15, C17: fires what came due exactly on the last step's end, so that instant's
+## contact sees it. Only CombatSim calls this: F-001's tick() keeps its own timeline.
+func fire_due_actions() -> void:
+	_fire_due_actions()
+
+
 ## F-003/C15: the end of the tick, after its last step.
 func finish_tick() -> void:
 	pass
@@ -95,6 +101,10 @@ func to_dict() -> Dictionary:
 
 
 func from_dict(_snapshot: Dictionary) -> void:
+	pass
+
+
+func _fire_due_actions() -> void:
 	pass
 
 
