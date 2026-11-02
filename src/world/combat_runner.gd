@@ -16,7 +16,6 @@ var shake_settings_path: String = Tunables.SCREEN_SHAKE_PATH
 
 var _sim: CombatSim = CombatSim.new()
 var _bodies: Array[CombatBody] = []
-var _pulse_on: bool = false
 var _shake: PlaceholderShake
 
 
@@ -43,8 +42,12 @@ func get_sim() -> CombatSim:
 	return _sim
 
 
+## F-003/C12: read from the dummies, never stored here, so a restore can't leave it stale.
 func is_pulse_on() -> bool:
-	return _pulse_on
+	for dummy: TrainingDummy in _dummies():
+		if dummy.logic.is_pulse_enabled():
+			return true
+	return false
 
 
 func is_shake_on() -> bool:
@@ -52,9 +55,9 @@ func is_shake_on() -> bool:
 
 
 func toggle_pulse() -> void:
-	_pulse_on = not _pulse_on
+	var enabled: bool = not is_pulse_on()
 	for dummy: TrainingDummy in _dummies():
-		dummy.set_pulse_on(_pulse_on)
+		dummy.set_pulse_on(enabled)
 
 
 func toggle_shake() -> void:
