@@ -1,8 +1,8 @@
 ---
 id: F-004
 title: Enemy base + melee chaser
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-01
 depends_on: [F-003, D-002, D-005, D-007]
@@ -354,6 +354,44 @@ Severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion. Example finding:>
 ### PR-1 🔴 <title>
 <What's wrong, where, why it matters, what you'd suggest.>
 > **Planner reply:** <accepted / rejected + reason / changed §X>
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Verdict:** CHANGES_REQUESTED — two blocking findings (PR-1, PR-2), one should-fix finding (PR-3).
+
+The goal is a clear player-facing outcome serving pillar 2, with explicit scope boundaries and substantive alternatives. Direction has already resolved the AI-command question in Q2. The remaining issues concern the scope of the order-independence promise, a shared design constraint missing from validation, and one hit-reaction edge case.
+
+### PR-1 🔴 Scope the perception-order oracle so it preserves F-003's hit priority
+
+**Location:** §3 chosen option; §4 C4 and "Must not break"; §5 AC5/AC13/AC24. Related: F-003 §4 C16 and `src/core/combat/combat_sim.gd:150`.
+
+**Problem:** AC5 requires identical positions, states and hits for 3 seconds after swapping two chasers' registration order, without excluding competing hits. With the player at (0, 0) and aggroed chasers at (0, 3) and (3, 0), both default swipes first touch the player at 117/120. F-003 applies candidates in attacker registration order: the first hit grants player hurt i-frames, so the other is skipped. Only the successful attacker receives hitstop, and its knockback direction moves the player along a different axis when the order is swapped. A shared perception snapshot cannot make those outcomes identical. Scene body movement also remains sequential in registration order (`src/world/combat_runner.gd:116`), so the perception hook alone does not establish an order-independent collision result.
+
+**Why it matters:** The Builder cannot satisfy an unrestricted AC5 while preserving the hit rules and unedited F-003 tests required by AC13/AC24. The test needs a defined fixture and a narrower invariant.
+
+**Suggested fix:** Define AC5 as a perception/decision test using identical starting views and a fixture without competing hits or body collisions. Compare decisions before order-dependent outcomes occur. Explicitly retain F-003's candidate priority, and add a simultaneous two-chaser hit case expecting the first registered attacker to land. State whether collision-order independence is outside this promise; if it is required, specify and task the additional body-resolution work.
+
+### PR-2 🔴 Preserve the design's enemy/player walking-speed relationship
+
+**Location:** §4 C12 validation/reload group; §5 AC1/AC20 and "Walk away" feel test; §6 T1/T8. Related: `studio/design/combat.md:117`.
+
+**Problem:** The shared enemy design requires every enemy's `move_speed` to be below the Warrior's so the player can always outrun it on foot. C12 checks only `move_speed ≥ 0`; neither its validation API nor the atomic reload contract checks the relationship to the class resource. Thus an enemy speed of 6 with the default Warrior speed of 5 passes the listed rules, as does lowering Warrior speed below the chaser's unchanged 3. This exception to the design is not flagged.
+
+**Why it matters:** A reload accepted as valid can remove the promised walking escape and contradict a shared combat rule. Checking the shipped chaser resource alone misses changes to the player's speed in the same reload group.
+
+**Suggested fix:** Specify a cross-resource check at scene setup and before committing a reload: every scene enemy's walking speed must be strictly below the applicable Warrior speed, using the candidate class and enemy resources together. Alternatively obtain an explicit design exception. Add boundary coverage for equal/faster enemy speed and for lowering Warrior speed, including atomic rejection with no state changes.
+
+### PR-3 🟡 Define the zero-knockback hit path
+
+**Location:** §4 C7 reaction table and C12 valid ranges; §5 AC12. Related: `src/core/combat/combat_state.gd:161` and F-003 §4 C17.
+
+**Problem:** C7 puts every uncommitted enemy that is hit into `KNOCKBACK` until it ends, but C12 permits `knockback_scale = 0` and inherited `AttackData` permits `knockback_tiles = 0`. `CombatState` clears any previous knockback and starts none for that result. The plan does not say whether the enemy skips `KNOCKBACK`, how it becomes free again, or what a zero-distance hit does to an existing push.
+
+**Why it matters:** The Builder must invent a state transition for valid data, risking an enemy stuck waiting for knockback that never started or resuming decisions at a different instant than C4 permits.
+
+**Suggested fix:** Explicitly adopt F-003's zero-distance rule: clear the previous push, skip `KNOCKBACK`, retain damage/hitstop, and resume decisions at the next step start where C4 says the enemy is free. Cover both zero attack distance and zero target scale, including a zero-distance hit during an existing knockback.
+
+**Source-reference correction (round 1):** PR-1's `_apply_contact()` starts at `src/core/combat/combat_sim.gd:121`; PR-3's `_start_knockback()` starts at `src/core/combat/combat_state.gd:149`. These replace the source-line anchors in their Location paragraphs; the findings are unchanged.
 
 ---
 
