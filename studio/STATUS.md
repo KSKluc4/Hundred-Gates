@@ -10,7 +10,7 @@
 | F-001 | Warrior movement + dash | DONE | — | — |
 | F-002 | Studio autopilot (tools/studio) | DONE | — | — |
 | F-003 | Warrior sword chain + hit/hurt + hitstop + training dummy | DONE | — | — |
-| F-004 | Enemy base + melee chaser | APPROVED | Builder | — |
+| F-004 | Enemy base + melee chaser | IN_PROGRESS | Builder | — |
 
 ## Open questions waiting on Lucas
 - _none_

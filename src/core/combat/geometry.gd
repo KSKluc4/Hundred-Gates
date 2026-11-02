@@ -2,6 +2,10 @@ class_name Geometry
 extends RefCounted
 ## Exact shape tests for hits (F-003 §3). No state. Tiles.
 
+## F-004/C5: positions are accumulated step by step, so an exact distance boundary needs this
+## to fall on the same side at every tick rate.
+const DISTANCE_EPSILON: float = 1e-6
+
 
 ## True iff the circle touches the sector. A sector with a 360 degree arc is a full circle.
 static func circle_hits_sector(
