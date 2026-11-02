@@ -6,3 +6,11 @@
 script = ExtResource("1")
 input_buffer_window = 0.12
 stick_deadzone = 0.2
+combat_step_rate = 120
+player_hurt_iframes = 0.6
+knockback_duration = 0.12
+hitstop_normal = 0.05
+hitstop_finisher = 0.1
+shake_intensity_hit = 0.2
+shake_intensity_finisher = 0.5
+shake_intensity_player_hurt = 0.6

@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="ScreenShakeSettings" format=3]
+
+[ext_resource type="Script" path="res://src/core/tunables/screen_shake_settings.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+screen_shake_enabled = true
+max_offset_px = 6.0
+decay_time = 0.2

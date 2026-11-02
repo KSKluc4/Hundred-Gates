@@ -1,6 +1,10 @@
 [gd_resource type="Resource" script_class="ClassData" format=3]
 
 [ext_resource type="Script" path="res://src/core/classes/class_data.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/combat/attack_data.gd" id="2"]
+[ext_resource type="Resource" path="res://data/attacks/sword_hit_1.tres" id="3"]
+[ext_resource type="Resource" path="res://data/attacks/sword_hit_2.tres" id="4"]
+[ext_resource type="Resource" path="res://data/attacks/sword_hit_3.tres" id="5"]
 
 [resource]
 script = ExtResource("1")
@@ -14,3 +18,8 @@ dash_distance = 3.0
 dash_duration = 0.15
 dash_iframe_duration = 0.11
 dash_cooldown = 0.35
+attack_chain = Array[ExtResource("2")]([ExtResource("3"), ExtResource("4"), ExtResource("5")])
+attack_chain_window = 0.25
+max_hp = 100
+hurtbox_radius_tiles = 0.35
+knockback_scale = 1.0

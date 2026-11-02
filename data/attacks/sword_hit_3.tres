@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="AttackData" format=3]
+
+[ext_resource type="Script" path="res://src/core/combat/attack_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sword_hit_3"
+windup = 0.16
+active = 0.08
+recovery = 0.32
+damage = 22
+arc_angle_deg = 150.0
+range_tiles = 1.8
+knockback_tiles = 1.2
+is_finisher = true

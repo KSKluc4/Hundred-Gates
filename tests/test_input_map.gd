@@ -50,6 +50,9 @@ func _expected_bindings() -> Dictionary:
 		"pause": [_key(KEY_ESCAPE), _pad(JOY_BUTTON_START)],
 		"debug_toggle": [_key(KEY_F3)],
 		"debug_reload_tunables": [_key(KEY_F5)],
+		"debug_pulse_toggle": [_key(KEY_P)],
+		"debug_shake_toggle": [_key(KEY_K)],
+		"debug_reset": [_key(KEY_R)],
 	}
 
 

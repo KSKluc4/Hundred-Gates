@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="DummyData" format=3]
+
+[ext_resource type="Script" path="res://src/core/combat/dummy_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+max_hp = 200
+hurtbox_radius_tiles = 0.5
+respawn_delay = 1.0
+pulse_interval = 2.0
+pulse_telegraph = 0.6
+pulse_active = 0.1
+pulse_radius_tiles = 2.5
+pulse_damage = 20
+pulse_knockback_tiles = 1.0

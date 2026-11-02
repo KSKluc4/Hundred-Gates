@@ -1,0 +1,39 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/entities/dummy/training_dummy.gd" id="1"]
+[ext_resource type="Script" path="res://src/ui/debug/damage_numbers.gd" id="2"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+radius = 8.0
+
+[node name="TrainingDummy" type="CharacterBody2D"]
+collision_layer = 0
+collision_mask = 1
+motion_mode = 1
+script = ExtResource("1")
+combat_id = &"dummy"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_body")
+
+[node name="HpLabel" type="Label" parent="."]
+offset_left = -24.0
+offset_top = -30.0
+offset_right = 24.0
+offset_bottom = -14.0
+theme_override_font_sizes/font_size = 8
+horizontal_alignment = 1
+
+[node name="KoLabel" type="Label" parent="."]
+visible = false
+offset_left = -12.0
+offset_top = -6.0
+offset_right = 12.0
+offset_bottom = 6.0
+theme_override_font_sizes/font_size = 8
+horizontal_alignment = 1
+text = "KO"
+
+[node name="DamageNumbers" type="Node2D" parent="."]
+position = Vector2(-6, -36)
+script = ExtResource("2")
