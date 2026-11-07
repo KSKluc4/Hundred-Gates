@@ -1,10 +1,10 @@
 ---
 id: F-004
 title: Enemy base + melee chaser
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
-updated: 2026-11-01
+updated: 2026-11-07
 depends_on: [F-003, D-002, D-005, D-007]
 pillars: [2]
 department: Combat
@@ -465,21 +465,43 @@ Gate A remains with Lucas. Status stays `PLAN_REVIEW`; next actor is `Lucas`.
 **Started:** 2026-11-01  ·  **Branch:** `feature/F-004-enemy-base-chaser`
 
 ### Progress
-- [ ] T1 — <commit hash when done>
-- [ ] T2
+- [x] T1 — `79931b1` data types and their validation (`DISTANCE_EPSILON`, `EnemyData`, `EnemyAttackData`, `EnemyCombatTunables`, `validate_against_class`)
+- [x] T2 — `1ca8e0a` `chaser.tres`, `chaser_swipe.tres`, `enemy_combat.tres`, path constants in `Tunables`
+- [x] T3 — `7d45d69` `Combatant.sense()` no-op, `CombatView`, one view per step in `CombatSim.tick` before any `step()`
+- [x] T4 — `f660f68` `EnemyLogic`, `EnemyIntent`, `EnemyBrain` (+ factory)
+- [x] T5 — `94d8e52` `ChaserBrain`
+- [x] T6 — `9309911` core tests (`tests/core/enemies/`)
+- [x] T7 — `a6c12b1` `Enemy` body + placeholder views, layer 3 `enemy`
+- [x] T8 — `e4ddd30` `CombatRunner`: enemies, reload group, speed rule at setup and reload, reset, AI toggle
+- [x] T9 — `8277204` `debug_ai_toggle` (I), overlay key + `ai:` line, input-map migration
+- [x] T10 — `463fca9` `scenes/debug/f004_chaser.tscn`
+- [x] T11 — `77104f9` scene tests (`tests/scenes/test_f004_*.gd`)
+- [x] T12 — `83b5440` glossary
 
 ### Deviations from plan
-<Every place the code differs from §3–§6, with reason. "None" if none.>
-- DEV-1: <what changed> — **Why:** <reason> — **Impact:** <what else this affects>
+- DEV-1: `Enemy` bodies are put in the physics server's static body mode in `_ready()`, and every move, restore and reset hands the new transform to the server at once (`_publish_transform()`, `src/entities/enemies/enemy.gd`). — **Why:** C10 makes enemies collide with each other, and `CombatRunner` moves bodies one by one, several times per tick (F-003/C15). A node's new transform normally reaches the server only at the end of the frame, and a kinematic body's only when the server steps, so a later chaser would collide with where an earlier one *was*. A static body's transform applies immediately; `move_and_slide()` doesn't depend on the mode. — **Impact:** enemy bodies only. The player body and F-003's movement are unchanged. AC21's no-overlap and logic = body tests cover it.
+- DEV-2: `CombatState.stop_knockback()` added (`src/core/combat/combat_state.gd`, an F-003 file not listed in T4). — **Why:** C11: a dead enemy never moves again, but the hit that kills it may have just started a push. `EnemyLogic._enter_dead()` drops it. — **Impact:** new public method only; no existing caller changes.
+- DEV-3: the sector drawing in `CombatDebugDraw` was moved into two static helpers (`sector_points()`, `fill_sector()`), now shared by the enemy telegraph view (`src/ui/debug/combat_debug_draw.gd`, not listed in T7). — **Why:** the telegraph (AC23) draws the same sector; one implementation instead of two. — **Impact:** F-003's hitbox drawing gives the same output; its tests pass unedited.
+- DEV-4: test files differ slightly from T6's list. AC7–AC11 live in an extra `tests/core/enemies/test_enemy_attack.gd`; shared helpers `enemy_arena.gd` (players and enemies on a real `CombatSim`, no scene) and `enemy_watch.gd` (a probe that records one enemy at every step start and contact) sit beside the tests. The scene tests share `tests/scenes/f004_scene_test.gd`. — **Why:** keeps each file to one topic. — **Impact:** tests only.
 
 ### Assumptions made (small, reversible)
-- ASSUMPTION-1: <the gap in the spec> → <what I chose> — **Why:** <reason>
+- ASSUMPTION-1: C5 doesn't say what an `aim_track_time` of 0 does → the attack aims once, from the windup-start view, and is locked from that instant. — **Why:** "aim tracks while elapsed < aim_track_time" is never true at 0, but the attack still needs an aim; the start view is the only one it has. Tested in `test_enemy_attack.gd`.
+- ASSUMPTION-2: C4 says a free enemy with `ai_enabled` false "makes no decision: it holds still" → it is set to `IDLE` and its target is cleared, so the debug label doesn't show a stale `CHASE` and target. — **Why:** simplest state that matches "holds still". It doesn't touch aggro, a running attack or knockback.
+- ASSUMPTION-3: AC18's scene runs place the room so the player starts at local (0, 0), exactly as Runs A and B specify, instead of at the room's own coordinates. — **Why:** positions are float32 `Vector2`. At ~13 tiles from the origin each 0.025-tile chase step rounds the same way, and by the 1.6 boundary the error is ~2e-5 tiles, above `DISTANCE_EPSILON` (1e-6). The windup then starts one step later (57/120) than §5's table. This is core arithmetic, not physics: the pure core sim gives 57 too when shifted to (15, 10), and the scene matches the core bit for bit at the origin. C1 still holds: `test_c1_room_coordinates_give_the_same_run_at_every_rate` shows the room-coordinate run is identical at 30, 60 and 120 ticks/s. Code keeps C5's 1e-6 as written. Raised as §10 Q4 (non-blocking).
+- ASSUMPTION-4: the spec only defines the setup stop for the speed rule → an enemy whose own `setup()` refused its data also stops the fight, through the same path (`get_setup_errors()` lists `<id>: setup refused its data`, `set_physics_process(false)`). — **Why:** an enemy with no data can't fight or be checked against the class; stepping the rest would hide the error.
 
 ### Things the Auditor should look at closely
-- <tricky spots, edge cases you're unsure about>
+- ASSUMPTION-3 / §10 Q4: exact distance boundaries and float32. Gameplay impact is one 1/120 s step at most, the same at every rate, but §5's exact table only holds near the origin.
+- DEV-1: static body mode on a `CharacterBody2D`. `move_and_slide()` still works and walls still stop chase and lunge (AC21 tests), but it's an unusual setup.
+- `EnemyLogic._init()` connects `died` to `_enter_dead` before anyone else, so every other `died` listener already reads `DEAD` (C11). A killing hit at the same contact as the enemy's own hit still lands (AC15, `test_enemy_combat.gd`).
+- `sense()` updates a tracking aim for an enemy in `WINDUP` even while it's in hitstop. Hitstop pauses the windup clock, so the aim may follow the target a little longer in real time, but never past `aim_track_time` of windup.
+- Reload reads enemy data from each enemy's `data.resource_path`. An enemy given data that isn't a file (only done in tests) makes F5 report `could not load` and reject the group. The debug scene always uses files.
+- `CombatRunner.reload_data()` still handles one player (`_players()[0]`), and the speed rule on reload uses that player's candidate class, as C12 allows.
 
 ### How to test
-<exact steps / commands / scene to run>
+- Automated, from the repo root: `tools/test` (539 tests, all pass), `tools/lint`, `tools/check_core_purity`, `tools/test_studio`. All pass on `83b5440`.
+- One area at a time: `tools/test -gselect=test_enemy_` and `tools/test -gselect=test_chaser_brain` (core), `tools/test -gselect=test_f004_` (scene).
+- Manual feel test (§5): open `scenes/debug/f004_chaser.tscn` and play. Keys: F3 overlay, I AI on/off, R reset, F5 reload data, P pulse, K shake. Tune `data/attacks/chaser_swipe.tres` (`windup`, `aim_track_time`) or `data/enemies/chaser.tres`, then press F5.
 
 ---
 
@@ -501,6 +523,7 @@ Gate A remains with Lucas. Status stays `PLAN_REVIEW`; next actor is `Lucas`.
 | Q1 | Combat | → Art & Game Feel: the look of enemy telegraphs (outline, lock cue, active, "open" recovery tint) and a sound cue at windup start. Placeholders in this feature only (design doc CX5). | no | |
 | Q2 | Combat | → Direction: `PROJECT.md` lists `src/commands/` as "player/AI action commands". This feature keeps AI decisions as `EnemyIntent` in `src/core/enemies/` (§3). Update the folder note, or should AI go through commands? | no | **Direction:** keep `EnemyIntent` in `src/core/enemies/`. G8 exists so player input can cross the network; AI runs where the logic runs and has nothing to send. `PROJECT.md` folder note now reads `commands/ # player action commands (G8). AI decides through intents in core/enemies/ (F-004)`. |
 | Q3 | Combat | → Direction: which enemies appear on floors 1–3, and in what groups? The Floors department starts in phase 2, but phase 1 needs this (design doc CX6). | no | **Direction:** accepted as the phase-1 plan: floor 1 chasers only, floor 2 chasers + casters, floor 3 all three. Group sizes and placement belong to the feature that builds floor 1 (Direction owns floor structure until Floors starts in phase 2). F-004 needs none of it. |
+| Q4 | Builder | → Combat: `DISTANCE_EPSILON` = 1e-6 tiles (C5) absorbs accumulated float32 error only near the origin. At room coordinates (~13 tiles), AC16's exact 1.6 boundary is reached one step later (57/120), the same at every tick rate, so C1 holds. AC18's scene runs use the oracle's own coordinates (§8 ASSUMPTION-3). Keep it this way, or change the boundary rule later (e.g. epsilon relative to position size, or double-precision logic positions)? | no | |
 
 ---
 
