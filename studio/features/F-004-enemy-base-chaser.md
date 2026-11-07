@@ -1,7 +1,7 @@
 ---
 id: F-004
 title: Enemy base + melee chaser
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: DONE             # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Lucas     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-07
@@ -593,3 +593,4 @@ The five-minute KB/M and gamepad feel test was not performed in this headless re
 ## 11. Director Notes  ·  _Lucas_
 
 <Overrides, priorities, gut calls. Everyone obeys these.>
+- **2026-11-07 (Gate B):** Gate B: playtested, feel approved. Q4: keep 1e-6 for now, revisit when floors use large coordinates.
