@@ -13,6 +13,37 @@ const FULL_CIRCLE_DEG: float = 360.0
 @export var arc_points: int = 16
 
 
+## The outline of a sector, from its origin around the arc. Shared with the enemy telegraph.
+static func sector_points(
+	origin: Vector2, direction: Vector2, arc_angle_deg: float, radius: float, arc_points: int
+) -> PackedVector2Array:
+	var half_arc: float = deg_to_rad(arc_angle_deg) * 0.5
+	var points: PackedVector2Array = [origin]
+	for index: int in arc_points + 1:
+		var angle: float = lerpf(-half_arc, half_arc, float(index) / arc_points)
+		points.append(origin + direction.rotated(angle) * radius)
+	return points
+
+
+## Call from `canvas`'s own _draw().
+static func fill_sector(
+	canvas: CanvasItem,
+	origin: Vector2,
+	direction: Vector2,
+	arc_angle_deg: float,
+	radius: float,
+	color: Color,
+	arc_points: int
+) -> void:
+	if arc_angle_deg >= FULL_CIRCLE_DEG:
+		canvas.draw_circle(origin, radius, color)
+		return
+	var points: PackedVector2Array = sector_points(
+		origin, direction, arc_angle_deg, radius, arc_points
+	)
+	canvas.draw_colored_polygon(points, color)
+
+
 func _process(_delta: float) -> void:
 	queue_redraw()
 
@@ -45,12 +76,6 @@ func get_live_hitboxes() -> Array[Hitbox]:
 func _draw_hitbox(hitbox: Hitbox) -> void:
 	var origin: Vector2 = Units.vector_tiles_to_px(hitbox.origin)
 	var radius: float = Units.tiles_to_px(hitbox.range_tiles)
-	if hitbox.arc_angle_deg >= FULL_CIRCLE_DEG:
-		draw_circle(origin, radius, hitbox_color)
-		return
-	var half_arc: float = deg_to_rad(hitbox.arc_angle_deg) * 0.5
-	var points: PackedVector2Array = [origin]
-	for index: int in arc_points + 1:
-		var angle: float = lerpf(-half_arc, half_arc, float(index) / arc_points)
-		points.append(origin + hitbox.direction.rotated(angle) * radius)
-	draw_colored_polygon(points, hitbox_color)
+	fill_sector(
+		self, origin, hitbox.direction, hitbox.arc_angle_deg, radius, hitbox_color, arc_points
+	)

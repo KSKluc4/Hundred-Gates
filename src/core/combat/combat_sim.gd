@@ -51,6 +51,9 @@ func tick(delta: float, move_bodies: Callable = Callable()) -> void:
 	var steps: int = CombatTiming.step_count(delta, _step_rate)
 	var duration: float = delta / steps
 	for _i: int in steps:
+		var view: CombatView = CombatView.capture(_combatants)  # F-004/C4: one, for everyone.
+		for combatant: Combatant in _combatants:
+			combatant.sense(view)
 		for combatant: Combatant in _combatants:
 			combatant.step(duration)
 		_time += duration
