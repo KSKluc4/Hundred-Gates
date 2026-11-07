@@ -1,8 +1,8 @@
 ---
 id: F-005
 title: Ranged caster + minimal projectiles
-status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-07
 updated: 2026-11-07
 depends_on: [F-004, D-005, D-007]
@@ -112,7 +112,8 @@ What the Builder needs to know that isn't obvious from the code:
     snapshot. Order is the owner's registration order, then serial (C4, C6).
   - **Walls:** core plans each projectile's move for the step. The owner's glue sweeps the
     projectile's circle along that move against the `world` layer and reports where it got to.
-    A reported position short of the plan is a wall stop (C5). Core never asks physics.
+    A reported position short of the plan is a wall stop (C5). A bolt born already overlapping a
+    wall is reported as a **blocked launch** and never gets a contact (C5). Core never asks physics.
   - `CasterBrain` is stateless, like `ChaserBrain`. Retreating uses one new `EnemyData` field,
     `retreat_distance_tiles` (0 for the chaser, so it never retreats).
 - **Why chosen:**
@@ -132,8 +133,16 @@ What the Builder needs to know that isn't obvious from the code:
     step's end, not at its exact instant. A projectile is never more than one step past a wall
     in logic, and it never reaches the contact there (C5).
   - `range_tiles` means "radius" for a projectile attack. One doc comment carries that.
+  - Hits are sampled at contact instants, like every hitbox (D-007). The speed bound in C9 is a
+    **sampling limit**: it keeps the gap between two samples at most one bolt radius, but a graze
+    that exists only between two contact instants is missed (AC28).
+  - A bolt bigger than its caster's body, launched with the caster against a wall, is blocked
+    and fizzles, even when aimed away from the wall. With default data it can't happen (bolt
+    0.25 < body 0.35 tiles); it only matters for data with bigger bolts.
 - **Would revisit if:** a projectile needs to outlive its owner (e.g. a boss summon that dies
-  while its bolts fly), or one owner fires so many projectiles that per-step sweeps cost too much.
+  while its bolts fly), or one owner fires so many projectiles that per-step sweeps cost too much,
+  or big bolts from wall-hugging casters fizzle too often in playtests (then: launch from an
+  offset point).
 
 ### ❌ Rejected: each projectile is its own `Combatant`, registered at launch
 - **How it would work:** launch creates a combatant, registers it with `CombatSim`, and it
@@ -217,6 +226,20 @@ What the Builder needs to know that isn't obvious from the code:
   empty floor, which can't be read (principle 1).
 - **Tempting because:** it makes the caster look smart.
 
+### ❌ Rejected: a bolt born overlapping a wall still gets its one contact
+- **How it would work:** a blocked launch is treated as a wall stop at the launch point: spent,
+  with one contact there.
+- **Why rejected:** its circle already reaches into or past the wall, so it could hit a player
+  on the other side of thin cover.
+- **Tempting because:** no second report kind; every launch gets exactly one contact.
+
+### ❌ Rejected: swept hits for projectiles (segment against circle between contacts)
+- **How it would work:** a projectile tests the whole segment it moved since the last contact,
+  so no graze is ever missed.
+- **Why rejected:** a second hit model only for projectiles, with its own timing and C16 order
+  questions; D-007 already rejected exact contact times. C9's bound keeps misses to grazes.
+- **Tempting because:** it would make "never misses an overlap" literally true.
+
 ### ❌ Rejected: a separate `ProjectileData` resource
 - **How it would work:** `EnemyAttackData.projectile` points to a resource with radius, speed and
   max distance.
@@ -242,7 +265,7 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 | C8 | **Caster attack.** Everything in F-004/C5 holds (latching, track then lock, rooted, hitstop pauses the timeline, cooldown from recovery end). Differences: the attack's own sector never exists (no hitbox on the caster's body), lunge is 0, and one projectile launches at the exact instant windup ends (C4). Planted (F-004/C7) and death (F-004/C11) hold unchanged. | design doc |
 | C9 | **Data validity.** See below. Extends F-004/C12. Bad data is rejected, never clamped. | G2 |
 | C10 | All new state is serializable via `to_dict()`/`from_dict()`: every projectile (C4 fields) and the owner's next serial. `EnemyLogic`'s snapshot gains `projectiles` and `next_projectile_serial`; a chaser carries an empty list and 0. Snapshot boundary as F-003/C19. | G7 |
-| C11 | **Hot-reload and rate.** A projectile in flight keeps its latched values through any reload. A step-rate change is rejected if a projectile in flight would break C9's tunneling rule at the new rate; the error names the owner and the serial. | F-003/C18 |
+| C11 | **Hot-reload and rate.** A projectile in flight, and a projectile attack latched in `WINDUP` that hasn't launched yet, keep their latched values through any reload. A step-rate change is rejected if, at the new rate, a projectile in flight **or** the pending projectile of a latched attack in `WINDUP` would break C9's sampling limit on its latched speed and radius. The error names the owner and the serial (in flight) or the pending attack (in windup). As every F-003/C18 rate refusal, the whole reload group is rejected and nothing changes. | F-003/C18 |
 | C12 | Presentation is derived from logic (F-003/C12): bolts, aim line, telegraph, open tint. After `from_dict()` or a reset every view re-syncs and no stale bolt is drawn. | F-003/C12 |
 | C13 | `EnemyData.Brain` gains `CASTER` **appended** (`CHASER` stays 0). F-001, F-003 and F-004 tests pass unedited. | F-004 |
 | C14 | Nothing assumes one player: targets per F-004/C9, and a bolt lands on at most one hurtbox (C4). | D-002 |
@@ -274,6 +297,8 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
   - *Wall:* it stops where C5 says, and is **spent**.
   - A spent projectile gets that step's contact at its final position, then is removed before
     its owner's next step advances. A projectile that **landed a hit** is removed the same way.
+  - *Blocked launch (C5):* removed before the contact of the step it launched in. It never has
+    a live hitbox and never hits. Its serial stays used (the next launch takes the next one).
   - *Owner death:* removed at the contact instant the owner dies. Candidates were already found
     for that contact, so a hit it found there still lands (F-003/C16).
 - **Order.** Projectiles are listed in serial order. Their hitboxes come after the owner's own
@@ -281,16 +306,26 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 
 **C5 — Walls**
 
-- Each step, after logic advanced, the glue that owns the projectile's owner sweeps the
-  projectile's circle along that step's planned segment (its position before the step, or its
-  launch point if it launched during the step, to its planned position) against layer 1 `world`
-  only, and reports the position reached (`PhysicsDirectSpaceState2D.cast_motion()` or
-  equivalent). This runs inside `CombatSim`'s `move_bodies` call, after the owner's body moved.
-- Core compares: a reported position whose distance travelled along the segment is short of the
-  plan by more than `Geometry.DISTANCE_EPSILON` is a **wall stop**. The projectile moves to the
-  reported position and is spent. Otherwise nothing changes.
-- With no glue (core tests), projectiles are stopped only by what a test's `move_bodies`
-  callable reports.
+- Each step, after logic advanced, the glue that owns the projectile's owner handles each of
+  the owner's projectiles in serial order, against layer 1 `world` only. This runs inside
+  `CombatSim`'s `move_bodies` call, after the owner's body moved.
+  1. **Launch check** (only for a projectile launched during this step, including exactly at
+     the step's end): does its circle at the launch point, with its radius shrunk by
+     `Geometry.DISTANCE_EPSILON`, overlap a wall (`PhysicsDirectSpaceState2D.intersect_shape()`
+     or equivalent)? A sweep can't answer this: `cast_motion()` ignores shapes it starts inside.
+     If it overlaps, the glue reports a **blocked launch** for that serial and skips step 2.
+  2. **Sweep:** it sweeps the circle along that step's planned segment (its position before the
+     step, or its launch point if it launched during the step, to its planned position) and
+     reports the position reached (`cast_motion()` or equivalent). A zero-length segment
+     (launched exactly at the step's end) reports its launch point with no sweep.
+- Core, on a blocked launch: removes the projectile before this step's contact (C4). A blocked
+  report for a projectile that didn't launch in this step changes nothing and reports an error.
+- Core, on a reached position: a position whose distance travelled along the segment is short of
+  the plan by more than `Geometry.DISTANCE_EPSILON` is a **wall stop**. The projectile moves to
+  the reported position and is spent (C4: it gets this step's contact there). Otherwise nothing
+  changes.
+- With no glue (core tests), projectiles are stopped or blocked only by what a test's
+  `move_bodies` callable reports.
 - Walls are the only physics a projectile meets. Bodies, other projectiles and hurtboxes never
   stop it.
 
@@ -332,9 +367,13 @@ position) holds still.
 - `EnemyAttackData.projectile_speed_tiles ≥ 0`, `projectile_max_distance_tiles ≥ 0`.
 - `projectile_speed_tiles = 0` (melee attack): `projectile_max_distance_tiles` must be 0.
 - `projectile_speed_tiles > 0` (projectile attack): `arc_angle_deg` must be 360,
-  `lunge_tiles` must be 0, `projectile_max_distance_tiles > 0`, and **no tunneling:**
+  `lunge_tiles` must be 0, `projectile_max_distance_tiles > 0`, and the **sampling limit:**
   `projectile_speed_tiles / step_rate ≤ range_tiles` (a projectile moves at most its own radius
-  per combat step, so it can't skip over any hurtbox between contacts).
+  per combat step). This bounds the gap between two contact instants; it is **not** a swept-hit
+  guarantee. Every point of the path is within one bolt radius of a sampled position, so a
+  stationary hurtbox whose center the path crosses is always a candidate at some contact, but an
+  overlap that exists only between two
+  contact instants (a graze) is missed, as for every hitbox under D-007 (AC28).
 - A brain may only use the attack kind it supports: `CHASER` needs a melee attack, `CASTER` a
   projectile attack.
 
@@ -349,7 +388,7 @@ sampled only at multiples of 1/30 s. Positions ± 0.01 tiles, combat times ± 1 
 unless stated. Times in seconds.
 
 **Data**
-- [ ] AC1 — **Validation:** every C9 bound is tested on both sides, including the tunneling rule
+- [ ] AC1 — **Validation:** every C9 bound is tested on both sides, including the sampling limit
   at 120 and 240 steps/s with the exact limit passing, and both brain/attack-kind mismatches.
   Invalid data fails `setup()` and changes nothing. `chaser.tres` and `chaser_swipe.tres` still
   pass with no edit.
@@ -363,8 +402,16 @@ unless stated. Times in seconds.
   `value ± 1e-4` falls on the expected side.
 - [ ] AC4 — **Shooting beats retreating:** cooldown ready, target at 1.0 → windup starts.
 - [ ] AC5 — **Aggro and target:** as F-004 AC2–AC3, with two player motors, run for the caster.
-- [ ] AC6 — **Caught on foot:** a player walking straight at a retreating caster in open space
-  closes the distance (its distance shrinks every step).
+- [ ] AC6 — **Caught on foot:** Warrior at rest at (0, 0); caster at (0, 2.5), aggroed by
+  distance, with `cooldown_remaining` 1.0 s restored through `from_dict()` so it can't shoot
+  during the run. From 0 the player holds move (0, 1) at full strength (normal F-001 ramp:
+  0.05 s to 5.0 tiles/s). The caster retreats straight along (0, 1) at 2.5 tiles/s the whole run
+  and never attacks. Sampled every 1/30 s from 0 to 0.5:
+  - 1/30: distance 2.5278 (the gap grows a little while the player accelerates).
+  - From 2/30 on, distance = 2.625 − 2.5·t, strictly smaller at every sample than at the one
+    before.
+  - 0.5 (60/120): player at (0, 2.375), caster at (0, 3.75), distance 1.375, inside sword hit 1's
+    1.4-tile range. The run ends there.
 
 **Projectiles**
 - [ ] AC7 — **Launch (C4):** exactly one projectile per attack, at the windup-end instant, at the
@@ -390,6 +437,22 @@ unless stated. Times in seconds.
 - [ ] AC15 — **Wall rule in core (C5):** with a `move_bodies` callable that reports a projectile
   short of its plan by 0.03 tiles, it becomes spent at the reported position, gets that contact,
   and is gone at the next step. A report equal to the plan (or short by ≤ 1e-6) changes nothing.
+- [ ] AC27 — **Blocked launch in core (C4, C5):** player at (0, 6.0), caster at (0, 6.52) (it
+  shoots at distance 0.52: shooting beats retreating). The launch circle overlaps the player.
+  With a `move_bodies` callable that reports projectile 0's launch as blocked, in two cases:
+  default data (launch at 72/120, on a contact instant) and test data with windup 0.605 s
+  (launch at 72.6/120, inside the step ending at 73/120). In both, the projectile never has a
+  live hitbox, the player isn't hit, it's gone at the next step, and the caster's next launch
+  has serial 1. Control: the same runs with no blocked report hit the player at that contact.
+  A blocked report for a projectile not launched in that step changes nothing and reports an
+  error.
+- [ ] AC28 — **Sampling limit, not swept hits (C9):** test data with radius 0.25, speed 30 at
+  120 steps/s (exactly at the limit). A projectile flying along (1, 0) with consecutive contact
+  positions (−0.375, 0), (−0.125, 0), (0.125, 0), (0.375, 0); a stationary Warrior (hurtbox 0.35).
+  - Warrior at (0, 0.599): separations 0.708, 0.612, 0.612, 0.708, all > 0.6, so no candidate
+    and no hit, although the circles overlap between the middle two contacts. This miss is
+    accepted (D-007).
+  - Warrior at (0, 0.5): hit at the contact at (−0.125, 0) (separation 0.515).
 - [ ] AC16 — **Existing behavior (C6):** every F-003 and F-004 test passes unedited, and a sword
   swing still hits several targets at one contact.
 
@@ -432,12 +495,21 @@ unless stated. Times in seconds.
 - [ ] AC22 — **Hot-reload (C11):** a valid change to `caster_bolt.tres` while a projectile flies:
   it finishes on latched values, the next one uses the new ones. Invalid values in `caster.tres`
   or `caster_bolt.tres` reject the whole group. A rate change that a projectile in flight can't
-  take is rejected and names the caster and serial (test data at 240 steps/s).
+  take is rejected and names the caster and serial (test data at 240 steps/s). **Pending launch
+  (C11):** test data at 240 steps/s with bolt speed 60 and radius 0.25 (exactly at the limit). In
+  windup, before launch, a reload to 120 steps/s that also changes the bolt speed to 30 (valid on
+  its own at 120) is rejected, names the caster and its pending attack, and changes nothing: the
+  rate stays 240 and the bolt launches at speed 60. Tested in core (rate check on the latched
+  attack) and end to end through F5.
 
 **Scene**
 - [ ] AC23 — **Walls (C5):** in a scene, a projectile fired at the player standing behind the
   pillar stops at the pillar and never hits. A projectile fired into an outer wall stops there.
   At every contact, a stopped projectile's circle doesn't overlap the wall by more than 0.01 tiles.
+  **Blocked launch:** test data with bolt radius 0.5 (bigger than the caster's 0.35 body), caster
+  touching a wall, aiming away from it at a player whose hurtbox overlaps the launch circle. The
+  launch is blocked and the player isn't hit, both with launch on a contact instant (default
+  windup) and between two (windup 0.605 s). No bolt is drawn.
 - [ ] AC24 — **Views (C12):** during windup a line from the caster along its aim, length
   `projectile_max_distance_tiles`, drawn "tracking", then "locked" from the lock instant. Each
   projectile is drawn as a circle of its radius at its logic position. Recovery is tinted "open"
@@ -447,7 +519,7 @@ unless stated. Times in seconds.
   every projectile.
 - [ ] AC26 — **Coverage map:**
   - **Core tests, no scene** (`tests/core/enemies/`, `tests/core/combat/`): AC1, AC3–AC19, AC21,
-    AC22's validation, latching and rate check.
+    AC22's validation, latching and rate checks (in flight and pending launch), AC27, AC28.
   - **Scene tests** (`tests/scenes/test_f005_*.gd`): AC2, AC20's physics runs, AC22 end to end,
     AC23–AC25.
   - F-001, F-003 and F-004 tests pass unedited.
@@ -475,16 +547,16 @@ Small, ordered, each independently committable.
 | # | Task | Files likely touched | Notes |
 |---|---|---|---|
 | T1 | Combat API, no behavior change | `src/core/combat/hitbox.gd`, `combatant.gd`, `hit_resolver.gd`, `combat_sim.gd`, `src/ui/debug/combat_debug_draw.gd` | C6. `get_live_hitboxes()`, the two `Hitbox` flags, single-target skip, optional attacker hitstop. All F-003/F-004 tests pass unedited. New tests for both flags with stub hitboxes. |
-| T2 | `ProjectileSet` | `src/core/combat/projectile_set.gd` | C4. Launch, advance on the sim clock (exact within a step), max-distance end, `report_position()` for C5, spent/landed removal before the next advance, `clear()`, hitboxes, `to_dict()`/`from_dict()`, running-rate errors (C11). No `EnemyLogic` dependency, so a player could own one later. |
+| T2 | `ProjectileSet` | `src/core/combat/projectile_set.gd` | C4. Launch, advance on the sim clock (exact within a step), max-distance end, `report_position()` and `report_blocked_launch()` for C5 (blocked → removed before the contact; a report for a projectile not launched this step → error, no change), spent/landed removal before the next advance, `clear()`, hitboxes, `to_dict()`/`from_dict()`, running-rate errors for projectiles in flight (C11). No `EnemyLogic` dependency, so a player could own one later. |
 | T3 | Data types | `src/core/enemies/enemy_attack_data.gd`, `enemy_data.gd` | C9. `projectile_speed_tiles`, `projectile_max_distance_tiles` (added to `ENEMY_SNAPSHOT_KEYS`), `retreat_distance_tiles`, `Brain.CASTER` appended. Doc comment: `range_tiles` is the radius for a projectile attack. |
 | T4 | Data files | `data/enemies/caster.tres`, `data/attacks/caster_bolt.tres` | Values from the design doc's *Tunables index*. |
-| T5 | `EnemyLogic` integration | `src/core/enemies/enemy_logic.gd` | Owns a `ProjectileSet`. Launch at the windup→active crossing (C8). No own sector for a projectile attack. Projectiles advance by the full step duration, before the hitstop-consuming timeline. `get_live_hitboxes()` per C6. `_enter_dead()` clears them. Snapshot keys per C10. `get_running_window_errors()` adds C11. `setup()` resets the set and serial. |
+| T5 | `EnemyLogic` integration | `src/core/enemies/enemy_logic.gd` | Owns a `ProjectileSet`. Launch at the windup→active crossing (C8). No own sector for a projectile attack. Projectiles advance by the full step duration, before the hitstop-consuming timeline. `get_live_hitboxes()` per C6. `_enter_dead()` clears them. Snapshot keys per C10. `get_running_window_errors()` adds C11: the set's in-flight errors, plus, in `WINDUP` with a latched projectile attack, the sampling limit on its latched speed and radius at the new rate. `setup()` resets the set and serial. |
 | T6 | `CasterBrain` | `src/core/enemies/caster_brain.gd`, `enemy_brain.gd` | C7. Stateless. Factory maps `Brain.CASTER`. |
-| T7 | Core tests | `tests/core/combat/test_projectile_set.gd`, `test_hit_flags.gd`, `tests/core/enemies/test_caster_brain.gd`, `test_caster_attack.gd`, `test_caster_snapshot.gd`, `test_caster_oracle.gd` | AC26's core row. Real `PlayerMotor`s as targets, two for AC5/AC9. |
-| T8 | Glue + views | `src/entities/enemies/enemy.gd` (and `enemy.tscn` if a child view node is needed) | C5 sweep in `move_with_combatant()` after the body moves, against layer 1 only, one sweep per projectile in serial order, reporting each result to logic. Aim line, projectile circles (global positions, e.g. a top-level child), all from logic (C12). |
+| T7 | Core tests | `tests/core/combat/test_projectile_set.gd`, `test_hit_flags.gd`, `tests/core/enemies/test_caster_brain.gd`, `test_caster_attack.gd`, `test_caster_snapshot.gd`, `test_caster_oracle.gd` | AC26's core row. Real `PlayerMotor`s as targets, two for AC5/AC9. AC27 and AC28 go in `test_projectile_set.gd` / `test_caster_attack.gd`; AC6 in `test_caster_brain.gd`. |
+| T8 | Glue + views | `src/entities/enemies/enemy.gd` (and `enemy.tscn` if a child view node is needed) | C5 in `move_with_combatant()` after the body moves, against layer 1 only, per projectile in serial order: the launch-overlap check for projectiles launched this step (radius shrunk by ε, blocked → `report_blocked_launch()`), then the sweep (none for a zero-length segment), reporting each result to logic. Aim line, projectile circles (global positions, e.g. a top-level child), all from logic (C12). |
 | T9 | Debug scene | `scenes/debug/f005_caster.tscn` | Walled room with one 2×2-tile pillar. Player; `caster_1` about 6 tiles away with a clear line; `caster_2` behind the pillar from the player's start; `chaser_1` further back. `CombatRunner` last, `refill_player_on_died` on. Shake and overlay as in F-004's scene. |
-| T10 | Scene tests | `tests/scenes/test_f005_*.gd` | AC26's scene row. `user://` data copies for reload, like F-004. |
-| T11 | Glossary | `studio/GLOSSARY.md` | Add: Projectile, Spent (projectile), Retreat distance. Update Hitbox (single target, attacker hitstop). |
+| T10 | Scene tests | `tests/scenes/test_f005_*.gd` | AC26's scene row. `user://` data copies for reload, like F-004, including the pending-launch rate refusal (AC22). The blocked-launch case (AC23) builds its own small walled scene in the test. |
+| T11 | Glossary | `studio/GLOSSARY.md` | Add: Projectile, Spent (projectile), Blocked launch, Retreat distance. Update Hitbox (single target, attacker hitstop). |
 
 ---
 
@@ -527,6 +599,8 @@ does not protect a latched attack.
 identify the owner and pending attack in the error. Add an AC22 core and end-to-end reload
 case with valid replacement data, no projectile launched yet, and the 240→120 example above.
 
+> **Planner reply (Combat):** accepted. Changed §4 C11 (the rate check also covers the pending projectile of a latched attack in `WINDUP`, on its latched speed and radius; the error names the owner and pending attack; the whole group is rejected), §5 AC22 (your 240→120 example, in core and end to end through F5, "nothing changes" asserted), §6 T5 (where the check lives) and T10. Once launched, the projectile is covered by the in-flight check, so `ACTIVE` needs nothing new.
+
 ### PR-2 🔴 Wall feedback cannot represent a bolt born overlapping a wall
 
 **Location:** §4 C4 launch/ends, C5 and C9; §5 AC23; §6 T8.
@@ -549,6 +623,8 @@ reach a wall during flight. Align C4/C5 and the D-008 proposal with that excepti
 core/scene acceptance cases for the larger-radius caster beside a wall, with launch both on
 and between contact instants.
 
+> **Planner reply (Combat):** accepted. Changed §4 C5 (step 1: a launch-overlap check with `intersect_shape()` or equivalent, radius shrunk by ε, for every projectile launched in the step, including exactly at its end; overlap → **blocked launch** report; step 2: the sweep, skipped for a zero-length segment), C4 Ends (blocked → removed before that contact, no live hitbox, serial stays used), §3 (chosen-option wall bullet, a new cost, a new rejected option "blocked launch still gets one contact"), §5 AC27 (core, launch on and between contact instants, with a control run) and AC23 (scene, radius 0.5 caster against a wall), §6 T2/T8/T10/T11. Bolts that reach a wall in flight keep their final contact. D-008 can't be edited in this session (recorded entries stay byte-identical), so the design doc carries the refinement and §10 Q3 asks Lucas to take it into D-008 at Gate A.
+
 ### PR-3 🟡 The catchability test needs initial conditions and an observation interval
 
 **Location:** §5 oracle defaults and AC6; `data/classes/warrior.tres`;
@@ -566,6 +642,8 @@ unstated setup choices. Continuing past the catch would also invalidate monotoni
 **Suggested fix:** Specify player initial velocity/full-strength input, caster cooldown, and
 the interval ending at melee reach. Either pre-accelerate the player before requiring
 per-step closure, or retain the normal ramp and assert a concrete catch time instead.
+
+> **Planner reply (Combat):** accepted, kept the normal ramp. Changed §5 AC6: Warrior at rest at (0, 0), caster at (0, 2.5) aggroed by distance, `cooldown_remaining` 1.0 s via `from_dict()` (no shot in the run), full-strength input (0, 1) from 0, sampled every 1/30 s until 0.5 s. It asserts the small growth during the ramp (2.5278 at 1/30), then distance = 2.625 − 2.5·t strictly shrinking from 2/30, and the catch at 0.5 s (distance 1.375, inside sword hit 1's 1.4 tiles). Your 0.003472 / 0.020833 figures match the same integration.
 
 ### PR-4 🟡 The displacement bound does not guarantee every intervening overlap is detected
 
@@ -586,6 +664,8 @@ whether such misses are accepted rather than silently adding a different hit mod
 and explicitly accept overlaps that exist only between contact instants under D-007. Update
 the matching design-doc wording and add a boundary example that distinguishes the bound from
 a swept-hit guarantee.
+
+> **Planner reply (Combat):** accepted. Changed §4 C9 (renamed "sampling limit"; states what it guarantees, a stationary hurtbox whose center the path crosses is always a candidate, and what it doesn't: grazes between contact instants are missed under D-007), C11 and AC1 wording, §3 (a new cost, a new rejected option "swept hits for projectiles"), §5 AC28 (your example extended to four contacts: Warrior at (0, 0.599) → no hit, accepted; at (0, 0.5) → hit at (−0.125, 0)), and the design doc's *Projectiles* paragraph.
 
 **Verification:** Read the complete feature, studio workflow, PROJECT/DECISIONS, Combat brief,
 design and glossary; checked the inherited F-003/F-004 contracts and relevant core, glue,
@@ -634,6 +714,7 @@ examples, and checked the official Godot wall-query contract. No source or tests
 |---|---|---|---|---|
 | Q1 | Combat | → Direction: projectile ownership and "a wall stop is the glue's reported position falling short of the plan" will also shape the brute (F-006), bosses and the phase-2 archer. Accept as D-008 (proposal delivered with this spec)? | no | **Direction:** D-008 added to `DECISIONS.md` as PROPOSED; recommended for acceptance. Lucas decides at Gate A. |
 | Q2 | Combat | → Art & Game Feel: look and sound of the caster's aim line (tracking vs locked), the bolt, and the bolt breaking on a wall. Placeholders here (design doc CX5). | no | |
+| Q3 | Combat | → Lucas (Gate A): plan round 1 refined D-008's wall rule. The glue also reports a **blocked launch** (a bolt born overlapping a wall never gets a contact, C5), and the speed bound is a sampling limit, not a swept-hit guarantee (C9). D-008 is already recorded, so this session couldn't edit it. Accept D-008 with these two refinements (written in the design doc and §4)? | no | |
 
 ---
 

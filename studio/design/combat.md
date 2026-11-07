@@ -176,8 +176,11 @@ player: **read and dodge** (chaser), **close distance and move under fire** (cas
 - **Projectiles (F-005, proposed D-008):** owned by the combatant that launched them (identity =
   owner id + serial, snapshotted with the owner). A projectile is a 360° hitbox whose radius is
   the attack's `range_tiles`. Core plans each move; the glue sweeps it against walls and reports
-  the reached position — short of the plan means a wall stop. Moves at most its own radius per
-  combat step (no tunneling). The sword can't destroy bolts.
+  the reached position — short of the plan means a wall stop. A bolt born already overlapping a
+  wall is a **blocked launch**: the glue reports it, and it vanishes before any contact (it never
+  hits). Moves at most its own radius per combat step. That is a **sampling limit**, not a
+  swept-hit guarantee: hits are still checked only at contact instants (D-007), so a graze that
+  exists only between two contacts is missed. The sword can't destroy bolts.
 
 ### Brute — heavy space control (F-006)
 - **Concept:** slow, tough, never pushed. Its charge punishes standing in line; missing
