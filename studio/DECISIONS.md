@@ -20,6 +20,28 @@
 
 ---
 
+## D-008 — Projectiles belong to their launcher; walls are reported by the glue
+- **Status:** PROPOSED
+- **Date:** 2026-11-07 · **Decided by:** Lucas (proposed by Combat, from F-005)
+- **Context:** The caster (F-005) is the first ranged attack. Brute charges (F-006), bosses and
+  the phase-2 archer will need the same two answers: where a projectile lives in the sim, and how
+  core learns about walls without touching physics (G6).
+- **Chosen:** A projectile is owned by the combatant that launched it (`ProjectileSet`), with
+  identity = owner id + serial, snapshotted inside the owner, ordered by owner registration then
+  serial. It's a 360° hitbox moving on the sim clock. Core plans every wall-bound move; the glue
+  sweeps it against the `world` layer and reports the reached position. A reported position short
+  of the plan by more than `DISTANCE_EPSILON` is a wall stop.
+- **Rejected:**
+  - *A combatant per projectile, registered at launch* — breaks fixed ids/order in snapshots
+    (F-003/C19) and the reset. Tempting because the resolver handles it for free.
+  - *Physics-node projectiles deciding hits* — hits from overlaps and the physics tick (G6, D-007).
+    Tempting because it's the tutorial way.
+  - *Wall geometry stored in core* — every level describes walls twice. Tempting because core
+    tests could test walls.
+- **Consequences:** Every hitbox reader uses `get_live_hitboxes()`. Wall stops are only known
+  where Godot physics runs (the headless server has it). Projectiles die with their owner.
+- **Revisit if:** a projectile must outlive its owner, or sweeps cost too much with many projectiles.
+
 ## D-007 — Combat runs on a shared step grid
 - **Status:** ACCEPTED
 - **Date:** 2026-11-01 · **Decided by:** Lucas (proposed by Combat, from the F-003 plan review)

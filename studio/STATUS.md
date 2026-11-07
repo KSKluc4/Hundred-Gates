@@ -2,7 +2,7 @@
 
 > Updated by whoever changes a feature's status. Lucas checks this first.
 
-**Last updated:** 2026-11-01
+**Last updated:** 2026-11-07
 
 | ID | Feature | Status | Next actor | Blocked by |
 |---|---|---|---|---|
@@ -11,6 +11,7 @@
 | F-002 | Studio autopilot (tools/studio) | DONE | — | — |
 | F-003 | Warrior sword chain + hit/hurt + hitstop + training dummy | DONE | — | — |
 | F-004 | Enemy base + melee chaser | DONE | — | — |
+| F-005 | Ranged caster + minimal projectiles | PLAN_REVIEW | Auditor | — |
 
 ## Open questions waiting on Lucas
 - _none_

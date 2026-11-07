@@ -4,7 +4,7 @@
 > Source of truth for how fighting works. Specs must match it; if they don't, one of
 > them changes explicitly.
 > **Status:** core player decisions set (CQ1–CQ8, 2026-10-31). Phase 1 enemy archetypes set
-> (CQ10–CQ12, 2026-11-01; chaser → F-004, caster → F-005, brute → F-006). Bosses next.
+> (CQ10–CQ12, 2026-11-01; chaser → F-004 DONE, caster → F-005, brute → F-006). Bosses next.
 
 ## Fixed so far (from PROJECT.md / Lucas)
 - Real-time action, top-down camera.
@@ -52,6 +52,9 @@
 - **Contact damage** — an attack with no telegraph (principle 1). *Tempting because:* classic and cheap.
 - **Hard body collision between players and enemies** — packs corner you with bodies, dashes get eaten, co-op body-blocking. *Tempting because:* feels solid.
 - **Enemy aim that tracks until active** — a last-instant snap can't be read. *Tempting because:* looks smart.
+- **Sword destroys bolts** — a hitbox-vs-hitbox contact the sim doesn't have, and walking in swinging replaces dashing through. *Tempting because:* feels great. Maybe a phase-2 class skill.
+- **Casters lead their shots** — walking straight always gets hit, and the lock points at empty floor (principle 1). *Tempting because:* looks smart.
+- **Bolts outlive their caster** — a dead combatant would own live hitboxes. *Tempting because:* physically "right".
 
 ## Player
 
@@ -153,19 +156,28 @@ player: **read and dodge** (chaser), **close distance and move under fire** (cas
 
 ### Caster — ranged area denial (F-005)
 - **Concept:** keeps its distance and fires slow bolts. Teaches closing in and moving under fire.
-- **Movement:** keeps a band of 4–6 tiles from the target. Backs off when closer than
-  3 tiles, at 2.5 tiles/s (slower than the player, so it can be caught).
-- **Attack — Bolt:** starts when the target is within 7 tiles.
+- **Movement:** stays 3–6 tiles from the target: backs off straight away below 3 tiles, walks in
+  above 6, holds in between. 2.5 tiles/s both ways (slower than the player, so it can be caught).
+  No memory: no hysteresis band. Aggro radius 8 tiles.
+- **Attack — Bolt:** starts when the target is within 7 tiles, at any distance. Shooting beats
+  backing off, so a cornered caster still shoots.
   - Telegraph: 0.60 s windup with a visible aim line. Tracks for 0.35 s, locked for 0.25 s.
-  - Projectile: circle of 0.25 tiles at 6 tiles/s, up to 10 tiles; stopped by walls.
-  - Hit: 18 damage, 0.5 tiles knockback. A projectile is its own attack instance and
-    disappears on the hit that lands. Skipped by i-frames → it flies on (the dash goes *through*).
+  - Release: 0.10 s active. The bolt launches at its first instant, from the caster's center,
+    along the locked aim. The caster's body never has a hitbox.
+  - Projectile: circle of 0.25 tiles at 6 tiles/s, up to exactly 10 tiles; stopped by walls only
+    (passes through every body). Flies on the sim clock: the caster's hitstop never pauses it.
+  - Hit: 18 damage, 0.5 tiles knockback **along the flight direction**. One target only, then it
+    disappears. Skipped by i-frames → it flies on (the dash goes *through*). The caster gets no
+    hitstop from a bolt hit.
   - Punish window: 0.80 s recovery, then a 1.2 s cooldown.
+  - Killing the caster removes its bolts in flight.
 - **Body:** 30 HP, hurtbox 0.35 tiles, `knockback_scale` 1.2.
 - **What it teaches:** dash through attacks, use walls as cover, prioritize targets in a group.
-- **For F-005 to decide:** projectiles are a new hitbox kind with no owner body — how they
-  live in the sim (identity, snapshots, order), and how core knows a wall stopped them (G6).
-  Whether the sword can destroy a bolt (default: no).
+- **Projectiles (F-005, proposed D-008):** owned by the combatant that launched them (identity =
+  owner id + serial, snapshotted with the owner). A projectile is a 360° hitbox whose radius is
+  the attack's `range_tiles`. Core plans each move; the glue sweeps it against walls and reports
+  the reached position — short of the plan means a wall stop. Moves at most its own radius per
+  combat step (no tunneling). The sword can't destroy bolts.
 
 ### Brute — heavy space control (F-006)
 - **Concept:** slow, tough, never pushed. Its charge punishes standing in line; missing
@@ -247,7 +259,13 @@ Template per boss:
 | Chaser `attack_cooldown` | 0.8 s (from recovery end) | same |
 | Chaser swipe windup / `aim_track_time` / active / recovery | 0.50 / 0.30 / 0.10 / 0.60 s | `data/attacks/chaser_swipe.tres` |
 | Chaser swipe damage / arc / range / knockback / `lunge_tiles` | 20 / 90° / 1.2 / 0.8 / 0.8 tiles | same |
-| Caster, brute | design values in *Enemies* above; files set by F-005 / F-006 | `data/enemies/` |
+| Caster `max_hp` / `hurtbox_radius_tiles` / `knockback_scale` | 30 / 0.35 / 1.2 | `data/enemies/caster.tres` |
+| Caster `move_speed` / `aggro_radius_tiles` / `attack_range_tiles` / `stop_distance_tiles` / `retreat_distance_tiles` | 2.5 tiles/s / 8.0 / 7.0 / 6.0 / 3.0 | same |
+| Caster `attack_cooldown` | 1.2 s (from recovery end) | same |
+| Caster bolt windup / `aim_track_time` / active / recovery | 0.60 / 0.35 / 0.10 / 0.80 s | `data/attacks/caster_bolt.tres` |
+| Caster bolt damage / arc / range (= bolt radius) / knockback / `lunge_tiles` | 18 / 360° / 0.25 / 0.5 / 0 tiles | same |
+| Caster bolt `projectile_speed_tiles` / `projectile_max_distance_tiles` | 6.0 tiles/s / 10.0 tiles | same |
+| Brute | design values in *Enemies* above; files set by F-006 | `data/enemies/` |
 
 ## Open questions (cross-department)
 | # | To | Question | Blocking? |
