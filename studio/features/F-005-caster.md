@@ -2,7 +2,7 @@
 id: F-005
 title: Ranged caster + minimal projectiles
 status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-07
 updated: 2026-11-07
 depends_on: [F-004, D-005, D-007]
@@ -601,6 +601,10 @@ case with valid replacement data, no projectile launched yet, and the 240→120 
 
 > **Planner reply (Combat):** accepted. Changed §4 C11 (the rate check also covers the pending projectile of a latched attack in `WINDUP`, on its latched speed and radius; the error names the owner and pending attack; the whole group is rejected), §5 AC22 (your 240→120 example, in core and end to end through F5, "nothing changes" asserted), §6 T5 (where the check lives) and T10. Once launched, the projectile is covered by the in-flight check, so `ACTIVE` needs nothing new.
 
+✔ resolved (round 2) — C11 checks the latched pending projectile as well as projectiles in
+flight. AC22 covers the valid-replacement 240→120 refusal in core and through F5, including
+atomicity and the owner/pending-attack diagnostic; T5/T10 assign the implementation and tests.
+
 ### PR-2 🔴 Wall feedback cannot represent a bolt born overlapping a wall
 
 **Location:** §4 C4 launch/ends, C5 and C9; §5 AC23; §6 T8.
@@ -625,6 +629,11 @@ and between contact instants.
 
 > **Planner reply (Combat):** accepted. Changed §4 C5 (step 1: a launch-overlap check with `intersect_shape()` or equivalent, radius shrunk by ε, for every projectile launched in the step, including exactly at its end; overlap → **blocked launch** report; step 2: the sweep, skipped for a zero-length segment), C4 Ends (blocked → removed before that contact, no live hitbox, serial stays used), §3 (chosen-option wall bullet, a new cost, a new rejected option "blocked launch still gets one contact"), §5 AC27 (core, launch on and between contact instants, with a control run) and AC23 (scene, radius 0.5 caster against a wall), §6 T2/T8/T10/T11. Bolts that reach a wall in flight keep their final contact. D-008 can't be edited in this session (recorded entries stay byte-identical), so the design doc carries the refinement and §10 Q3 asks Lucas to take it into D-008 at Gate A.
 
+✔ resolved (round 2) — C4/C5 explicitly suppress a blocked launch before contact, including
+a zero-length launch segment, while preserving final contact for a wall reached in flight.
+AC27/AC23 cover launches on and between contact instants, serial consumption and the
+unblocked control. The design matches; the proposed D-008 refinement is flagged in §10 Q3.
+
 ### PR-3 🟡 The catchability test needs initial conditions and an observation interval
 
 **Location:** §5 oracle defaults and AC6; `data/classes/warrior.tres`;
@@ -644,6 +653,10 @@ the interval ending at melee reach. Either pre-accelerate the player before requ
 per-step closure, or retain the normal ramp and assert a concrete catch time instead.
 
 > **Planner reply (Combat):** accepted, kept the normal ramp. Changed §5 AC6: Warrior at rest at (0, 0), caster at (0, 2.5) aggroed by distance, `cooldown_remaining` 1.0 s via `from_dict()` (no shot in the run), full-strength input (0, 1) from 0, sampled every 1/30 s until 0.5 s. It asserts the small growth during the ramp (2.5278 at 1/30), then distance = 2.625 − 2.5·t strictly shrinking from 2/30, and the catch at 0.5 s (distance 1.375, inside sword hit 1's 1.4 tiles). Your 0.003472 / 0.020833 figures match the same integration.
+
+✔ resolved (round 2) — AC6 defines starting velocity, input, caster cooldown, sampling and
+the stopping time. Independent integration confirms the initial gap of 2.5278 at 1/30 s,
+the subsequent closure formula and the 1.375-tile gap at 0.5 s with unchanged F-001 movement.
 
 ### PR-4 🟡 The displacement bound does not guarantee every intervening overlap is detected
 
@@ -667,10 +680,34 @@ a swept-hit guarantee.
 
 > **Planner reply (Combat):** accepted. Changed §4 C9 (renamed "sampling limit"; states what it guarantees, a stationary hurtbox whose center the path crosses is always a candidate, and what it doesn't: grazes between contact instants are missed under D-007), C11 and AC1 wording, §3 (a new cost, a new rejected option "swept hits for projectiles"), §5 AC28 (your example extended to four contacts: Warrior at (0, 0.599) → no hit, accepted; at (0, 0.5) → hit at (−0.125, 0)), and the design doc's *Projectiles* paragraph.
 
+✔ resolved (round 2) — C9 and the design doc distinguish the sampling limit from swept hits.
+AC28 explicitly accepts the grazing miss and checks a nearby sampled hit; independent
+circle-distance calculations confirm both outcomes. §3 rules out adding swept-hit behavior.
+
 **Verification:** Read the complete feature, studio workflow, PROJECT/DECISIONS, Combat brief,
 design and glossary; checked the inherited F-003/F-004 contracts and relevant core, glue,
 reload and snapshot code. Independently calculated the rate, acceleration and grazing
 examples, and checked the official Godot wall-query contract. No source or tests changed.
+
+<!-- review-round: 2 verdict: APPROVE -->
+
+**Verdict:** APPROVE
+
+Checked each round-1 Planner reply against the revised constraints, acceptance criteria,
+tasks and combat design; PR-1–PR-4 are resolved above. No new findings.
+
+The goal serves pillar 2, exclusions and rejected alternatives are explicit, and the plan
+defines observable core and scene checks for the new behavior. The existing combat-step,
+trade, snapshot and atomic-reload contracts remain supported. Tasks cover the plural-hitbox
+API, projectile lifecycle, data, brain, glue, views and tests without adding another archetype.
+
+**Gate A:** Lucas remains responsible for accepting proposed D-008, including the explicitly
+flagged blocked-launch and sampling refinements in §10 Q1/Q3.
+
+**Verification:** Read the full feature, workflow, PROJECT/DECISIONS, Combat brief, design
+and glossary. Checked inherited F-003/F-004 constraints and the current simulation, hitbox,
+enemy timeline, body, reload, snapshot and test-probe interfaces. Independently recalculated
+AC6, AC28 and the pending-launch rate example. Plan review only; no source or tests changed.
 
 ---
 
