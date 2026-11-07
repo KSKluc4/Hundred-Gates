@@ -31,3 +31,15 @@
 | Contact instant | The end of a combat step: the only moment hits are decided | `CombatSim` |
 | Hit candidate | A hitbox touching a hurtbox at a contact instant. Not a hit until the target is rechecked | `HitCandidate` |
 | Combatant | Anything that fights on the combat step grid | `Combatant` |
+| Enemy | A combatant on `Team.ENEMY` driven by its own logic, not by input. Everything enemies share lives in one class; only the brain differs | `EnemyLogic`, `Enemy`, `EnemyData` |
+| Archetype | One kind of enemy behavior (chaser, caster, brute). One brain per archetype; new enemies of the same kind are new data | `EnemyData.Brain` |
+| Brain | The only per-archetype enemy code. Holds no state: reads the combat view and its own enemy, and returns an intent | `EnemyBrain`, `ChaserBrain` |
+| Intent | What a brain decided for one step: target, move direction, how far at most, and whether to start the attack | `EnemyIntent` |
+| Combat view | A read-only snapshot of every combatant (id, team, position, alive) at a step start, the same for everyone. All an enemy may know about the others | `CombatView` |
+| Aggro | An enemy has noticed a player: a living player came within `aggro_radius_tiles`, or it took damage. Once aggroed, it stays aggroed until the debug reset | `aggro_radius_tiles`, `is_aggroed()` |
+| Target | The player an enemy is after: the nearest living one, ties to registration order. Picked at every decision, fixed during an attack | `get_target_id()` |
+| Aim tracking / Aim lock | During an enemy's windup its aim follows the target until `aim_track_time`; from then on it is locked and never changes. The locked tail is what the player reads | `aim_track_time`, `is_aim_locked()` |
+| Lunge | An enemy attack's movement along its locked aim during active, at constant speed. Walls stop it | `lunge_tiles` |
+| Attack cooldown | Time after an enemy's recovery ends before it may start its next attack. It may still move | `attack_cooldown` |
+| Planted | An enemy in windup, active or recovery is committed: hits still deal damage and hitstop, but don't push it or interrupt its attack | `get_knockback_scale()` |
+| Free (enemy) | Not dead, not in hitstop, and not in windup, active, recovery or knockback. Only a free enemy decides, and only at a step start | `EnemyLogic._is_free()` |
