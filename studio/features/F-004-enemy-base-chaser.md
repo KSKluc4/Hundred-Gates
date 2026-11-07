@@ -2,7 +2,7 @@
 id: F-004
 title: Enemy base + melee chaser
 status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-01
 updated: 2026-11-07
 depends_on: [F-003, D-002, D-005, D-007]
@@ -513,6 +513,69 @@ Gate A remains with Lucas. Status stays `PLAN_REVIEW`; next actor is `Lucas`.
 ### CR-1 🔴 <title>  ·  `path/to/file:line`
 <problem, why it matters, suggested fix>
 > **Builder reply:** <fixed in abc123 / disagree because …>
+
+<!-- review-round: 1 verdict: APPROVE -->
+
+**Reviewed commit:** e8665c53ff179b55737717e30bf8d2a8bf5f9779
+
+**Verdict:** APPROVE — no findings. Reviewed the complete feature file and the branch diff against `main`, including the new tests and the existing combat/body APIs they extend.
+
+### Acceptance-criteria evidence
+
+Paths are repository-relative. A ✅ records code and automated-test evidence; the manual feel test is discussed below.
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC1 | ✅ | `src/core/enemies/enemy_data.gd:22`, `enemy_attack_data.gd:23`, and `src/core/tunables/enemy_combat_tunables.gd:13` validate C12. `enemy_logic.gd:54` validates before changing state. `tests/core/enemies/test_enemy_data.gd` checks the bounds and exact telegraph minimums; `test_enemy_logic.gd:10` checks rejected setup leaves state/data/id unchanged. |
+| AC1b | ✅ | `src/core/enemies/enemy_data.gd:54` compares authored speeds strictly and names the enemy and both speeds. `tests/core/enemies/test_enemy_data.gd:107` covers 3.0/4.99/5.0/6.0 against 5.0 and 3.0/2.99 against 3.0. |
+| AC2 | ✅ | `src/core/enemies/chaser_brain.gd:15` gates initial aggro by radius; `enemy_logic.gd:131` aggros on damage and `:287` retains aggro after acquisition. `test_enemy_logic.gd:49` covers idle, damage, and leaving the radius. |
+| AC3 | ✅ | `src/core/enemies/enemy_brain.gd:16` selects the nearest living player with registration-order ties. `enemy_logic.gd:102` re-decides only when free; `:281` sets the target, so an attack retains it. `test_chaser_brain.gd:74` covers two players, ties, and a dead nearer player. |
+| AC4 | ✅ | `src/core/enemies/chaser_brain.gd:19` computes the remaining gap; `enemy_logic.gd:359` caps travel by both that gap and speed × segment. `test_enemy_logic.gd:90` checks speed, stopping distance and holding position. |
+| AC4b | ✅ | `src/core/enemies/chaser_brain.gd:14` uses `Geometry.DISTANCE_EPSILON` for aggro/range/arrival. `test_chaser_brain.gd:114` checks both sides; `test_enemy_logic.gd:113` checks accumulated boundaries at all three rates. |
+| AC5 | ✅ | `src/core/combat/combat_sim.gd:54` captures one view before any combatant steps; `src/core/enemies/enemy_logic.gd:102` decides from it. `test_enemy_oracle.gd:70` compares both registration orders at every rate and asserts zero candidates. |
+| AC5b | ✅ | `src/core/combat/combat_sim.gd` keeps `_apply_contact()` unchanged: candidates apply in attacker order and only targets are rechecked. `test_enemy_oracle.gd:86` checks the first attacker lands, the second remains unmarked without hitstop, and swapping order swaps knockback. |
+| AC6 | ✅ | `src/core/enemies/enemy_logic.gd:102` clears the intent before testing freedom; `:116` carries time across phase/hitstop boundaries without making another decision. `test_enemy_logic.gd:131` covers recovery, knockback and hitstop ending mid-step. |
+| AC7 | ✅ | `src/core/enemies/chaser_brain.gd:17` requests an attack only when ready/in range; `enemy_logic.gd:298` enters windup during sensing. Windup has no movement branch in `:343`. `test_enemy_attack.gd:9` checks start time and rooting. |
+| AC8 | ✅ | `src/core/enemies/enemy_logic.gd:112`, `:310` and `:317` update sensed aim until lock; `:263` uses that aim for the hitbox. `test_enemy_attack.gd:28` checks tracking, the lock, and the active direction. |
+| AC9 | ✅ | `src/core/enemies/enemy_logic.gd:116`, `:323`, `:343` and `:382` consume hitstop first, carry phase time and integrate the active lunge. `:256` exposes a hitbox only in active. `test_enemy_attack.gd:67` checks phases, exact travel and paused displacement. |
+| AC10 | ✅ | `src/core/enemies/enemy_logic.gd:396` starts cooldown at recovery end; `:343` advances it only on the non-hitstop clock. Chasing remains available while it runs. `test_enemy_attack.gd:109` covers start, movement, hitstop and zero cooldown. |
+| AC11 | ✅ | `src/core/enemies/enemy_attack_data.gd:23` rejects attacks below either telegraph floor. `test_enemy_attack.gd:144` measures the shortest valid running windup and locked tail. |
+| AC12 | ✅ | `src/core/enemies/enemy_logic.gd:139` makes committed knockback zero; `:131` preserves committed state and enters knockback otherwise. `test_enemy_combat.gd:10` covers hits in all three attack phases, chase knockback and its scale. |
+| AC12b | ✅ | `src/core/enemies/enemy_logic.gd:134` selects `IDLE` for zero distance, while existing `CombatState._start_knockback()` clears any old push. `test_enemy_combat.gd:81` covers zero attack distance and zero target scale, including an existing push and committed attacks. |
+| AC13 | ✅ | `src/core/enemies/enemy_logic.gd:256` feeds the existing resolver/`HitEvent`/`CombatState`/`PlayerMotor` hit path. `test_enemy_combat.gd:132` checks damage, radial knockback, both hitstops, hurt protection, once-per-instance and the vulnerable dash tail; AC5b checks priority. |
+| AC14 | ✅ | `src/core/enemies/enemy_logic.gd:66` assigns `Team.ENEMY`, which `:261` carries into the hitbox. Existing team filtering is unchanged. `test_enemy_combat.gd:180` checks overlapping chasers and a dummy produce no candidate. |
+| AC15 | ✅ | `src/core/enemies/enemy_logic.gd:48` connects death before presentation; `:416` ends the attack, replaces the hit set and stops knockback. `:240` protects dead targets; `src/entities/enemies/enemy.gd:172` removes body collision. `test_enemy_combat.gd:201` covers chain damage, inertness and killing-contact trades in both orders; `test_f004_debug.gd:79` checks collision and registration. |
+| AC16 | ✅ | The shipped data, `EnemyLogic` timeline and unchanged contact path implement Run A. `tests/core/enemies/test_enemy_oracle.gd:8` checks the specified start/lock/phase/hit times and final positions at 30/60/120 ticks/s. |
+| AC17 | ✅ | Locked aim in `src/core/enemies/enemy_logic.gd:112`, active lunge in `:351` and capped chase in `:359` implement Run B. `test_enemy_oracle.gd:47` checks the dash, miss, return chase, second windup and final positions at every rate. |
+| AC18 | ✅ | `tests/scenes/test_f004_physics.gd:24` and `:52` run both oracles through the real `CombatRunner` and physics at every rate. `f004_scene_test.gd:99` places them at the coordinates specified in AC16/AC17. The separate room-coordinate run (`test_f004_physics.gd:82`) checks C1 away from the origin. |
+| AC19 | ✅ | `src/core/enemies/enemy_logic.gd:189` / `:206` serialize and restore the phase clock, latched attack, aim, hit ids, cooldown, aggro, target, AI, position and combat state. `test_enemy_snapshot.gd:9` restores each specified state into fresh objects and compares the following 60 ticks, including a partial hit set. |
+| AC20 | ✅ | `src/world/combat_runner.gd:131` loads/validates the whole candidate group before applying it; `:213` deduplicates enemy files, with deep fresh loads through `Tunables.load_fresh()`. `enemy_logic.gd:82`, `:245` and `:298` preserve running state, check latched windows and latch attacks. `test_enemy_snapshot.gd:95` covers core behavior; `test_f004_reload.gd:39` covers real F5 rejection, latching, HP clamping, rate rejection and jointly valid speed edits. |
+| AC20b | ✅ | `src/world/combat_runner.gd:154` / `:165` check every enemy against every player, retain named errors and stop physics on failure. `tests/scenes/test_f004_setup.gd:5` checks both invalid-speed cases and time remaining zero after ten ticks, plus default startup. |
+| AC21 | ✅ | `src/entities/enemies/enemy.tscn:9` sets enemy/world masks; `enemy.gd:74` and `:165` publish each authoritative move immediately. Player collision settings are unchanged. `test_f004_physics.gd:113` checks walking/dashing through enemies, converging-body separation, wall stops and logic/body agreement at contacts. |
+| AC22 | ✅ | `src/world/combat_runner.gd:101`, `:109` and `:131` provide AI toggle, reset and reload. `src/entities/enemies/enemy.gd:59`, `:114`, `:126`, `:131` and `:206` derive the views and restore them; existing `DamageNumbers` handles hit numbers. `test_f004_debug.gd:11` exercises keys, bars, numbers, death, restore and reset. |
+| AC23 | ✅ | `src/entities/enemies/enemy.gd:140` / `:183` select and draw tracking outline, brighter/filled lock and solid active sector; `:131` tints recovery open. `test_f004_debug.gd:110` checks the sequence and aim. |
+| AC24 | ✅ | New core and scene suites follow the coverage map. The only modification to an existing test is the additional binding in `tests/test_input_map.gd:56`; all F-001/F-003 test files remain unchanged. Automated-session preflight passed `tools/test`, `tools/lint` and `tools/check_core_purity` on this HEAD. See the studio-test environment limitation below. |
+
+### Rejected options, constraints, deviations and assumptions
+
+- **Rejected options:** no re-adoption found. AI runs through core intents and shared sensing, with no node AI, navigation, addon, player-command buffer, attack interruption, attacking knockback, player/enemy body blocking, contact damage or unregister-on-death path. Speed validity is checked across candidate resources and is never clamped.
+- **Constraints:** checked C1–C17, PROJECT G1–G9 and the relevant D-002/D-005/D-007 contracts. Gameplay values are authored resources; the new logic stays in core; snapshots contain the new running state; the isolated scene, unchanged player input/command layer and existing contact/body ordering are retained. No new dependency appears.
+- **DEV-1:** justified within the explicitly sequential body contract. The immediate transform publication applies after movement, reset and restore; AC21's contact probes check separation and authoritative positions. It does not introduce the rejected simultaneous body solver.
+- **DEV-2:** justified: `CombatState.stop_knockback()` clears only the dead enemy's pending push and leaves existing callers unchanged.
+- **DEV-3:** justified: shared sector helpers preserve the existing debug hitbox drawing, including the full-circle branch, and supply the new telegraph view.
+- **DEV-4:** justified test organization; the added attack suite and shared fixtures preserve the assigned coverage. No undocumented deviation found.
+- **ASSUMPTION-1:** reasonable and reversible: zero tracking time initializes aim once from the start view, then locks. It is tested and consistent with C12 permitting zero.
+- **ASSUMPTION-2:** reasonable and reversible: disabled free AI uses idle/empty target while preserving aggro and allowing committed actions to finish.
+- **ASSUMPTION-3:** reasonable fixture choice: AC16/AC17 explicitly start at the origin, and translation invariance is not a C1 promise. The implementation keeps the specified epsilon, separately tests tick-rate agreement at room coordinates, and records the precision issue in Q4. No production exception is concealed by the fixture.
+- **ASSUMPTION-4:** reasonable and reversible: stopping a scene whose enemy setup failed prevents an unconfigured combatant from entering the fight and reports the cause.
+
+### Validation and review limits
+
+The automated session supplied passing game-test, lint and core-purity checks on the reviewed HEAD. The Builder also records all four required checks passing on `83b5440`; the diff from that commit to this HEAD changes only the feature log and board.
+
+Independently ran `git diff --check main...HEAD` successfully and `tools/test_studio`: 243 tests ran, with 242 passing and one environment error. `test_notify.NotifyTests.test_ntfy_is_used_only_when_a_topic_is_set` fails at `tools/tests/test_notify.py:64` because the sandbox denies binding its temporary HTTP server to `127.0.0.1` (`PermissionError: [Errno 1] Operation not permitted`). This does not exercise changed F-004 code and is not a feature finding. Log: `/private/tmp/f004-audit-studio-tests.log`.
+
+The five-minute KB/M and gamepad feel test was not performed in this headless review. Readability and feel remain for Lucas at Gate B. Status stays `CODE_REVIEW`; next actor is `Lucas`.
 
 ---
 
