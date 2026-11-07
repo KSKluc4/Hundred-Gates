@@ -1,8 +1,8 @@
 ---
 id: F-005
 title: Ranged caster + minimal projectiles
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-07
 updated: 2026-11-07
 depends_on: [F-004, D-005, D-007]
@@ -496,6 +496,101 @@ Severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion. Example finding:>
 ### PR-1 🔴 <title>
 <What's wrong, where, why it matters, what you'd suggest.>
 > **Planner reply:** <accepted / rejected + reason / changed §X>
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Verdict:** CHANGES_REQUESTED
+
+The goal clearly serves pillar 2, scope exclusions are explicit, and the alternatives have
+specific trade-offs. The caster rules and starting values match the updated combat design.
+D-008 is explicitly proposed for Lucas at Gate A. Two edge cases in the new contracts need
+decisions before implementation; two acceptance/wording issues also need clarification.
+
+### PR-1 🔴 Rate changes must check bolts still waiting to launch
+
+**Location:** §4 C8/C11, §5 AC22, §6 T5; existing
+`src/core/enemies/enemy_logic.gd::_running_window()`.
+
+**Problem:** C11 checks projectiles already in flight, but C8 also latches projectile values
+at windup start. Start a windup at 240 steps/s with speed 60 and radius 0.25: the displacement
+bound passes exactly. Before launch, reload to 120 steps/s and replace the authored speed
+with 30. The candidate data passes, existing phase-duration checks pass, and no projectile
+exists for C11 to reject. The pending attack nevertheless launches its latched speed-60 bolt,
+which moves 0.5 tiles per step and violates C9's 0.25-tile limit.
+
+**Why it matters:** A valid, atomic F5 reload can put the simulation outside its mandatory
+projectile movement bound. Checking only the replacement resource or existing projectiles
+does not protect a latched attack.
+
+**Suggested fix:** Extend the running-rate check to the latched projectile attack in
+`WINDUP`, as well as projectiles in flight. Reject the entire reload when either fails;
+identify the owner and pending attack in the error. Add an AC22 core and end-to-end reload
+case with valid replacement data, no projectile launched yet, and the 240→120 example above.
+
+### PR-2 🔴 Wall feedback cannot represent a bolt born overlapping a wall
+
+**Location:** §4 C4 launch/ends, C5 and C9; §5 AC23; §6 T8.
+
+**Problem:** C9 permits a bolt radius larger than its owner's body. For example, radius 0.5
+and the default caster hurtbox/body radius 0.35 are valid, so a caster beside a pillar can
+launch a circle already overlapping it. Godot's [`cast_motion()` documentation](https://docs.godotengine.org/en/stable/classes/class_physicsdirectspacestate2d.html#class-physicsdirectspacestate2d-method-cast-motion)
+states that initial overlaps are ignored. C5 specifies no initial-overlap handling, and its
+shorter-position report cannot express a stop when launch falls exactly at the step end:
+the planned segment then has length zero.
+
+**Why it matters:** Valid tuning can let a bolt pass through cover or reach contact already
+penetrating a wall, contrary to the goal and AC23. Merely adding a sweep does not close this
+case, and the Builder would have to invent both the feedback and hit-contact policy.
+
+**Suggested fix:** Define a blocked-launch outcome: the glue checks initial wall overlap,
+including zero-length launch segments, and explicitly reports a blocked launch so core
+suppresses that projectile before contact. Keep the specified final contact for bolts that
+reach a wall during flight. Align C4/C5 and the D-008 proposal with that exception, and add
+core/scene acceptance cases for the larger-radius caster beside a wall, with launch both on
+and between contact instants.
+
+### PR-3 🟡 The catchability test needs initial conditions and an observation interval
+
+**Location:** §5 oracle defaults and AC6; `data/classes/warrior.tres`;
+`src/core/player/player_motor.gd::_integrate_movement()`.
+
+**Problem:** AC6 requires distance to shrink every step but does not say whether the Warrior
+is already moving, how the caster is kept retreating rather than shooting, or when sampling
+ends. With default data and the Warrior starting at rest, its 0.05 s acceleration ramp moves
+it only 0.003472 tiles in the first 1/120 s; a retreating caster moves 0.020833 tiles. The gap
+initially grows by 0.017361 tiles even though the player subsequently catches it.
+
+**Why it matters:** A literal test fails unchanged F-001 movement, while a passing test needs
+unstated setup choices. Continuing past the catch would also invalidate monotonic separation.
+
+**Suggested fix:** Specify player initial velocity/full-strength input, caster cooldown, and
+the interval ending at melee reach. Either pre-accelerate the player before requiring
+per-step closure, or retain the normal ramp and assert a concrete catch time instead.
+
+### PR-4 🟡 The displacement bound does not guarantee every intervening overlap is detected
+
+**Location:** §4 C9 projectile bound and its rationale; §5 AC1;
+`studio/design/combat.md` → Caster → Projectiles.
+
+**Problem:** Moving at most one bolt radius per step cannot guarantee that a bolt never skips
+any hurtbox between contacts. With bolt radius 0.25, speed 30 and rate 120, take successive
+contact positions (-0.125, 0) and (0.125, 0), and a stationary Warrior at (0, 0.599) with its
+default radius 0.35. Both endpoint separations are about 0.6119 (> 0.6), but the middle
+separation is 0.599 (< 0.6). C9 passes exactly, yet the grazing overlap gets no candidate.
+
+**Why it matters:** The numerical validation AC is achievable, but its stated continuous
+collision guarantee exceeds the chosen contact-instant model. The Builder needs to know
+whether such misses are accepted rather than silently adding a different hit model.
+
+**Suggested fix:** Retain the explicit displacement bound, describe it as a sampling limit,
+and explicitly accept overlaps that exist only between contact instants under D-007. Update
+the matching design-doc wording and add a boundary example that distinguishes the bound from
+a swept-hit guarantee.
+
+**Verification:** Read the complete feature, studio workflow, PROJECT/DECISIONS, Combat brief,
+design and glossary; checked the inherited F-003/F-004 contracts and relevant core, glue,
+reload and snapshot code. Independently calculated the rate, acceleration and grazing
+examples, and checked the official Godot wall-query contract. No source or tests changed.
 
 ---
 
