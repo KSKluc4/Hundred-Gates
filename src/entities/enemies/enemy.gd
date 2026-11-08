@@ -7,6 +7,9 @@ extends CombatBody
 ## What the telegraph shows right now (AC23). The look → Art & Game Feel, §10 Q1.
 enum Telegraph { NONE, TRACKING, LOCKED, ACTIVE }
 
+## F-005/C5: projectiles meet layer 1 `world` only.
+const WALL_LAYER_MASK: int = 1
+
 @export var data: EnemyData
 @export var body_color: Color = Color(0.45, 0.6, 0.35)
 ## AC23: the punish window.
@@ -22,6 +25,9 @@ enum Telegraph { NONE, TRACKING, LOCKED, ACTIVE }
 @export var bar_offset_px: Vector2 = Vector2(-8, -11)
 @export var line_width_px: float = 1.0
 @export var arc_points: int = 16
+## F-005 AC24: placeholder bolt and aim line. The look → Art & Game Feel, §10 Q2.
+@export var bolt_color: Color = Color(1.0, 0.45, 0.85, 0.9)
+@export var bolt_points: int = 16
 
 var logic: EnemyLogic = EnemyLogic.new()
 
@@ -30,6 +36,8 @@ var _start_position: Vector2
 # F-004/C10, C11: the scene's values, for when a reset or a restore brings it back.
 var _live_layer: int
 var _live_mask: int
+# F-005/C5: reused by every wall query, with its radius set each time.
+var _query_shape: CircleShape2D = CircleShape2D.new()
 
 @onready var _collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var _debug_label: Label = $DebugLabel
@@ -74,6 +82,7 @@ func get_combatant() -> Combatant:
 func move_with_combatant(physics_delta: float) -> void:
 	super(physics_delta)
 	_publish_transform()
+	_report_walls()
 
 
 func sync_body_from_logic() -> void:
@@ -150,6 +159,32 @@ func get_damage_numbers() -> DamageNumbers:
 	return _damage_numbers
 
 
+## F-005 AC24: during a projectile attack's windup, the line its bolt will fly, from the enemy
+## along its aim, as long as the bolt's max distance. Global px. Empty when there's none.
+func get_aim_line() -> PackedVector2Array:
+	var attack: EnemyAttackData = logic.get_running_attack()
+	if logic.get_state() != EnemyLogic.State.WINDUP or not attack.is_projectile():
+		return PackedVector2Array()
+	var length: float = attack.projectile_max_distance_tiles
+	var start: Vector2 = logic.get_position_tiles()
+	return PackedVector2Array(
+		[
+			Units.vector_tiles_to_px(start),
+			Units.vector_tiles_to_px(start + logic.get_aim() * length),
+		]
+	)
+
+
+## F-005 AC24: one circle per projectile, at its logic position: x, y = centre, z = radius.
+## Global px.
+func get_bolts_px() -> PackedVector3Array:
+	var bolts: PackedVector3Array = []
+	for projectile: ProjectileSet.Projectile in logic.get_projectiles().get_projectiles():
+		var centre: Vector2 = Units.vector_tiles_to_px(projectile.position)
+		bolts.append(Vector3(centre.x, centre.y, Units.tiles_to_px(projectile.radius)))
+	return bolts
+
+
 func _setup_logic() -> void:
 	var start_tiles: Vector2 = Units.vector_px_to_tiles(_start_position)
 	var rate: int = Tunables.player_combat.combat_step_rate
@@ -179,12 +214,64 @@ func _sync_body() -> void:
 		shape.radius = Units.tiles_to_px(current.hurtbox_radius_tiles)
 
 
-## AC23: placeholder look. The sector always points along the aim.
+## F-005/C5, D-008: after this body moved, each projectile in serial order. A launch this
+## step is first checked for a wall overlap, with its radius shrunk by DISTANCE_EPSILON: a sweep
+## can't see shapes it starts inside. Then the step's segment is swept, and where it got to is
+## reported. Logic decides what a report means.
+func _report_walls() -> void:
+	var projectiles: ProjectileSet = logic.get_projectiles()
+	if projectiles.get_projectiles().is_empty():
+		return
+	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	for projectile: ProjectileSet.Projectile in projectiles.get_projectiles().duplicate():
+		if projectile.launched_in_step and _overlaps_wall(space, projectile):
+			projectiles.report_blocked_launch(projectile.serial)
+			continue
+		projectiles.report_position(projectile.serial, _sweep(space, projectile))
+
+
+func _overlaps_wall(space: PhysicsDirectSpaceState2D, projectile: ProjectileSet.Projectile) -> bool:
+	var radius: float = projectile.radius - Geometry.DISTANCE_EPSILON
+	var query: PhysicsShapeQueryParameters2D = _wall_query(projectile.origin, radius)
+	return not space.intersect_shape(query, 1).is_empty()
+
+
+## The planned position when nothing is in the way, exactly, so float noise is never a stop.
+func _sweep(space: PhysicsDirectSpaceState2D, projectile: ProjectileSet.Projectile) -> Vector2:
+	var start: Vector2 = projectile.step_start
+	var planned: Vector2 = projectile.position
+	if start == planned:
+		return planned  # A launch exactly at the step's end: no segment to sweep.
+	var query: PhysicsShapeQueryParameters2D = _wall_query(start, projectile.radius)
+	query.motion = Units.vector_tiles_to_px(planned - start)
+	var safe: float = space.cast_motion(query)[0]
+	if safe >= 1.0:
+		return planned
+	return start + (planned - start) * safe
+
+
+func _wall_query(centre_tiles: Vector2, radius_tiles: float) -> PhysicsShapeQueryParameters2D:
+	_query_shape.radius = Units.tiles_to_px(radius_tiles)
+	var query: PhysicsShapeQueryParameters2D = PhysicsShapeQueryParameters2D.new()
+	query.shape = _query_shape
+	query.transform = Transform2D(0.0, Units.vector_tiles_to_px(centre_tiles))
+	query.collision_mask = WALL_LAYER_MASK
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	return query
+
+
+## AC23: placeholder look. The sector always points along the aim. F-005 AC24: a projectile
+## attack shows its aim line instead, and its bolts are drawn wherever logic has them.
 func _draw_telegraph() -> void:
+	_draw_bolts()
 	var telegraph: Telegraph = get_telegraph()
 	if telegraph == Telegraph.NONE:
 		return
 	var attack: EnemyAttackData = logic.get_running_attack()
+	if attack.is_projectile():
+		_draw_aim_line(telegraph)
+		return
 	var arc: float = attack.arc_angle_deg
 	var radius: float = Units.tiles_to_px(attack.range_tiles)
 	var aim: Vector2 = logic.get_aim()
@@ -201,6 +288,20 @@ func _draw_telegraph() -> void:
 	)
 	outline.append(outline[0])
 	draw_polyline(outline, locked_color if is_locked else tracking_color, line_width_px)
+
+
+func _draw_aim_line(telegraph: Telegraph) -> void:
+	var line: PackedVector2Array = get_aim_line()
+	if line.is_empty():
+		return
+	var color: Color = locked_color if telegraph == Telegraph.LOCKED else tracking_color
+	draw_line(line[0] - global_position, line[1] - global_position, color, line_width_px)
+
+
+func _draw_bolts() -> void:
+	for bolt: Vector3 in get_bolts_px():
+		var centre: Vector2 = Vector2(bolt.x, bolt.y) - global_position
+		draw_circle(centre, bolt.z, bolt_color)
 
 
 func _on_state_restored() -> void:
