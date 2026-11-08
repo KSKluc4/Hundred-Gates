@@ -189,7 +189,7 @@ func test_ac14_a_hit_found_at_the_killing_contact_still_lands_in_both_orders() -
 			player = arena.add_player()
 			caster = arena.add_caster(Vector2(0, 0.98))
 		var died: Array[float] = []
-		caster.get_combat_state().died.connect(func() -> void: died.append(arena.sim.get_time()))
+		_record_death(caster, arena.sim, died)
 		arena.ticks(70)
 		arena.tick(120, Vector2.ZERO, false, true)  # Hit 1 is active from 79.6/120.
 		arena.ticks(10)
@@ -316,14 +316,22 @@ func _sword_run(swing: bool, caster_hp: int = 30) -> Array:
 	arena.add_player(Vector2(0, -5), &"target")
 	var caster: EnemyLogic = arena.add_caster(Vector2.ZERO)
 	var watch: CasterWatch = arena.watch_caster(caster)
-	var died: Array[float] = [-1.0]
-	caster.get_combat_state().died.connect(func() -> void: died[0] = arena.sim.get_time())
+	var died: Array[float] = []
+	_record_death(caster, arena.sim, died)
 	var moves: Dictionary = {}
 	for thirtieth: int in 23:
 		moves[thirtieth] = Vector2.UP
 	arena.play(120, 0, 50, moves, [], [24] if swing else [], Vector2.UP)
 	assert_eq(watch.projectile_at(72)["direction"], Vector2.UP, "aimed at the target")
-	return [arena, watch, caster, died[0]]
+	return [arena, watch, caster, died[0] if not died.is_empty() else -1.0]
+
+
+## Weakly: the caster's signal holding the sim would keep both alive forever.
+func _record_death(caster: EnemyLogic, sim: CombatSim, died: Array[float]) -> void:
+	var sim_ref: WeakRef = weakref(sim)
+	caster.get_combat_state().died.connect(
+		func() -> void: died.append((sim_ref.get_ref() as CombatSim).get_time())
+	)
 
 
 func _assert_steps(actual: Array, expected_steps: Array, label: String) -> void:
