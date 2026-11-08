@@ -21,8 +21,8 @@
 ---
 
 ## D-008 — Projectiles belong to their launcher; walls are reported by the glue
-- **Status:** PROPOSED
-- **Date:** 2026-11-07 · **Decided by:** Lucas (proposed by Combat, from F-005)
+- **Status:** ACCEPTED
+- **Date:** 2026-11-08 · **Decided by:** Lucas (proposed by Combat, from F-005; accepted at Gate A)
 - **Context:** The caster (F-005) is the first ranged attack. Brute charges (F-006), bosses and
   the phase-2 archer will need the same two answers: where a projectile lives in the sim, and how
   core learns about walls without touching physics (G6).
