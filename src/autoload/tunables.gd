@@ -9,6 +9,8 @@ const SCREEN_SHAKE_PATH: String = "res://data/tunables/screen_shake.tres"  # G5
 const ENEMY_COMBAT_PATH: String = "res://data/tunables/enemy_combat.tres"  # G5
 const CHASER_PATH: String = "res://data/enemies/chaser.tres"  # G5
 const CHASER_SWIPE_PATH: String = "res://data/attacks/chaser_swipe.tres"  # G5
+const CASTER_PATH: String = "res://data/enemies/caster.tres"  # G5
+const CASTER_BOLT_PATH: String = "res://data/attacks/caster_bolt.tres"  # G5
 
 var game: GameTunables = preload(GAME_TUNABLES_PATH)
 var player_combat: PlayerCombatTunables = preload(PLAYER_COMBAT_PATH)

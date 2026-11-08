@@ -16,7 +16,7 @@
 | Class | A character's fixed, data-defined archetype, bound to a weapon family (D-005) | `ClassData`, `data/classes/` |
 | Aim mode | The device currently aiming: mouse or gamepad. Changes only on real device activity | `PlayerInputMapper.AimMode` |
 | Deadzone | Radial stick magnitude below which input counts as zero | `stick_deadzone` |
-| Hitbox | A sector (origin, direction, arc, range) that deals damage while live. A 360° arc is a full circle. Decided in core, never by physics or animation | `Hitbox` |
+| Hitbox | A sector (origin, direction, arc, range) that deals damage while live. A 360° arc is a full circle. Decided in core, never by physics or animation. A combatant may own several at once (its own sector, then its projectiles'). A **single-target** hitbox lands on at most one hurtbox per contact instant; one with **no attacker hitstop** gives its owner no hitstop when it lands (its `hit_landed` still fires) | `Hitbox`, `get_live_hitboxes()`, `single_target`, `attacker_hitstop` |
 | Hurtbox | A circle that can receive hits | `Hurtbox` |
 | Attack instance | One hit's active phase. Hits each hurtbox at most once. Hits 1, 2 and 3 are separate instances | `AttackChain` hit set |
 | Windup / Active / Recovery | The three phases of a hit, on the attacker's own clock. The hitbox exists only during active | `AttackChain.Phase` |
@@ -43,3 +43,7 @@
 | Attack cooldown | Time after an enemy's recovery ends before it may start its next attack. It may still move | `attack_cooldown` |
 | Planted | An enemy in windup, active or recovery is committed: hits still deal damage and hitstop, but don't push it or interrupt its attack | `get_knockback_scale()` |
 | Free (enemy) | Not dead, not in hitstop, and not in windup, active, recovery or knockback. Only a free enemy decides, and only at a step start | `EnemyLogic._is_free()` |
+| Projectile | A 360° hitbox that flies straight from its launcher at constant speed on the sim clock, up to a max distance. Owned by the combatant that launched it (identity = owner id + serial), dies with it, passes through every body, and is stopped only by walls (D-008). Its radius is its attack's `range_tiles` | `ProjectileSet`, `projectile_speed_tiles`, `projectile_max_distance_tiles` |
+| Spent (projectile) | Stopped by its max distance or a wall. It still gets that step's contact at its final position, then is removed before its owner's next step | `Projectile.spent` |
+| Blocked launch | A projectile born already overlapping a wall. The glue reports it, and it is removed before any contact: it never hits. Its serial stays used | `report_blocked_launch()` |
+| Retreat distance | Below this distance from its target, an enemy backs straight away from it (unless it can shoot). 0 never retreats | `retreat_distance_tiles` |

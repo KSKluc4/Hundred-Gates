@@ -64,12 +64,11 @@ func get_hurtboxes() -> Array[Hurtbox]:
 	return hurtboxes
 
 
+## F-005/C6: every combatant's, projectiles included.
 func get_live_hitboxes() -> Array[Hitbox]:
 	var hitboxes: Array[Hitbox] = []
 	for combatant: Combatant in runner.get_sim().get_combatants():
-		var hitbox: Hitbox = combatant.get_live_hitbox()
-		if hitbox != null:
-			hitboxes.append(hitbox)
+		hitboxes.append_array(combatant.get_live_hitboxes())
 	return hitboxes
 
 

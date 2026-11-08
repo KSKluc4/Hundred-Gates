@@ -1,3 +1,5 @@
+# gdlint:disable=max-public-methods
+# F-005: get_projectiles() is the 21st, for the glue's wall reports and the views.
 class_name EnemyLogic
 extends Combatant
 ## Everything every enemy shares (F-004 §3): the attack timeline, cooldown, chase movement,
@@ -23,6 +25,8 @@ const SNAPSHOT_KEYS: Array[String] = [
 	"target_id",
 	"ai_enabled",
 	"combat",
+	"projectiles",
+	"next_projectile_serial",
 ]
 
 var _data: EnemyData = null
@@ -43,6 +47,10 @@ var _hit_ids: Array[StringName] = []
 # Per-step only, set by sense(): never in a snapshot, like _tick_displacement.
 var _move_direction: Vector2 = Vector2.ZERO
 var _move_left: float = 0.0
+# F-005/C4, D-008: this enemy's projectiles, snapshotted with it.
+var _projectiles: ProjectileSet = ProjectileSet.new()
+# Per-step only: sim time left in the step after the current segment, for a launch inside it.
+var _step_time_left: float = 0.0
 
 
 func _init() -> void:
@@ -74,6 +82,7 @@ func setup(
 	_cooldown_remaining = 0.0
 	_clear_attack()
 	_clear_intent()
+	_projectiles.reset()  # F-005/C4: serials start again from 0.
 	_combat.setup(data.max_hp, false)  # F-004/C7: no hurt i-frames for enemies.
 	return true
 
@@ -101,6 +110,9 @@ func is_ai_enabled() -> bool:
 ## that is the same for everyone, and the decision then holds for the whole step.
 func sense(view: CombatView) -> void:
 	_clear_intent()
+	# F-005/C4, C5: the step start. Spent and landed projectiles go before this step advances.
+	_projectiles.begin_step()
+	_tick_displacement = Vector2.ZERO  # A windup of 0 launches here, from where it stands.
 	if _data == null:
 		return
 	if _is_free():
@@ -117,11 +129,14 @@ func step(duration: float) -> void:
 	if _data == null:
 		return
 	_tick_displacement = Vector2.ZERO
+	_projectiles.advance(duration)  # F-005/C4: the sim clock, never this enemy's hitstop.
 	var remaining: float = _combat.consume_hitstop(duration)  # F-003/C7, C15: hitstop first.
 	while remaining > TIME_EPSILON and _state != State.DEAD:
 		var segment: float = minf(remaining, _time_to_next_event())
+		_step_time_left = remaining - segment
 		_advance(segment)
 		remaining -= segment
+	_step_time_left = 0.0
 	_position += _tick_displacement
 	_clear_intent()
 
@@ -184,10 +199,15 @@ func get_running_attack() -> EnemyAttackData:
 	return _attack
 
 
+## F-005/C5, C12: the glue reports walls to it, and the views draw it. Nothing else changes it.
+func get_projectiles() -> ProjectileSet:
+	return _projectiles
+
+
 ## F-004/C6: valid at the snapshot boundary, F-003/C19. The state holds the attack phase and
 ## "dead", and _phase_elapsed the lunge's progress: it runs at constant speed on that clock.
 func to_dict() -> Dictionary:
-	return {
+	var snapshot: Dictionary = {
 		"position": _position,
 		"state": _state,
 		"phase_elapsed": _phase_elapsed,
@@ -201,6 +221,8 @@ func to_dict() -> Dictionary:
 		"ai_enabled": _ai_enabled,
 		"combat": _combat.to_dict(),
 	}
+	snapshot.merge(_projectiles.to_dict())  # F-005/C10.
+	return snapshot
 
 
 func from_dict(snapshot: Dictionary) -> void:
@@ -221,6 +243,7 @@ func from_dict(snapshot: Dictionary) -> void:
 	_target_id = snapshot["target_id"]
 	_ai_enabled = snapshot["ai_enabled"]
 	_combat.from_dict(snapshot["combat"])
+	_projectiles.from_dict(snapshot)
 	_clear_intent()
 	state_restored.emit()
 
@@ -253,8 +276,9 @@ func _hurtbox_radius() -> float:
 
 
 ## F-004/C5: built fresh at every contact, so the sector's origin follows the lunge.
+## F-005/C8: a projectile attack's own sector never exists.
 func _build_live_hitbox() -> Hitbox:
-	if _state != State.ACTIVE:
+	if _state != State.ACTIVE or _attack.is_projectile():
 		return null
 	var hitbox: Hitbox = Hitbox.new()
 	hitbox.owner_id = _combat_id
@@ -267,6 +291,22 @@ func _build_live_hitbox() -> Hitbox:
 	hitbox.knockback_tiles = _attack.knockback_tiles
 	hitbox.hit_ids = _hit_ids
 	return hitbox
+
+
+## F-005/C4, C6: after the own sector, in serial order. Never paused by this enemy's hitstop.
+func _build_extra_hitboxes() -> Array[Hitbox]:
+	return _projectiles.get_hitboxes(_combat_id, _team)
+
+
+## F-005/C11: projectiles in flight, and the pending one of a latched attack in WINDUP, must
+## keep their sampling limit at the new rate, on their latched speed and radius.
+func _extra_rate_errors(step_rate: int) -> PackedStringArray:
+	var errors: PackedStringArray = _projectiles.rate_errors(step_rate)
+	if _state == State.WINDUP and _attack.is_projectile():
+		var speed: float = _attack.projectile_speed_tiles
+		for error: String in ProjectileSet.sampling_errors(speed, _attack.range_tiles, step_rate):
+			errors.append("pending projectile of %s %s" % [_attack.id, error])
+	return errors
 
 
 ## F-004/C4.
@@ -386,10 +426,27 @@ func _cross_finished_phases() -> void:
 			State.WINDUP:
 				_aim_locked = true
 				_state = State.ACTIVE
+				if _attack.is_projectile():
+					_launch_projectile()
 			State.ACTIVE:
 				_state = State.RECOVERY
 			State.RECOVERY:
 				_finish_attack()
+
+
+## F-005/C4, C8: at the exact instant the windup ends, from where the enemy is, along the
+## locked aim, with the latched values. It flies the rest of this step on the sim clock.
+func _launch_projectile() -> void:
+	_projectiles.launch(
+		_position + _tick_displacement,
+		_aim,
+		_attack.projectile_speed_tiles,
+		_attack.projectile_max_distance_tiles,
+		_attack.range_tiles,
+		_attack.damage,
+		_attack.knockback_tiles,
+		_step_time_left
+	)
 
 
 ## F-004/C5: the punish window is over, and the cooldown starts.
@@ -418,3 +475,4 @@ func _enter_dead() -> void:
 	_target_id = &""
 	_clear_attack()
 	_combat.stop_knockback()
+	_projectiles.clear()  # F-005/C4: candidates found at this contact still land (F-003/C16).

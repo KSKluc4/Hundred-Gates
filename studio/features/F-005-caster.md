@@ -1,8 +1,8 @@
 ---
 id: F-005
 title: Ranged caster + minimal projectiles
-status: APPROVED         # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
+status: DONE             # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Lucas     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-07
 updated: 2026-11-08
 depends_on: [F-004, D-005, D-007]
@@ -713,24 +713,91 @@ AC6, AC28 and the pending-launch rate example. Plan review only; no source or te
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** YYYY-MM-DD  ·  **Branch:** `feature/F-005-caster`
+**Started:** 2026-11-08  ·  **Branch:** `feature/F-005-caster`
 
 ### Progress
-- [ ] T1 — <commit hash when done>
-- [ ] T2
+- [x] T1 — `544a8a5` Combat API: `get_live_hitboxes()`, `single_target`, `attacker_hitstop`, debug draw. New `tests/core/combat/test_hit_flags.gd`.
+- [x] T2 — `02e28f7` `ProjectileSet`.
+- [x] T3 — `6061481` `EnemyAttackData` projectile fields, `EnemyData.retreat_distance_tiles`, `Brain.CASTER`, C9 checks.
+- [x] T4 — `fb2c95d` `data/enemies/caster.tres`, `data/attacks/caster_bolt.tres`, `Tunables.CASTER_PATH` / `CASTER_BOLT_PATH` (G5).
+- [x] T5 — `c703cfb` `EnemyLogic` owns, launches, snapshots and rate-checks projectiles.
+- [x] T6 — `ccf881a` `CasterBrain`.
+- [x] T7 — `8149040`, `063adfa` core tests (second commit breaks a test-only reference cycle that leaked objects at exit).
+- [x] T8 — `c79653c` `Enemy` glue: launch-overlap check, sweep, aim line, bolt circles.
+- [x] T9 — `c6563e1` `scenes/debug/f005_caster.tscn`.
+- [x] T10 — `184b02a` scene tests `tests/scenes/test_f005_{physics,walls,reload,views}.gd`.
+- [x] T11 — `b649b2d` glossary.
 
 ### Deviations from plan
-<Every place the code differs from §3–§6, with reason. "None" if none.>
-- DEV-1: <what changed> — **Why:** <reason> — **Impact:** <what else this affects>
+None. Every §4 rule and §5 AC is implemented as written. The structural choices below are
+logged as assumptions.
 
 ### Assumptions made (small, reversible)
-- ASSUMPTION-1: <the gap in the spec> → <what I chose> — **Why:** <reason>
+- ASSUMPTION-1: gdlint's `max-public-methods: 20` → `Combatant` and `EnemyLogic` were both at
+  exactly 20. C6 requires a 21st on `Combatant` (`get_live_hitboxes()`), and the glue needs
+  `EnemyLogic.get_projectiles()`. Both files get a file-level `# gdlint:disable=max-public-methods`
+  with a comment saying why. The EnemyLogic parts of C6/C11 go through two protected hooks on
+  `Combatant` (`_build_extra_hitboxes()`, `_extra_rate_errors()`) rather than overriding
+  `get_live_hitboxes()` / `get_running_window_errors()`, same pattern as `_build_live_hitbox()`.
+  — **Why:** smallest change; raising the limit project-wide would be a config change nobody asked for.
+- ASSUMPTION-2: where "removed before its owner's next step advances" happens → in
+  `ProjectileSet.begin_step()`, called first thing in `EnemyLogic.sense()` (the owner's step
+  start, F-004/C4). It also starts each projectile's segment and clears the launched-this-step
+  flag. `sense()` also zeroes `_tick_displacement`, so a windup of 0 (possible only with
+  `min_telegraph` 0) launches from where the caster stands. — **Why:** the step start is the only
+  point before both a sense-time launch (windup 0) and `step()`.
+- ASSUMPTION-3: C9's sampling limit compares `speed / step_rate <= radius + DISTANCE_EPSILON`.
+  — **Why:** the "exact limit passes" ACs, safe against float division. 30.001 / 120 and
+  60.001 / 240 are rejected (tested).
+- ASSUMPTION-4: a landed or spent projectile stays in the list (with its hitbox, and drawn) until
+  its owner's next step start, as C4 says. No contact falls in between, so it can't hit again;
+  on screen a landed bolt can show for at most one frame at the hit point. — **Why:** literal C4;
+  the look belongs to Art (§10 Q2).
+- ASSUMPTION-5: wall reports from the glue: a clear sweep (`cast_motion()` safe fraction 1)
+  reports the planned position exactly. A stop reports `start + (plan − start) × safe`, computed
+  in tiles. — **Why:** a px→tiles round trip of a float32 position could fall more than
+  `DISTANCE_EPSILON` short and fake a wall stop.
+- ASSUMPTION-6: bolt circles and the aim line are drawn in `Enemy._draw()` at
+  (logic position − node position) rather than in a separate top-level child node. Same pixels,
+  no new node. The aim line shows during `WINDUP` only. A projectile attack draws no sector in
+  `ACTIVE`, since its own sector never exists (C8). Melee telegraphs are unchanged.
+- ASSUMPTION-7: test files beyond T7's list: `test_caster_data.gd` (AC1), `test_caster_aggro.gd`
+  (AC5) and helpers `caster_arena.gd`, `caster_watch.gd`, `tests/scenes/f005_scene_test.gd`.
+  — **Why:** gdlint's 20-public-method limit also applies to test scripts.
+- ASSUMPTION-8: debug scene layout (T9): F-004's room; pillar at (172, 162); player (120, 200);
+  `caster_1` (216, 200), 6 tiles away with a clear line; `caster_2` (216, 128), 7.5 tiles away,
+  behind the pillar (checked by a ray test); `chaser_1` (420, 160). Registration order: player,
+  caster_1, caster_2, chaser_1.
 
 ### Things the Auditor should look at closely
-- <tricky spots, edge cases you're unsure about>
+- **Launch instant inside a step** (`EnemyLogic.step()`): `_step_time_left` is set to
+  `remaining − segment` before each segment, so a launch at the windup→active crossing flies the
+  rest of the step on the sim clock, after any hitstop the owner consumed first. Projectiles that
+  already exist advance by the full step before the timeline (`ProjectileSet.advance()`).
+  Covered by AC7 (windup 0.605), AC8, AC27.
+- **Wall-stop threshold vs float32 positions** (`ProjectileSet.report_position()`): `Vector2` is
+  float32, so 1e-6 tiles is about 2 ulp near y ≈ 6. The tests use positions where that holds,
+  and the glue never round-trips a clear sweep (ASSUMPTION-5).
+- **Single target** (`CombatSim._apply_contact()`): a per-contact list of hitboxes that landed. A
+  skipped candidate (i-frames) doesn't count, so the next registered target can still be hit at
+  that contact (`test_hit_flags.gd`).
+- **Owner death mid-contact**: `_enter_dead()` clears the set, but the candidates were already
+  built, so a bolt hit found at that contact still lands, in both registration orders (AC14). The
+  dead caster's `hit_landed` still fires, with no hitstop.
+- **Blocked launch** checks only projectiles launched in this step, before their sweep, with the
+  radius shrunk by `DISTANCE_EPSILON`. A zero-length segment (launch exactly at the step's end)
+  reports the launch point with no `cast_motion()` call.
+- **Rate checks**: error strings come through `CombatSim.rate_change_errors()`, so they read
+  `running hit or pulse on caster_1: projectile 0 in flight moves …` and
+  `… pending projectile of caster_bolt moves …`.
 
 ### How to test
-<exact steps / commands / scene to run>
+- `tools/test`: 662 tests, all passing (539 before F-005; no existing test file edited).
+- `tools/lint`: clean. `tools/check_core_purity` and `--self-test`: ok.
+- Core: `tools/test -gselect=test_caster_` and `-gselect=test_projectile_set`, `-gselect=test_hit_flags`.
+- Scene: `tools/test -gselect=test_f005_`.
+- Debug scene: `scenes/debug/f005_caster.tscn` (I / R / F5 / F3 as in F-004). The feel test in §5
+  is Lucas's manual playtest.
 
 ---
 
@@ -742,6 +809,77 @@ AC6, AC28 and the pending-launch rate example. Plan review only; no source or te
 ### CR-1 🔴 <title>  ·  `path/to/file:line`
 <problem, why it matters, suggested fix>
 > **Builder reply:** <fixed in abc123 / disagree because …>
+
+<!-- review-round: 1 verdict: APPROVE -->
+
+**Reviewed commit:** 244de0984324b6a7261e77898a4d4c32950e0384
+
+**Verdict:** APPROVE
+
+No findings. Reviewed the full feature and the branch diff against `main` at
+`00457ce54a657b30889bfce10aeb27c46fea6110`, including the new tests and debug scene.
+
+**AC evidence:** Source locations below identify the implementation; test locations identify
+the assertions inspected. All paths are relative to the repository root.
+
+| AC | Result | Implementation and evidence |
+|---|---|---|
+| AC1 | ✅ | `src/core/enemies/enemy_data.gd:25`, `enemy_attack_data.gd:70` and `src/core/combat/projectile_set.gd:80` validate the new bounds and attack kinds before `EnemyLogic.setup()` mutates state. `tests/core/enemies/test_caster_data.gd` checks both sides, exact sampling limits at 120/240, unchanged chaser resources and failed-setup atomicity. |
+| AC2 | ✅ | `src/core/enemies/enemy_data.gd:60` retains the strict speed comparison; `src/world/combat_runner.gd` applies it at setup and reload. `tests/scenes/test_f005_reload.gd:26` checks 2.5 versus 5.0, and the following test rejects equality. |
+| AC3 | ✅ | `src/core/enemies/caster_brain.gd:26` creates bounded retreat/approach intents, consumed by `src/core/enemies/enemy_logic.gd:399`. `tests/core/enemies/test_caster_brain.gd:106` checks band edges and ±1e-4 at all three tick rates; the speed test checks straight retreat. |
+| AC4 | ✅ | `src/core/enemies/caster_brain.gd:18` checks attack readiness/range before retreat. `tests/core/enemies/test_caster_brain.gd:49` and `:126` check both the intent and a running sim at distance 1.0. |
+| AC5 | ✅ | `CasterBrain.decide()` uses `EnemyBrain.nearest_player()`; `EnemyLogic.apply_hit()` preserves damage aggro. `tests/core/enemies/test_caster_aggro.gd` covers radius entry, persistent damage aggro, nearest/tied targets and skipping a dead player. |
+| AC6 | ✅ | Retreat uses the authored speed and the unchanged Warrior movement ramp. `tests/core/enemies/test_caster_brain.gd:134` checks every 1/30-s sample, initial growth, subsequent strict closure and both positions at 0.5 s, at 30/60/120 ticks/s. |
+| AC7 | ✅ | `src/core/enemies/enemy_logic.gd:422` launches once at windup→active; `:439` supplies locked aim, position, latched values and remaining step time. `:280` suppresses the body sector. `tests/core/enemies/test_caster_attack.gd:11`, `:31` and `:42` check serials, aim and a 0.605-s launch. |
+| AC8 | ✅ | `src/core/enemies/enemy_logic.gd:132` advances existing bolts before consuming owner hitstop; `src/core/combat/projectile_set.gd:240` integrates from origin and caps distance. `tests/core/enemies/test_caster_attack.gd:53` compares calm/sword-hit flights; `:68` checks the 10/6-s flight and exact endpoint. |
+| AC9 | ✅ | `src/core/combat/combat_sim.gd:125` skips further candidates only after a single-target hit lands; `ProjectileSet.begin_step()` removes landed bolts. `tests/core/enemies/test_caster_attack.gd:78` swaps two real players' registration order and checks next-step removal. |
+| AC10 | ✅ | Projectile hitboxes set `attacker_hitstop = false` at `src/core/combat/projectile_set.gd:206`; `src/core/combat/combat_state.gd:57` still emits `hit_landed`. `tests/core/enemies/test_caster_attack.gd:100` checks target hitstop and one signal; `tests/core/combat/test_hit_flags.gd:130` checks preservation of existing attacker hitstop. |
+| AC11 | ✅ | `src/core/combat/projectile_set.gd:204` sets `knockback_from_center = false`, so `HitEvent._direction_of()` returns flight direction. `tests/core/enemies/test_caster_attack.gd:114` checks an off-center real-player hit and no sideways displacement. |
+| AC12 | ✅ | `HitResolver._touches()` only finds candidates; `CombatSim._apply_contact()` checks protection before marking. `tests/core/enemies/test_caster_attack.gd:128` keeps a dashing player overlapping and verifies the first post-iframe hit. `tests/core/combat/test_hit_flags.gd:83` checks an immune first target is unmarked and does not consume the single hit. |
+| AC13 | ✅ | Projectile hitboxes inherit the enemy team, `HitResolver` rejects same-team contacts, and the glue queries only `world`. `tests/core/enemies/test_caster_attack.gd:143` checks no candidates or damage while flying across the caster, a chaser and a dummy. |
+| AC14 | ✅ | `src/core/enemies/enemy_logic.gd:473` clears the set on death; `CombatSim` retains the already-built candidate batch. `tests/core/enemies/test_caster_attack.gd:163` checks removal, and `:178` verifies the simultaneous lethal sword/bolt trade in both registration orders. |
+| AC15 | ✅ | `src/core/combat/projectile_set.gd:164` compares progress along the step segment, spends a stopped bolt and retains its final contact. `tests/core/enemies/test_caster_attack.gd:202`, `:218` and the matching `tests/core/combat/test_projectile_set.gd` cases cover 0.03 shortfall, equal/within-epsilon reports and next-step removal. |
+| AC16 | ✅ | `src/core/combat/combatant.gd:49` preserves the single getter and own-sector hitstop rule; new flags retain old defaults. `tests/core/combat/test_hit_flags.gd:100` checks several targets at one sword contact. The diff leaves all existing F-001/F-003/F-004 tests unedited; the exact-HEAD preflight passed. |
+| AC17 | ✅ | The shared sim grid, caster timeline, projectile integration and existing player hit reaction produce run A. `tests/core/enemies/test_caster_oracle.gd:11` checks launch/lock/phase times, hit at 191/120, removal, caster movement and second windup at all rates; `:53` checks knockback completion. |
+| AC18 | ✅ | The existing dash protection is applied to the moving projectile through the shared resolver. `tests/core/enemies/test_caster_oracle.gd:64` checks all six skipped overlap contacts, caster hold point, max-distance contact/removal and final state at all rates; `:94` checks dash completion. |
+| AC19 | ✅ | Core wall reports use `ProjectileSet.report_position()`. `tests/core/enemies/test_caster_oracle.gd:104` supplies the fake y=3 wall and checks spent at 143/120, removal at 144/120 and untouched HP at all rates. |
+| AC20 | ✅ | `Enemy.move_with_combatant()` moves the real body before reporting walls inside the runner's per-step movement callback. `tests/scenes/test_f005_physics.gd:11` and `:41` repeat runs A/B at 30/60/120 physics ticks/s, including exact contact times and final positions/HP. |
+| AC21 | ✅ | `src/core/enemies/enemy_logic.gd:209`/`:228` include the projectile set and next serial; `src/core/combat/projectile_set.gd:224`/`:232` rebuild independent hit sets and per-step segments. `tests/core/enemies/test_caster_snapshot.gd:9` through the dead-state case cover all seven requested boundaries and compare the following 60 ticks with fresh restored objects. |
+| AC22 | ✅ | Projectile fields are latched at attack start/launch; `src/core/enemies/enemy_logic.gd:303` checks pending attacks and `ProjectileSet.rate_errors()` checks flight. Existing `CombatRunner.reload_data()` validates the whole group before applying. `tests/core/enemies/test_caster_snapshot.gd:83` onward and `tests/scenes/test_f005_reload.gd:49` onward check latching, invalid-group refusal, and both 240→120 refusals with owner/serial or pending-attack diagnostics through F5. |
+| AC23 | ✅ | `src/entities/enemies/enemy.gd:221` checks new launches with a radius shrunk by ε, then sweeps against layer 1 and reports the reached position. `tests/scenes/test_f005_walls.gd:20`, `:38` and `:55` check pillar/outer-wall stops, contact overlap tolerance and larger-radius blocked launches at 0.6/0.605 s, with an unblocked control. |
+| AC24 | ✅ | `src/entities/enemies/enemy.gd:164`, `:180`, `:293` and `:301` derive line/circles from logic; existing recovery tint and restore refresh remain active. `src/ui/debug/combat_debug_draw.gd:68` concatenates plural hitboxes. `tests/scenes/test_f005_views.gd` checks tracking/lock, dimensions/positions, open tint, overlay data and restore without stale views. |
+| AC25 | ✅ | The existing runner's AI/reset/reload paths apply to all `Enemy` nodes; `EnemyLogic.setup()` resets projectiles and serials. `tests/scenes/test_f005_views.gd` exercises I/R/F5, AI-toggle persistence, empty post-reset bolts/lines, and the T9 scene layout/registration order. |
+| AC26 | ✅ | New core coverage is in `tests/core/enemies/test_caster_*.gd`, `tests/core/combat/test_projectile_set.gd` and `test_hit_flags.gd`; scene coverage is in `tests/scenes/test_f005_{physics,walls,reload,views}.gd`. Existing test files are unchanged. These cover the specified core/scene split. |
+| AC27 | ✅ | `src/core/combat/projectile_set.gd:181` removes a blocked launch before contact without reclaiming its serial, and rejects reports for earlier launches. `tests/core/enemies/test_caster_attack.gd:233`, `:255` and `:262` check both launch timings, no live contact/hit, serial 1 next, unblocked controls and invalid-report atomicity. |
+| AC28 | ✅ | `HitResolver` still samples circle/sector intersections only at contact instants; no swept hurtbox-hit path was added. `tests/core/combat/test_projectile_set.gd` checks the specified speed-30/radius-0.25 contacts: the y=0.599 graze misses and y=0.5 hits at x=−0.125. |
+
+**Rejected-option check:** No rejected option was implemented. Projectiles remain inside
+their owner, never enter the sim registration list, and use physics only for wall feedback.
+There is no pool, sim-owned projectile list, friendly fire, piercing, homing/leading,
+bolt destruction, swept hurtbox contact, hysteresis, or continuation after owner death.
+Their movement and live hitboxes bypass owner hitstop; landed signals do not add owner hitstop.
+
+**Constraint check:** No violation found in C1–C15 or G1–G9. Logic stays in core; tunable
+content is authored in the specified resources; new state is snapshotted; player commands
+remain unchanged. `CASTER` is appended after `CHASER`, and no dependency, input action or
+collision layer was added. The implementation matches the caster design and D-008, including
+the blocked-launch and sampling refinements already explicit in this approved feature.
+
+**Deviation and assumption audit:** §8 reports no DEV entries; no undocumented deviation
+found. ASSUMPTION-1's protected hooks and local lint exemptions preserve the required API.
+ASSUMPTION-2 removes finished bolts at the step start before either zero-windup launches or
+advancement. ASSUMPTION-3 uses the existing distance epsilon for numerical comparison.
+ASSUMPTION-4 retains the specified final-contact bolt until the next step.
+ASSUMPTION-5 avoids a needless pixel round trip for a clear sweep. ASSUMPTION-6 keeps the
+views derived from logic in the existing draw path. ASSUMPTION-7's test helpers and
+ASSUMPTION-8's debug layout stay within T7/T9/T10. All eight are reasonable and reversible.
+
+**Verification:** Inspected the complete feature, studio workflow, PROJECT, DECISIONS,
+Combat brief/design, glossary, full branch diff, affected source and all new test bodies.
+Used the Mode B exact-HEAD preflight guarantee that `tools/test`, `tools/lint` and
+`tools/check_core_purity` passed; did not rerun those checks. The Builder reports 662 tests.
+The KB/M/gamepad feel test was not performed in this audit and remains Lucas's manual
+Gate B evaluation. No source or tests changed. Status remains `CODE_REVIEW`; next actor Lucas.
 
 ---
 
@@ -758,3 +896,4 @@ AC6, AC28 and the pending-launch rate example. Plan review only; no source or te
 ## 11. Director Notes  ·  _Lucas_
 
 <Overrides, priorities, gut calls. Everyone obeys these.>
+- **2026-11-08 (Gate B):** Gate B: playtested, feel approved. Aim line is a placeholder: final telegraph look must be subtler, to Art & Game Feel (Q2).

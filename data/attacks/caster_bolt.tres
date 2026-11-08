@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnemyAttackData" format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+aim_track_time = 0.35
+lunge_tiles = 0.0
+projectile_speed_tiles = 6.0
+projectile_max_distance_tiles = 10.0
+id = &"caster_bolt"
+windup = 0.6
+active = 0.1
+recovery = 0.8
+damage = 18
+arc_angle_deg = 360.0
+range_tiles = 0.25
+knockback_tiles = 0.5
+is_finisher = false

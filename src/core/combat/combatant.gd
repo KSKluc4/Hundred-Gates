@@ -1,3 +1,5 @@
+# gdlint:disable=max-public-methods
+# F-005/C6 adds get_live_hitboxes() to an API that already had 20 public methods.
 class_name Combatant
 extends RefCounted
 ## Anything that fights on the shared step grid (D-007). CombatSim only talks to this API.
@@ -41,6 +43,18 @@ func get_live_hitbox() -> Hitbox:
 	return _build_live_hitbox()
 
 
+## F-005/C6 (D-008): every hitbox live at this contact instant, in this owner's order: its own
+## sector from get_live_hitbox(), if any, then any others it owns (projectiles). Every hitbox
+## reader uses this one.
+func get_live_hitboxes() -> Array[Hitbox]:
+	var hitboxes: Array[Hitbox] = []
+	var own: Hitbox = get_live_hitbox()
+	if own != null:
+		hitboxes.append(own)
+	hitboxes.append_array(_build_extra_hitboxes())
+	return hitboxes
+
+
 ## F-003/C16: the recheck on the target, as it is at this moment in the batch.
 func can_be_hit() -> bool:
 	return not _combat.is_hurt_protected() and not _is_protected()
@@ -59,10 +73,12 @@ func get_knockback_scale() -> float:
 ## F-003/C18: the rate check, for a running window on its latched values. Empty means it
 ## still gets a contact at this rate, or that no window is left to lose.
 func get_running_window_errors(step_rate: int) -> PackedStringArray:
+	var errors: PackedStringArray = []
 	var window: PackedFloat64Array = _running_window()
-	if window.is_empty():
-		return PackedStringArray()
-	return CombatTiming.window_errors(window[0], window[1], step_rate)
+	if not window.is_empty():
+		errors.append_array(CombatTiming.window_errors(window[0], window[1], step_rate))
+	errors.append_array(_extra_rate_errors(step_rate))
+	return errors
 
 
 ## F-004/C4: what a CombatView reports. HP is what every combatant shares.
@@ -137,3 +153,13 @@ func _hurtbox_radius() -> float:
 
 func _build_live_hitbox() -> Hitbox:
 	return null
+
+
+## F-005/C6: hitboxes after the own sector. Never paused by this owner's hitstop.
+func _build_extra_hitboxes() -> Array[Hitbox]:
+	return []
+
+
+## F-005/C11: rate errors for latched values other than the running window.
+func _extra_rate_errors(_step_rate: int) -> PackedStringArray:
+	return PackedStringArray()
