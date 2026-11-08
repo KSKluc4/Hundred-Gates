@@ -1,8 +1,8 @@
 ---
 id: F-005
 title: Ranged caster + minimal projectiles
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-07
 updated: 2026-11-08
 depends_on: [F-004, D-005, D-007]
@@ -713,24 +713,91 @@ AC6, AC28 and the pending-launch rate example. Plan review only; no source or te
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** YYYY-MM-DD  ·  **Branch:** `feature/F-005-caster`
+**Started:** 2026-11-08  ·  **Branch:** `feature/F-005-caster`
 
 ### Progress
-- [ ] T1 — <commit hash when done>
-- [ ] T2
+- [x] T1 — `544a8a5` Combat API: `get_live_hitboxes()`, `single_target`, `attacker_hitstop`, debug draw. New `tests/core/combat/test_hit_flags.gd`.
+- [x] T2 — `02e28f7` `ProjectileSet`.
+- [x] T3 — `6061481` `EnemyAttackData` projectile fields, `EnemyData.retreat_distance_tiles`, `Brain.CASTER`, C9 checks.
+- [x] T4 — `fb2c95d` `data/enemies/caster.tres`, `data/attacks/caster_bolt.tres`, `Tunables.CASTER_PATH` / `CASTER_BOLT_PATH` (G5).
+- [x] T5 — `c703cfb` `EnemyLogic` owns, launches, snapshots and rate-checks projectiles.
+- [x] T6 — `ccf881a` `CasterBrain`.
+- [x] T7 — `8149040`, `063adfa` core tests (second commit breaks a test-only reference cycle that leaked objects at exit).
+- [x] T8 — `c79653c` `Enemy` glue: launch-overlap check, sweep, aim line, bolt circles.
+- [x] T9 — `c6563e1` `scenes/debug/f005_caster.tscn`.
+- [x] T10 — `184b02a` scene tests `tests/scenes/test_f005_{physics,walls,reload,views}.gd`.
+- [x] T11 — `b649b2d` glossary.
 
 ### Deviations from plan
-<Every place the code differs from §3–§6, with reason. "None" if none.>
-- DEV-1: <what changed> — **Why:** <reason> — **Impact:** <what else this affects>
+None. Every §4 rule and §5 AC is implemented as written. The structural choices below are
+logged as assumptions.
 
 ### Assumptions made (small, reversible)
-- ASSUMPTION-1: <the gap in the spec> → <what I chose> — **Why:** <reason>
+- ASSUMPTION-1: gdlint's `max-public-methods: 20` → `Combatant` and `EnemyLogic` were both at
+  exactly 20. C6 requires a 21st on `Combatant` (`get_live_hitboxes()`), and the glue needs
+  `EnemyLogic.get_projectiles()`. Both files get a file-level `# gdlint:disable=max-public-methods`
+  with a comment saying why. The EnemyLogic parts of C6/C11 go through two protected hooks on
+  `Combatant` (`_build_extra_hitboxes()`, `_extra_rate_errors()`) rather than overriding
+  `get_live_hitboxes()` / `get_running_window_errors()`, same pattern as `_build_live_hitbox()`.
+  — **Why:** smallest change; raising the limit project-wide would be a config change nobody asked for.
+- ASSUMPTION-2: where "removed before its owner's next step advances" happens → in
+  `ProjectileSet.begin_step()`, called first thing in `EnemyLogic.sense()` (the owner's step
+  start, F-004/C4). It also starts each projectile's segment and clears the launched-this-step
+  flag. `sense()` also zeroes `_tick_displacement`, so a windup of 0 (possible only with
+  `min_telegraph` 0) launches from where the caster stands. — **Why:** the step start is the only
+  point before both a sense-time launch (windup 0) and `step()`.
+- ASSUMPTION-3: C9's sampling limit compares `speed / step_rate <= radius + DISTANCE_EPSILON`.
+  — **Why:** the "exact limit passes" ACs, safe against float division. 30.001 / 120 and
+  60.001 / 240 are rejected (tested).
+- ASSUMPTION-4: a landed or spent projectile stays in the list (with its hitbox, and drawn) until
+  its owner's next step start, as C4 says. No contact falls in between, so it can't hit again;
+  on screen a landed bolt can show for at most one frame at the hit point. — **Why:** literal C4;
+  the look belongs to Art (§10 Q2).
+- ASSUMPTION-5: wall reports from the glue: a clear sweep (`cast_motion()` safe fraction 1)
+  reports the planned position exactly. A stop reports `start + (plan − start) × safe`, computed
+  in tiles. — **Why:** a px→tiles round trip of a float32 position could fall more than
+  `DISTANCE_EPSILON` short and fake a wall stop.
+- ASSUMPTION-6: bolt circles and the aim line are drawn in `Enemy._draw()` at
+  (logic position − node position) rather than in a separate top-level child node. Same pixels,
+  no new node. The aim line shows during `WINDUP` only. A projectile attack draws no sector in
+  `ACTIVE`, since its own sector never exists (C8). Melee telegraphs are unchanged.
+- ASSUMPTION-7: test files beyond T7's list: `test_caster_data.gd` (AC1), `test_caster_aggro.gd`
+  (AC5) and helpers `caster_arena.gd`, `caster_watch.gd`, `tests/scenes/f005_scene_test.gd`.
+  — **Why:** gdlint's 20-public-method limit also applies to test scripts.
+- ASSUMPTION-8: debug scene layout (T9): F-004's room; pillar at (172, 162); player (120, 200);
+  `caster_1` (216, 200), 6 tiles away with a clear line; `caster_2` (216, 128), 7.5 tiles away,
+  behind the pillar (checked by a ray test); `chaser_1` (420, 160). Registration order: player,
+  caster_1, caster_2, chaser_1.
 
 ### Things the Auditor should look at closely
-- <tricky spots, edge cases you're unsure about>
+- **Launch instant inside a step** (`EnemyLogic.step()`): `_step_time_left` is set to
+  `remaining − segment` before each segment, so a launch at the windup→active crossing flies the
+  rest of the step on the sim clock, after any hitstop the owner consumed first. Projectiles that
+  already exist advance by the full step before the timeline (`ProjectileSet.advance()`).
+  Covered by AC7 (windup 0.605), AC8, AC27.
+- **Wall-stop threshold vs float32 positions** (`ProjectileSet.report_position()`): `Vector2` is
+  float32, so 1e-6 tiles is about 2 ulp near y ≈ 6. The tests use positions where that holds,
+  and the glue never round-trips a clear sweep (ASSUMPTION-5).
+- **Single target** (`CombatSim._apply_contact()`): a per-contact list of hitboxes that landed. A
+  skipped candidate (i-frames) doesn't count, so the next registered target can still be hit at
+  that contact (`test_hit_flags.gd`).
+- **Owner death mid-contact**: `_enter_dead()` clears the set, but the candidates were already
+  built, so a bolt hit found at that contact still lands, in both registration orders (AC14). The
+  dead caster's `hit_landed` still fires, with no hitstop.
+- **Blocked launch** checks only projectiles launched in this step, before their sweep, with the
+  radius shrunk by `DISTANCE_EPSILON`. A zero-length segment (launch exactly at the step's end)
+  reports the launch point with no `cast_motion()` call.
+- **Rate checks**: error strings come through `CombatSim.rate_change_errors()`, so they read
+  `running hit or pulse on caster_1: projectile 0 in flight moves …` and
+  `… pending projectile of caster_bolt moves …`.
 
 ### How to test
-<exact steps / commands / scene to run>
+- `tools/test`: 662 tests, all passing (539 before F-005; no existing test file edited).
+- `tools/lint`: clean. `tools/check_core_purity` and `--self-test`: ok.
+- Core: `tools/test -gselect=test_caster_` and `-gselect=test_projectile_set`, `-gselect=test_hit_flags`.
+- Scene: `tools/test -gselect=test_f005_`.
+- Debug scene: `scenes/debug/f005_caster.tscn` (I / R / F5 / F3 as in F-004). The feel test in §5
+  is Lucas's manual playtest.
 
 ---
 
