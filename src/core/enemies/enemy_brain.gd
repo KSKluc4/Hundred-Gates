@@ -9,6 +9,8 @@ static func for_data(data: EnemyData) -> EnemyBrain:
 	match data.brain:
 		EnemyData.Brain.CHASER:
 			return ChaserBrain.new()
+		EnemyData.Brain.CASTER:
+			return CasterBrain.new()
 	return null
 
 
