@@ -2,7 +2,7 @@
 id: F-006
 title: Brute — charge, stomp, wall stun
 status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-08
 updated: 2026-11-08
 depends_on: [F-004, F-005, D-007, D-008]
@@ -542,6 +542,12 @@ all three rates; existing death handling must still win if the brute dies at tha
 > plus the tick-end snapshot at 30/60/120, AC9/AC13/AC15 extended, AC20 added. T3 now lists
 > `combatant.gd` and `combat_sim.gd`; §2 notes the missing post-contact call.
 
+✔ resolved (round 2): C7 specifies report → contact → `end_step()` on every combat step,
+preserving the stop contact and finalizing before the next sense or snapshot. C9's two-step
+minimum recovery retains the latched attack until finalization; C11 checks that bound on rate
+changes. AC6/AC8/AC9/AC13/AC15/AC20 and T3 cover the hook, final-step timing, death precedence,
+snapshot boundary and rejection of zero recovery.
+
 ### PR-2 🟡 Define charge sweeps that start overlapping a wall
 
 **Location:** §4 C7 sweep (lines 220–224), C11's inherited radius reload behavior;
@@ -572,6 +578,11 @@ and enemy-body overlap, so AC7's exclusions remain explicit.
 > enemy-body controls; AC7b now names body overlap at a segment start. T5 updated. §10 Q4 asks
 > Direction whether the D-008 refinement text should mention this, as F-005's blocked launch was.
 
+✔ resolved (round 2): C7 checks the saved segment start for a `world` overlap before sweeping,
+with an explicit stop policy for every movement direction. AC19 includes radius reload before
+the last lunge step, charging away, and touching/parallel and enemy-body controls; T5 assigns
+the glue and scene coverage.
+
 ### PR-3 🟡 State the aggro precondition for the selection examples
 
 **Location:** §4 C5 step 2 and “Beyond 7 → walk in” (lines 204–212); §5 AC1 (lines 259–261).
@@ -590,11 +601,46 @@ a non-aggroed 7.5-tile control that stays idle, retaining the 7.0-tile inclusive
 > first: not aggroed beyond 7.0 → idle, at exactly 7.0 → aggroes and charges in that decision)
 > and §5 AC1 (aggroed precondition + both non-aggroed controls).
 
+✔ resolved (round 2): C5 and AC1 explicitly use an already-aggroed brute for the 7.5-tile
+walk-in example. AC1 also checks that a fresh brute remains idle at 7.5 and aggroes and charges
+at the inclusive 7.0-tile boundary.
+
 **Verification:** Read the complete feature, studio workflow, PROJECT/DECISIONS, Combat brief,
 design doc and glossary; inspected the current enemy timeline, brains, validation, snapshots,
 body movement, wall queries, reload group and relevant F-004/F-005 contracts/tests. Checked the
 final-step timing example against the existing phase transitions. Plan review only; no source
 or tests changed, and no runtime checks were run.
+
+<!-- review-round: 2 verdict: APPROVE -->
+
+**Verdict:** APPROVE — PR-1, PR-2 and PR-3 resolved; no new findings.
+
+Checked each Planner reply against the revised plan and existing combat integration. The
+player-facing outcome serves pillar 2, scope boundaries are explicit, and the alternatives
+give specific reasons for attack-list priority, shared cooldown and recovery-based stun.
+The plan matches `studio/design/combat.md` and preserves G1–G9, D-007, the existing contact
+and snapshot boundaries, latching and atomic reload. The D-008 body-movement refinement is
+explicitly proposed for Lucas's Gate A decision; §10 Q4 records its additional policy details.
+
+Acceptance criteria now cover the wall-report lifecycle, active ending inside a step,
+death at the stop contact, initial overlap, aggro boundaries, serialization and rate refusal.
+Independently recalculated AC8: active ends at 1.305 s, the report/contact step ends at
+1.308333333 s with 0.003333333 s already in recovery, and stun ends at 2.805 s. The containing
+tick ends at 1.333333333 / 1.316666667 / 1.308333333 s at 30 / 60 / 120 ticks/s, respectively,
+matching the stated boundaries. Two steps of minimum recovery exceed the remaining fraction
+of the last lunge step, so attack teardown cannot precede `end_step()` under C9/C11.
+
+T1–T7 assign the migration, core hook, data, glue, views and isolated scene in dependency
+order. C14 permits the actual accessor migration while preserving existing asserted values
+and behavior. Remaining placeholder art and D-008 wording questions are explicitly delegated;
+they do not require the Builder to invent combat rules.
+
+**Verification:** Read the full feature, PROJECT/DECISIONS, Combat design/brief and glossary;
+inspected enemy phases, brains, validation, snapshots, sim ordering, body/wall queries,
+reload and the referenced F-004/F-005 contracts/tests. Plan review only; no source or tests
+changed and no runtime checks run.
+
+Gate A remains with Lucas. Status stays `PLAN_REVIEW`; next actor is `Lucas`.
 
 ---
 
