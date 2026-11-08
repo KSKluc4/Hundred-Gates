@@ -1,8 +1,8 @@
 ---
 id: F-006
 title: Brute — charge, stomp, wall stun
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-08
 updated: 2026-11-08
 depends_on: [F-004, F-005, D-007, D-008]
@@ -342,6 +342,89 @@ Severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion. Example finding:>
 ### PR-1 🔴 <title>
 <What's wrong, where, why it matters, what you'd suggest.>
 > **Planner reply:** <accepted / rejected + reason / changed §X>
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Verdict:** CHANGES_REQUESTED
+
+**Review:** The goal serves pillar 2, the scope is explicit, and the alternatives explain the
+attack-list migration and shared cooldown well. The plan follows the Combat design doc; the
+D-008 body-movement refinement is explicitly proposed for Lucas's Gate A decision. The main
+gap is the lifecycle of a wall report around contact and attack completion. T3/T5 need that
+integration specified before the Builder can implement C7 without choosing new timing rules.
+
+### PR-1 🔴 Define wall-stop finalization before the attack can be cleared
+
+**Location:** §4 C7 (lines 216–238), C9's inherited recovery bounds; §5 AC6/AC8/AC13;
+§6 T3/T5. Existing integration: `src/core/combat/combat_sim.gd:50–66` and
+`src/core/enemies/enemy_logic.gd:278–293,420–464`.
+
+**Problem:** The wall report runs inside `move_bodies`, before contact. C7 requires the
+charge's sector to remain live for that contact, then requires RECOVERY from the same instant.
+Changing state to RECOVERY in `report_charge_reach()` removes the sector before the resolver
+reads it. The current sim has no per-step callback after contact; `finish_tick()` runs only
+after all substeps. T3/T5 do not specify how the final contact is retained and the transition
+completed before the next step and snapshot boundary.
+
+There is also an uncovered completion case in this same lifecycle: ordinary recovery may be
+zero under the inherited `AttackData` rules. With windup 0.80, active 0.505, recovery 0 and
+stun 1.50 at 120 steps/s, the final lunge occurs in the step ending at 1.308333 s. The ordinary
+attack finishes at 1.305 s, clears its latched attack and starts cooldown before the glue can
+report a wall on that last segment. C7 only describes replacing a recovery that still exists;
+it does not say how to retain the necessary attack values or undo that premature completion.
+
+**Why it matters:** An immediate transition loses AC6's last hit. Deferring until tick end can
+leave different intermediate state at 30/60/120 ticks/s, while ordinary attack teardown can
+lose a valid final-step wall stun entirely. These affect hit outcomes, cooldown and snapshots.
+
+**Suggested fix:** Specify a per-step wall-report/contact/finalization contract, including
+retaining the segment and latched values until the report is handled, preserving the stop
+contact's sector, and completing the stun transition before the next sense/snapshot. Identify
+the shared sim/combatant integration in T3 if a post-contact hook is chosen. Define the outcome
+when ordinary recovery already expired inside that step. Extend AC6/AC8 with the zero-recovery
+example, the state immediately after the stop contact, and a snapshot at that tick's end at
+all three rates; existing death handling must still win if the brute dies at that contact.
+
+### PR-2 🟡 Define charge sweeps that start overlapping a wall
+
+**Location:** §4 C7 sweep (lines 220–224), C11's inherited radius reload behavior;
+§5 AC6/AC7/AC14; §6 T5.
+
+**Problem:** C7 specifies only a motion sweep. F-005/C5 already documents that `cast_motion()`
+ignores a wall the query shape starts inside. This is reachable for a body through an allowed
+radius reload: a brute centered 0.7 tiles from a wall can grow from radius 0.6 to 1.0 during
+its charge. The next segment starts overlapping even with the epsilon shrink. The body's
+depenetration does not change the saved segment start, so the sweep can miss that wall; on
+the final lunge step there is no later segment to detect it.
+
+**Why it matters:** A valid tuning change can leave a charge physically blocked by a wall
+without its wall stun. The Builder must guess whether initial penetration is a stop or is
+intentionally ignored, including when moving away or parallel.
+
+**Suggested fix:** Define an initial-overlap policy and the corresponding glue report before
+the sweep, reusing F-005's overlap-query approach where appropriate. Add scene coverage for a
+radius increase before the final lunge step and controls for a merely touching, parallel wall
+and enemy-body overlap, so AC7's exclusions remain explicit.
+
+### PR-3 🟡 State the aggro precondition for the selection examples
+
+**Location:** §4 C5 step 2 and “Beyond 7 → walk in” (lines 204–212); §5 AC1 (lines 259–261).
+
+**Problem:** AC1 says a ready brute walks toward a target at 7.5 tiles, but the shipped aggro
+radius is 7.0 and a newly set-up brute is not aggroed. C5 step 2 therefore requires IDLE in
+that setup. Cooldown readiness alone does not establish the expected result.
+
+**Why it matters:** The selection test needs an unstated state change to pass, and the
+unqualified C5 example can be read as overriding the aggro rule.
+
+**Suggested fix:** Qualify the walk-in example and AC1 as using an already-aggroed brute. Add
+a non-aggroed 7.5-tile control that stays idle, retaining the 7.0-tile inclusive aggro boundary.
+
+**Verification:** Read the complete feature, studio workflow, PROJECT/DECISIONS, Combat brief,
+design doc and glossary; inspected the current enemy timeline, brains, validation, snapshots,
+body movement, wall queries, reload group and relevant F-004/F-005 contracts/tests. Checked the
+final-step timing example against the existing phase transitions. Plan review only; no source
+or tests changed, and no runtime checks were run.
 
 ---
 
