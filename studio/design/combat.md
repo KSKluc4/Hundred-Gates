@@ -4,7 +4,7 @@
 > Source of truth for how fighting works. Specs must match it; if they don't, one of
 > them changes explicitly.
 > **Status:** core player decisions set (CQ1–CQ8, 2026-10-31). Phase 1 enemy archetypes set
-> (CQ10–CQ12, 2026-11-01; chaser → F-004 DONE, caster → F-005, brute → F-006). Bosses next.
+> (CQ10–CQ12, 2026-11-01; chaser → F-004 DONE, caster → F-005 DONE, brute → F-006). Bosses next.
 
 ## Fixed so far (from PROJECT.md / Lucas)
 - Real-time action, top-down camera.
@@ -55,6 +55,9 @@
 - **Sword destroys bolts** — a hitbox-vs-hitbox contact the sim doesn't have, and walking in swinging replaces dashing through. *Tempting because:* feels great. Maybe a phase-2 class skill.
 - **Casters lead their shots** — walking straight always gets hit, and the lock points at empty floor (principle 1). *Tempting because:* looks smart.
 - **Bolts outlive their caster** — a dead combatant would own live hitboxes. *Tempting because:* physically "right".
+- **Random/weighted enemy attack choice** — the player can't read the next attack from position; needs synced RNG. *Tempting because:* feels alive.
+- **Per-attack cooldowns** — a charge ending next to you could stomp at once and erase its punish window. *Tempting because:* flexible, bosses may want it.
+- **Wall stun from slide collisions or body position** — enemy bodies and sliding would stun it falsely; physics would decide outcomes (G6). *Tempting because:* one line.
 
 ## Player
 
@@ -184,14 +187,24 @@ player: **read and dodge** (chaser), **close distance and move under fire** (cas
 
 ### Brute — heavy space control (F-006)
 - **Concept:** slow, tough, never pushed. Its charge punishes standing in line; missing
-  near a wall stuns it. Teaches baiting and not trading.
-- **Movement:** chases at 2.0 tiles/s, holds at 1.5 tiles. `knockback_scale` 0.
+  into a wall stuns it. Teaches baiting and not trading.
+- **Movement:** chases at 2.0 tiles/s, holds at 1.5 tiles, never retreats. `knockback_scale` 0.
+  Aggro radius 7 tiles.
+- **Choosing an attack (F-006, all enemies):** an enemy has an ordered list of attacks, each
+  with a trigger band (`trigger_min_tiles`–`trigger_max_tiles`). When ready, it uses the first
+  attack in list order whose band holds the target distance. One shared cooldown per enemy.
+  Never random. The brute's list: stomp (0–1.5), then charge (3–7). Between 1.5 and 3 it walks in.
 - **Attack 1 — Charge:** when the target is 3–7 tiles away.
   - Telegraph: 0.80 s windup. Tracks for 0.50 s, locked for 0.30 s, with a visible lane.
-  - Hitbox: 120° frontal sector, 0.9 tiles, while charging up to 6 tiles at 12 tiles/s.
+  - Hitbox: 120° frontal sector, 0.9 tiles, during a 0.50 s active that lunges 6 tiles
+    (12 tiles/s). It's the shared enemy lunge, not a new movement system.
   - Hit: 25 damage, 1.5 tiles knockback. The charge doesn't stop on the hit.
   - Punish window: 0.9 s recovery. If the charge is stopped by a wall: **stunned 1.5 s**
-    instead (the big punish).
+    instead (the big punish). The stun *is* the recovery, lengthened: planted, paused by
+    hitstop, cooldown after it.
+  - **Wall stop (D-008):** core plans each step of the charge; the glue sweeps the brute's
+    circle against `world` walls only and reports how far it got. Short of the plan = wall stop.
+    A graze counts. Enemy bodies never stun it: it slides along them.
 - **Attack 2 — Stomp:** when the target is within 1.5 tiles (so hugging it isn't safe).
   - Telegraph: 0.60 s windup (raises a foot), no aim (360°).
   - Hitbox: full circle, 1.6 tiles, active 0.10 s.
@@ -199,9 +212,6 @@ player: **read and dodge** (chaser), **close distance and move under fire** (cas
   - Punish window: 0.7 s recovery.
 - **Body:** 120 HP, hurtbox 0.6 tiles. Attack cooldown 1.0 s, shared by both attacks.
 - **What it teaches:** dash sideways out of a lane, bait charges into walls, punish only when it's open.
-- **For F-006 to decide:** how an enemy picks between several attacks. How a wall stop is
-  detected in core, from the authoritative position falling short of the planned move
-  (F-003/C15), never by reading physics.
 
 ### Floor mix (proposal → Direction, CX6)
 Floor 1: chasers only. Floor 2: chasers + casters. Floor 3: all three. Each boss reuses its
@@ -258,17 +268,24 @@ Template per boss:
 | Enemy damage, floor 1 | 18–25 (→ ~4–6 hits) | `data/enemies/*.tres` per archetype below |
 | `min_telegraph` / `min_locked_telegraph` (all enemies) | 0.30 / 0.15 s | `data/tunables/enemy_combat.tres` |
 | Chaser `max_hp` / `hurtbox_radius_tiles` / `knockback_scale` | 50 / 0.4 / 1.0 | `data/enemies/chaser.tres` |
-| Chaser `move_speed` / `aggro_radius_tiles` / `attack_range_tiles` / `stop_distance_tiles` | 3.0 tiles/s / 6.0 / 1.6 / 1.0 | same |
+| Chaser `move_speed` / `aggro_radius_tiles` / `stop_distance_tiles` | 3.0 tiles/s / 6.0 / 1.0 | same |
 | Chaser `attack_cooldown` | 0.8 s (from recovery end) | same |
 | Chaser swipe windup / `aim_track_time` / active / recovery | 0.50 / 0.30 / 0.10 / 0.60 s | `data/attacks/chaser_swipe.tres` |
 | Chaser swipe damage / arc / range / knockback / `lunge_tiles` | 20 / 90° / 1.2 / 0.8 / 0.8 tiles | same |
 | Caster `max_hp` / `hurtbox_radius_tiles` / `knockback_scale` | 30 / 0.35 / 1.2 | `data/enemies/caster.tres` |
-| Caster `move_speed` / `aggro_radius_tiles` / `attack_range_tiles` / `stop_distance_tiles` / `retreat_distance_tiles` | 2.5 tiles/s / 8.0 / 7.0 / 6.0 / 3.0 | same |
+| Caster `move_speed` / `aggro_radius_tiles` / `stop_distance_tiles` / `retreat_distance_tiles` | 2.5 tiles/s / 8.0 / 6.0 / 3.0 | same |
 | Caster `attack_cooldown` | 1.2 s (from recovery end) | same |
 | Caster bolt windup / `aim_track_time` / active / recovery | 0.60 / 0.35 / 0.10 / 0.80 s | `data/attacks/caster_bolt.tres` |
 | Caster bolt damage / arc / range (= bolt radius) / knockback / `lunge_tiles` | 18 / 360° / 0.25 / 0.5 / 0 tiles | same |
 | Caster bolt `projectile_speed_tiles` / `projectile_max_distance_tiles` | 6.0 tiles/s / 10.0 tiles | same |
-| Brute | design values in *Enemies* above; files set by F-006 | `data/enemies/` |
+| Brute `max_hp` / `hurtbox_radius_tiles` / `knockback_scale` | 120 / 0.6 / 0 | `data/enemies/brute.tres` |
+| Brute `move_speed` / `aggro_radius_tiles` / `stop_distance_tiles` / `retreat_distance_tiles` | 2.0 tiles/s / 7.0 / 1.5 / 0 | same |
+| Brute `attack_cooldown` / `attacks` | 1.0 s (shared) / [stomp, charge] | same |
+| Brute charge windup / `aim_track_time` / active / recovery / `wall_stun_duration` | 0.80 / 0.50 / 0.50 / 0.90 / 1.50 s | `data/attacks/brute_charge.tres` |
+| Brute charge damage / arc / range / knockback / `lunge_tiles` / trigger band | 25 / 120° / 0.9 / 1.5 / 6.0 / 3.0–7.0 tiles | same |
+| Brute stomp windup / `aim_track_time` / active / recovery | 0.60 / 0 / 0.10 / 0.70 s | `data/attacks/brute_stomp.tres` |
+| Brute stomp damage / arc / range / knockback / `lunge_tiles` / trigger band | 20 / 360° / 1.6 / 1.2 / 0 / 0–1.5 tiles | same |
+| Chaser swipe / caster bolt trigger band | 0–1.6 / 0–7.0 tiles (was `EnemyData.attack_range_tiles`, removed by F-006) | their attack files |
 
 ## Open questions (cross-department)
 | # | To | Question | Blocking? |

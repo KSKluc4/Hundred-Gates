@@ -46,6 +46,10 @@
   contact, so it never hits. The per-step speed bound (`speed / step_rate ≤ radius`) is a
   **sampling limit**, not a swept-hit guarantee: hits stay checked only at contact instants
   (D-007), so a graze that exists only between two contacts is missed.
+- **Refined at F-006 (PROPOSED — Lucas decides at F-006 Gate A):** the same rule covers a body's
+  planned attack movement (the brute's charge). Core exposes the planned segment; the glue sweeps
+  the body's circle against `world` only and reports the reach; short of the plan = wall stop.
+  Enemy bodies never count as walls.
 
 ## D-007 — Combat runs on a shared step grid
 - **Status:** ACCEPTED

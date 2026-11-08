@@ -47,3 +47,6 @@
 | Spent (projectile) | Stopped by its max distance or a wall. It still gets that step's contact at its final position, then is removed before its owner's next step | `Projectile.spent` |
 | Blocked launch | A projectile born already overlapping a wall. The glue reports it, and it is removed before any contact: it never hits. Its serial stays used | `report_blocked_launch()` |
 | Retreat distance | Below this distance from its target, an enemy backs straight away from it (unless it can shoot). 0 never retreats | `retreat_distance_tiles` |
+| Trigger band | The target distances (min–max, tiles) at which an enemy may start one attack. The first attack in list order whose band holds the distance wins | `trigger_min_tiles`, `trigger_max_tiles`, `pick_attack()` |
+| Charge | A lunge long enough to cross the room (the brute's). Wall-stopped by D-008's report | `brute_charge` |
+| Wall stop / Wall stun | A charge reported short of its planned step by a `world` wall. Its recovery then lasts `wall_stun_duration`. Enemy bodies never cause it | `wall_stun_duration`, `wall_stopped` |
