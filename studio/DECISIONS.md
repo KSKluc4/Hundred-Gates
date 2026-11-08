@@ -41,6 +41,11 @@
 - **Consequences:** Every hitbox reader uses `get_live_hitboxes()`. Wall stops are only known
   where Godot physics runs (the headless server has it). Projectiles die with their owner.
 - **Revisit if:** a projectile must outlive its owner, or sweeps cost too much with many projectiles.
+- **Refined at F-005 Gate A (accepted by Lucas, F-005 §10 Q3):** a projectile born already
+  overlapping a wall is a **blocked launch**: the glue reports it and it is removed before any
+  contact, so it never hits. The per-step speed bound (`speed / step_rate ≤ radius`) is a
+  **sampling limit**, not a swept-hit guarantee: hits stay checked only at contact instants
+  (D-007), so a graze that exists only between two contacts is missed.
 
 ## D-007 — Combat runs on a shared step grid
 - **Status:** ACCEPTED
