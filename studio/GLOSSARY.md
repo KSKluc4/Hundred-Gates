@@ -49,4 +49,5 @@
 | Retreat distance | Below this distance from its target, an enemy backs straight away from it (unless it can shoot). 0 never retreats | `retreat_distance_tiles` |
 | Trigger band | The target distances (min–max, tiles) at which an enemy may start one attack. The first attack in list order whose band holds the distance wins | `trigger_min_tiles`, `trigger_max_tiles`, `pick_attack()` |
 | Charge | A lunge long enough to cross the room (the brute's). Wall-stopped by D-008's report | `brute_charge` |
-| Wall stop / Wall stun | A charge reported short of its planned step by a `world` wall. Its recovery then lasts `wall_stun_duration`. Enemy bodies never cause it | `wall_stun_duration`, `wall_stopped` |
+| Wall stop / Wall stun | A charge reported short of its planned step by a `world` wall (or starting that step inside one). Applied right after that step's contact, so the step still hits; its recovery then lasts `wall_stun_duration`. Enemy bodies never cause it | `wall_stun_duration`, `wall_stopped`, `report_charge_reach()` |
+| End of step | The point right after a contact instant's hits are applied, before the next step starts. Where a combatant applies what was reported during the step | `Combatant.end_step()` |

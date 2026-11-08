@@ -204,7 +204,11 @@ player: **read and dodge** (chaser), **close distance and move under fire** (cas
     hitstop, cooldown after it.
   - **Wall stop (D-008):** core plans each step of the charge; the glue sweeps the brute's
     circle against `world` walls only and reports how far it got. Short of the plan = wall stop.
-    A graze counts. Enemy bodies never stun it: it slides along them.
+    A graze counts. A step that starts with the brute already inside a wall (only after a radius
+    reload) is a stop too. Enemy bodies never stun it: it slides along them. The stop takes effect
+    right after that step's contact, so the charge can still hit someone pinned against the wall.
+  - **Data rules:** a wall stun never shortens the punish (`wall_stun_duration ≥ recovery`), and
+    a wall-stun attack's recovery lasts at least two combat steps (F-006/C9).
 - **Attack 2 — Stomp:** when the target is within 1.5 tiles (so hugging it isn't safe).
   - Telegraph: 0.60 s windup (raises a foot), no aim (360°).
   - Hitbox: full circle, 1.6 tiles, active 0.10 s.

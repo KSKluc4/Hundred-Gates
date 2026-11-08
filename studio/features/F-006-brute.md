@@ -1,8 +1,8 @@
 ---
 id: F-006
 title: Brute — charge, stomp, wall stun
-status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-08
 updated: 2026-11-08
 depends_on: [F-004, F-005, D-007, D-008]
@@ -53,17 +53,27 @@ What the Builder needs to know that isn't obvious from the code (checked against
   - `src/core/enemies/enemy_logic.gd`: `_start_attack()` latches `_data.attack.duplicate()`.
     The lunge already moves at constant speed `lunge_tiles / active` along the locked aim during
     ACTIVE (`_advance`). `RECOVERY` is committed, so the brute is planted (F-004/C7). The order
-    in `step()`: hitstop first, then segments, then `_position += _tick_displacement`.
+    in `step()`: hitstop first, then segments, then `_position += _tick_displacement`. Phase
+    ends cross inside the step (`_cross_finished_phases()`); a recovery that ends there calls
+    `_finish_attack()` at once (attack cleared, cooldown started, IDLE). `_build_live_hitbox()`
+    returns the sector only in ACTIVE.
   - `src/core/enemies/enemy_brain.gd`: `for_data()`, `nearest_player()`. `chaser_brain.gd` and
     `caster_brain.gd` read `data.attack_range_tiles`.
   - `src/core/enemies/enemy_intent.gd`: `attack(target)` has no attack choice.
   - `src/core/combat/combat_sim.gd` `tick()`: per step it runs `sense` → `step` →
     `fire_due_actions` → `move_bodies` → `_apply_contact()`. The glue's wall reports run inside
-    `move_bodies`, **before** that step's contact (same as F-005).
+    `move_bodies`, **before** that step's contact (same as F-005). There is **no per-step call
+    after the contact** today: `finish_tick()` runs once, after the last step, and snapshots are
+    taken after it (F-003/C19). `src/core/combat/combatant.gd` defines the API the sim calls;
+    F-006 adds `end_step()` to it (C7).
+  - `src/core/combat/combat_timing.gd` `window_errors()`: the "≥ N combat steps, −`TIME_EPSILON`"
+    rule shape that C9's recovery rule reuses. `TIME_EPSILON` 1e-9 s, `DISTANCE_EPSILON` 1e-6 tiles.
   - `src/entities/combat_body.gd` `move_with_combatant()`: `move_and_slide()`, then
     `sync_position()` (the physics result is authoritative, F-001/C18).
     `src/entities/enemies/enemy.gd` then calls `_report_walls()` (projectiles, D-008) and has
-    `_wall_query()` with `WALL_LAYER_MASK` (layer 1 `world`).
+    `_wall_query()` with `WALL_LAYER_MASK` (layer 1 `world`), `_overlaps_wall()` (F-005's
+    start-overlap check, radius shrunk by `DISTANCE_EPSILON`, because `cast_motion()` ignores a
+    shape it starts inside) and `_sweep()`.
   - `src/autoload/tunables.gd`: path constants per resource (`CHASER_SWIPE_PATH`,
     `CASTER_BOLT_PATH`, …, G5).
   - `src/world/combat_runner.gd`: reloads every distinct enemy data path in the scene.
@@ -134,6 +144,8 @@ What the Builder needs to know that isn't obvious from the code (checked against
   segment, and reports where it got to. A reach short of the plan by more than
   `DISTANCE_EPSILON` is a wall stop: the rest of the charge is dropped and its recovery lasts
   `wall_stun_duration` instead of `recovery`. No new state: the stun **is** the recovery.
+  The report only records the stop; it takes effect in a new per-step `end_step()` call, right
+  after that step's contact (C7).
 - **Why chosen:** it's exactly D-008's rule ("core plans, glue reports, short = wall"), so core
   never reads physics (G6), and the stop lands on the step grid (D-007). Since the stun is the
   recovery, planted, hitstop pausing, cooldown-from-recovery-end and the "open" tint all already
@@ -155,6 +167,78 @@ What the Builder needs to know that isn't obvious from the code (checked against
   along a wall shortens the move. Both give false stuns.
 - **Tempting because:** no sweep needed, and it's what the design doc's draft hinted at.
 
+### ✅ Chosen (sub-decision): report records, `end_step()` after the contact applies
+- **How it works:** `report_charge_reach()` (during `move_bodies`) only sets a per-step
+  "pending stop". The step's contact runs untouched, so the charge sector that reached the wall
+  can still hit. Then `CombatSim.tick()` calls a new `Combatant.end_step()` on everyone (no-op by
+  default), and the brute turns the pending stop into the stun there. It runs every step, before
+  the next `sense()`, `finish_tick()` and any snapshot, so no pending state ever crosses a tick
+  or a snapshot. The step grid is the same at every tick rate (D-007), so it's parity-safe.
+- **Why chosen:** the stop contact keeps its hit, the switch happens at one fixed point of the
+  step, and the snapshot boundary stays "nothing pending" (F-003/C19).
+- **Costs we're accepting:** a one-line addition to the shared sim loop and one more method on
+  `Combatant` (the player and the dummy inherit the no-op).
+- **Would revisit if:** something else needs a post-contact hook with a different order (then
+  this becomes that general hook, with its order written down).
+
+### ❌ Rejected: switch to RECOVERY inside `report_charge_reach()`
+- **Why rejected:** the report runs before the contact, so the sector is gone when the resolver
+  reads it: the stop step's hit is lost (AC6).
+- **Tempting because:** one place, no new sim call.
+
+### ❌ Rejected: apply the pending stop at the next `sense()` or at `finish_tick()`
+- **Why rejected:** a pending stop would sit across the tick end, where snapshots are taken, so
+  it would need snapshotting, and 30/60/120 ticks/s would show different states at their tick
+  ends (C1).
+- **Tempting because:** F-005's spent projectiles are removed at the next step start.
+
+### ❌ Rejected: keep the sector live in RECOVERY with a "stop contact" flag
+- **Why rejected:** RECOVERY would mean two things, and every hitbox reader would have to know.
+- **Tempting because:** the state switch could stay in the report.
+
+### ✅ Chosen (sub-decision): a wall-stun attack's recovery is at least two steps (data rule)
+- **How it works:** C9 rejects a wall-stun attack whose `recovery` is under two combat steps, or
+  whose `wall_stun_duration` is under its `recovery`. Active can't end within `TIME_EPSILON` after a
+  step start (it would have crossed at the previous step's end), so a recovery of two steps
+  started in the last lunge step is still running at that step's `end_step()`. The latched attack
+  always exists when its report is applied.
+- **Why chosen:** a 0-recovery charge could otherwise finish (clear the attack, start the
+  cooldown) inside the very step whose report comes later. Rejecting that data is simpler than
+  undoing a finished attack, and a wall stun is never meant to shorten the punish window.
+- **Costs we're accepting:** two more validation rules and one rate check (C11). The shipped
+  values (0.90 s recovery, 1.50 s stun) are far above them.
+- **Would revisit if:** a design needs a lunge with no recovery that also wall-stuns.
+
+### ❌ Rejected: undo a finished attack when its stop report arrives
+- **How it would work:** keep the latched attack and the active-end time per step; if the
+  attack finished in that step, restore it, cancel its cooldown and enter the stun.
+- **Why rejected:** a second, rarely-run path that rewrites cooldown and attack state after the
+  fact. Easy to get subtly wrong, and only reachable with data nobody wants.
+- **Tempting because:** it accepts every `AttackData` the inherited rules allow.
+
+### ✅ Chosen (sub-decision): a segment that starts inside a wall is a stop
+- **How it works:** before the sweep, the glue checks whether the brute's circle (radius −
+  `DISTANCE_EPSILON`) at the segment start already overlaps a `world` wall, with F-005's overlap
+  query. If it does, it reports `reached = start`: a stop, whatever the direction. Otherwise it
+  sweeps as before.
+- **Why chosen:** `cast_motion()` can't see a shape it starts inside (F-005/C5), so without it a
+  wall the brute grew into would never stun it. A body that only touches a wall doesn't overlap
+  (the shrunk radius and `move_and_slide()`'s margin keep it clear), so normal play never hits
+  this: only a radius reload, or a restore with other data, can.
+- **Costs we're accepting:** in that reload case a brute charging away from or along the wall
+  it overlaps is stunned too.
+- **Would revisit if:** the radius changes during play (not only by debug reload).
+
+### ❌ Rejected: stop only when moving into the overlapped wall
+- **Why rejected:** needs contact normals and a rule for several walls, for a case only a debug
+  reload reaches.
+- **Tempting because:** physically more accurate.
+
+### ❌ Rejected: ignore a segment that starts inside a wall
+- **Why rejected:** the brute can be physically blocked with no stun, and on its last lunge step
+  no later segment would catch it (§7 PR-2).
+- **Tempting because:** zero glue code.
+
 ### ❌ Rejected: a separate `STUNNED` state
 - **How it would work:** a new `EnemyLogic.State` value with its own timer and transitions.
 - **Why rejected:** it behaves the same as recovery (planted, punishable, cooldown after) but
@@ -171,15 +255,15 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 |---|---|---|
 | C1 | Same scripted inputs at 30, 60 and 120 ticks/s give the same decisions, chosen attacks, wall stops (same step), stun ends, hits and positions, within F-005 §5 tolerances. | G1, D-007 |
 | C2 | Every number comes from `data/`: `data/enemies/brute.tres`, `data/attacks/brute_charge.tres`, `data/attacks/brute_stomp.tres`, plus the existing shared files. No new tunables file. New paths are constants in `src/autoload/tunables.gd`. | G2, G5, G9 |
-| C3 | `BruteBrain`, attack selection and the wall-stop rule live in `src/core/` with no nodes or physics. Only the glue sweeps (C7). | G6, D-008 |
+| C3 | `BruteBrain`, attack selection, the wall-stop rule and `end_step()` live in `src/core/` with no nodes or physics. Only the glue queries walls (C7). | G6, D-008 |
 | C4 | **Attack list.** See below. | §3 |
 | C5 | **Brute decisions.** See below. | design doc |
 | C6 | **Charge.** It's a melee enemy attack with a lunge: everything in F-004/C5 holds (latching, track then lock, constant-speed lunge along the locked aim during active, sector built fresh at each contact so it follows the brute, once per attack instance per hurtbox). The charge doesn't stop on a hit. The attacker hitstop from a landed hit pauses the charge as it pauses any lunge. Knockback direction is the existing melee rule, unchanged. | F-004/C5 |
 | C7 | **Wall stop.** See below. | D-008 |
 | C8 | **Stomp.** A melee enemy attack with a 360° sector and `lunge_tiles` 0. `aim_track_time` 0 is allowed (it locks at windup start; the aim doesn't matter for a full circle). | design doc |
 | C9 | **Data validity.** See below. Extends F-004/C12 and F-005/C9. Bad data is rejected, never clamped. | G2 |
-| C10 | All new state is serializable: `EnemyLogic`'s snapshot gains `wall_stopped` (bool), and the latched attack's snapshot gains `trigger_min_tiles`, `trigger_max_tiles` and `wall_stun_duration`. Anything the wall check needs inside a step is per-step only (like `_tick_displacement`) and never in a snapshot. Snapshot boundary as F-003/C19. | G7 |
-| C11 | **Reload and rate.** A running attack keeps every latched value (including `wall_stun_duration`) and its `wall_stopped` flag through any reload. Reloading an enemy data file also reloads every attack in its list. The stun adds no rate check: it's a recovery. | F-004/C12, F-005/C11 |
+| C10 | All new state is serializable: `EnemyLogic`'s snapshot gains `wall_stopped` (bool), and the latched attack's snapshot gains `trigger_min_tiles`, `trigger_max_tiles` and `wall_stun_duration`. The charge segment and the pending stop are per-step only (like `_tick_displacement`): `end_step()` clears them before any snapshot boundary, so they're never in a snapshot, and `from_dict()`/`setup()` clear them too. Snapshot boundary as F-003/C19. | G7 |
+| C11 | **Reload and rate.** A running attack keeps every latched value (including `recovery` and `wall_stun_duration`) and its `wall_stopped` flag through any reload. Reloading an enemy data file also reloads every attack in its list. The stun itself adds no rate check (it's a recovery). A new rate is refused while a latched wall-stun attack in WINDUP or ACTIVE has `recovery` under 2 combat steps at that rate (C9's rule, via `_extra_rate_errors()`, F-005/C11). | F-004/C12, F-005/C11 |
 | C12 | Presentation is derived from logic (F-003/C12). During windup, a melee attack with `lunge_tiles > range_tiles` shows a placeholder lane along the aim (the caster's aim-line view), `lunge_tiles + range_tiles` long, with the same tracking→locked change. The stomp shows its 360° telegraph like any sector. A wall stun shows the existing recovery "open" tint, and the debug text shows `RECOVERY (stun)`. After `from_dict()` or a reset every view re-syncs. | F-003/C12, CX5 |
 | C13 | `EnemyData.Brain` gains `BRUTE`, **appended** (`CHASER` 0, `CASTER` 1 unchanged). | F-005/C13 |
 | C14 | F-001, F-003, F-004 and F-005 tests keep every **asserted value and behavior**. Allowed edits, and only these: (a) lines that build or modify `EnemyData`/attack data; (b) the accessor rename inside an assertion, with the expected value unchanged (`.attack` → `.attacks[0]`, `attack_range_tiles` → `attacks[0].trigger_max_tiles`); (c) `test_enemy_data.gd`'s `attack_range_tiles` bound test moves to the `trigger_max_tiles > 0` rule (C9) with the same boundary values. §8 lists every edited test file and line kind (a/b/c). | regression |
@@ -208,33 +292,62 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 4. Otherwise, if distance > `stop_distance_tiles` (+ε), walk straight at the target, at most
    `distance − stop_distance_tiles` this step. Otherwise, hold (zero move, keep the target).
    It never retreats (`retreat_distance_tiles` 0). A zero direction holds.
-- With the shipped data, `attacks = [brute_stomp, brute_charge]`: 0–1.5 tiles → stomp,
-  3–7 → charge, 1.5–3 → walk in to 1.5, then stomp. Beyond 7 → walk in.
+- With the shipped data, `attacks = [brute_stomp, brute_charge]`, and a brute that is **already
+  aggroed** and ready: 0–1.5 tiles → stomp, 3–7 → charge, 1.5–3 → walk in to 1.5, then stomp.
+  Beyond 7 → walk in. Step 2 still comes first: a brute that isn't aggroed stays idle beyond
+  7.0 tiles, and at exactly 7.0 (+ε) it aggroes and charges in that same decision.
 
 **C7 — Wall stop** (D-008 applied to a moving body)
+Per combat step, in this order: `step()` plans → the glue reports (inside `move_bodies`) →
+contact → `end_step()` applies. Nothing about a stop is left over after `end_step()`.
+
 - A **wall-stun attack** is a melee attack with `wall_stun_duration > 0`.
-- `EnemyLogic.get_charge_segment() -> PackedVector2Array`: `[start, planned_end]` in tiles when,
-  in the step that just ran, a latched wall-stun attack moved by its lunge and the brute isn't
-  `wall_stopped` yet. `start` = the logic position at that step's start, `planned_end` = `start +`
-  this step's displacement. Empty otherwise (no lunge movement, hitstop the whole step, dead, …).
-- The glue (`enemy.gd`), after its body move and only when the segment isn't empty, sweeps a
-  circle of radius `hurtbox_radius_tiles − DISTANCE_EPSILON` from `start` toward `planned_end`
-  against layer 1 `world` only (`_wall_query`), and calls
-  `EnemyLogic.report_charge_reach(reached: Vector2) -> bool`. Clear path → `reached ==
-  planned_end` exactly (same rule as F-005's `_sweep`).
-- Core: if `(planned_end − start).length() − (reached − start).dot(direction) >
-  DISTANCE_EPSILON`, it's a **wall stop**. Then:
-  - That step's contact still happens with the charge's sector live (when the brute is still
-    ACTIVE), at the brute's authoritative position. The body position stays the physics result
-    (F-001/C18); `reached` only decides the stop.
-  - From that contact instant, the rest of the active phase is dropped and the brute is in
-    RECOVERY, with `wall_stopped = true` and a recovery length of `wall_stun_duration`, counted
-    from that instant. If the active phase already ended earlier in that same step, the recovery
-    that started then becomes the stun (elapsed time kept).
-  - Not a stop → nothing changes.
-- `report_charge_reach()` with an empty segment pushes an error, returns false, and changes nothing.
-- Enemy bodies never cause a stop (the sweep ignores layer 3). A brute blocked by another enemy
-  keeps charging and slides, like any enemy body (CQ12).
+- **Segment (core).** `EnemyLogic.get_charge_segment() -> PackedVector2Array`: `[start,
+  planned_end]` in tiles when, in the step that just ran, a latched wall-stun attack moved by its
+  lunge, the brute isn't `wall_stopped`, and no report was taken yet this step. `start` = the
+  logic position at that step's start, `planned_end` = `start +` this step's displacement. Empty
+  otherwise (no lunge movement, hitstop the whole step, dead, already reported, …). Set in
+  `step()`; cleared by `report_charge_reach()`, `end_step()`, `sense()`, `setup()` and `from_dict()`.
+- **Report (glue, `enemy.gd`).** After its body move, and only when the segment isn't empty,
+  with radius `r = hurtbox_radius_tiles − DISTANCE_EPSILON` (current data, C11) and layer 1
+  `world` only (`_wall_query`):
+  1. **Start overlap:** if the circle `r` at `start` already overlaps a wall (`intersect_shape`,
+     like F-005's `_overlaps_wall()`), report `reached = start`, whatever the direction (§3).
+  2. Otherwise sweep the circle `r` from `start` toward `planned_end` (`cast_motion()`) and report
+     where it got to. Clear path → `reached == planned_end` exactly (F-005's `_sweep` rule).
+  It calls `EnemyLogic.report_charge_reach(reached: Vector2) -> bool` once per step.
+- **Decision (core, in the report).** `report_charge_reach()` takes the segment (it's empty
+  afterwards). If `(planned_end − start).length() − (reached − start).dot(direction) >
+  DISTANCE_EPSILON`, it sets a per-step **pending stop**. It returns true either way. It never
+  changes state, phase, position, aim or hitbox: a pending stop does nothing until `end_step()`.
+  With an empty segment (none this step, or already reported) it pushes an error, returns false,
+  and changes nothing.
+- **That step's contact** runs as usual. If the brute is still ACTIVE at the step end, its
+  charge sector is live at its authoritative (physics) position and may hit. The body position
+  stays the physics result (F-001/C18); `reached` only decides the stop.
+- **`end_step()` (core, shared sim).** `Combatant` gains `end_step()`, a no-op by default.
+  `CombatSim.tick()` calls it on every combatant, in registration order, right after
+  `_apply_contact()`, every step: so before the next `sense()`, before `finish_tick()` and before
+  any snapshot. `EnemyLogic.end_step()`, when a stop is pending:
+  - DEAD (killed at that contact) → the stop is dropped: death wins (F-004/C11).
+  - ACTIVE → the rest of active is dropped at this contact instant: RECOVERY,
+    `_phase_elapsed = 0`, `wall_stopped = true`.
+  - RECOVERY (active ended earlier in this step) → `wall_stopped = true`, `_phase_elapsed` kept
+    (the time since active ended).
+  Then the pending stop and the segment are cleared, stop or not.
+- **Stun length.** While `wall_stopped`, the recovery lasts the latched `wall_stun_duration`
+  instead of `recovery` (`_phase_time_left()`). Cooldown starts when it ends.
+- **The attack is always still there.** C9 gives every wall-stun attack `recovery ≥ 2` combat
+  steps and `wall_stun_duration ≥ recovery`. Active can't end within `TIME_EPSILON` after a step
+  start (it would have crossed at the previous step's end), so a recovery that started in the
+  last lunge step is still running at that step's `end_step()`, and the stun has time left after
+  the switch. `end_step()` with a pending stop therefore only ever sees ACTIVE, RECOVERY or DEAD
+  (committed states take no knockback, so never KNOCKBACK or IDLE); any other state is a bug:
+  push an error and drop the stop.
+- Not a stop → nothing changes.
+- Enemy bodies never cause a stop (neither query includes layer 3). A brute blocked by another
+  enemy keeps charging and slides, like any enemy body (CQ12). A brute that only touches a wall
+  doesn't overlap it (shrunk radius), so sliding along it is no stop.
 - `wall_stopped` clears when the attack ends (cooldown starts) and on reset/death.
 - Hitstop pauses the stun like any recovery. The stun is planted (F-004/C7).
 
@@ -242,8 +355,11 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 - `attacks` not empty, and no null entries. Each entry passes `validate_enemy()`. Errors are
   prefixed with the attack id.
 - Per attack: `trigger_min_tiles ≥ 0`, `trigger_max_tiles > 0`, `trigger_min_tiles ≤
-  trigger_max_tiles`, `wall_stun_duration ≥ 0`. A `wall_stun_duration > 0` needs a melee attack
-  with `lunge_tiles > 0`.
+  trigger_max_tiles`, `wall_stun_duration ≥ 0`. A `wall_stun_duration > 0` needs:
+  - a melee attack with `lunge_tiles > 0`;
+  - `recovery ≥ 2 / step_rate − TIME_EPSILON` (two combat steps, the same shape as
+    `CombatTiming.window_errors()`), checked at the rate being validated, like the window rule;
+  - `wall_stun_duration ≥ recovery − TIME_EPSILON` (a wall never shortens the punish window).
 - Brain kinds: `CHASER` and `BRUTE` need every attack melee, `CASTER` every attack projectile.
 - Bands may overlap (list order decides). The speed rule (`validate_against_class`) is unchanged.
 
@@ -256,9 +372,11 @@ F-004/C15 reset, hot-reload of all enemy files, the 30/60/120 parity.
 
 Testable, observable. The Auditor checks each one.
 
-- [ ] AC1 — **Selection:** with `[stomp, charge]` and a ready brute, a target at 1.0 → stomp, at
-  1.5 (exact) → stomp, at 2.0 → walks in, at 3.0 (exact) → charge, at 7.0 → charge, at 7.5 →
-  walks in. Same view with registration order swapped → same choice.
+- [ ] AC1 — **Selection:** with `[stomp, charge]` and a ready, **already aggroed** brute, a
+  target at 1.0 → stomp, at 1.5 (exact) → stomp, at 2.0 → walks in, at 3.0 (exact) → charge, at
+  7.0 → charge, at 7.5 → walks in. Controls with a brute that isn't aggroed yet: at 7.5 → idle
+  (no move, not aggroed); at 7.0 (exact) → aggroes and charges. Same view with registration
+  order swapped → same choice.
 - [ ] AC2 — **Priority:** with two overlapping bands, the first in list order is chosen.
 - [ ] AC3 — **Shared cooldown:** after a charge's recovery ends next to the target, no stomp
   starts until `attack_cooldown` has passed. The brute keeps walking/holding meanwhile.
@@ -269,17 +387,29 @@ Testable, observable. The Auditor checks each one.
   1.5 tiles knockback once. The brute continues to the full 6 tiles (minus its attacker-hitstop
   pause, which delays but doesn't shorten it). A player that dashed sideways out of the lane during
   windup takes nothing.
-- [ ] AC6 — **Wall stun:** a charge aimed at a wall 3 tiles away stops at the wall. The contact of
-  that step can still hit a player standing between the brute and the wall. From that instant the
-  brute is in RECOVERY with `wall_stopped`, for 1.50 s, then cooldown. Hits on it during the stun
-  deal damage and hitstop, the stun pauses during that hitstop, and it is never pushed.
+- [ ] AC6 — **Wall stun:** a charge aimed at a wall 3 tiles away stops at the wall. Between the
+  report and the contact of that step the brute is still ACTIVE with `wall_stopped` false, and
+  that contact can still hit a player standing between the brute and the wall (sector at the
+  brute's physics position). Right after that step (checked at 120 ticks/s, where the tick end is
+  the step end) the brute is in RECOVERY with `wall_stopped` and `phase_elapsed` 0; the stun lasts
+  1.50 s from that contact instant, then cooldown. Hits on it during the stun deal damage and
+  hitstop, the stun pauses during that hitstop, and it is never pushed. **Death wins:** if the
+  brute's HP reaches 0 at the stop contact (a trade), it is DEAD after that step, `wall_stopped`
+  false, no stun; the charge's own hit at that contact still lands (F-003/C16).
 - [ ] AC7 — **No false stuns:** (a) a charge sliding parallel along a wall it touches, (b) a charge
-  blocked by a chaser's body, (c) a charge that reaches its full 6 tiles with no wall → normal
-  0.90 s recovery, `wall_stopped` false.
-- [ ] AC8 — **Stun when active already ended mid-step:** a scripted step where active ends and the
-  sweep reports a stop in the same step → the recovery becomes the stun, elapsed time kept.
-- [ ] AC9 — **Report errors:** `report_charge_reach()` with an empty segment returns false, logs an
-  error and changes nothing.
+  blocked by a chaser's body, including when the bodies overlap at a segment start, (c) a charge
+  that reaches its full 6 tiles with no wall → normal 0.90 s recovery, `wall_stopped` false.
+- [ ] AC8 — **Stun when active already ended mid-step** (core, stub reports via the `move_bodies`
+  callable): a charge with windup 0.80, `aim_track_time` 0.50, active 0.505, lunge 6.0,
+  `recovery` 2 steps (1/60 s, the minimum at 120 steps/s), stun 1.50, started at t = 0. Active
+  ends at 1.305 s, inside the step ending at 1.308333 s, whose report is short. Right after that
+  step: RECOVERY, `wall_stopped`, `phase_elapsed` 0.003333 s, attack still latched, cooldown 0.
+  The stun ends at 2.805 s and the 1.0 s cooldown starts there. Same at 30, 60 and 120 ticks/s.
+  At each rate, `to_dict()` at the end of the tick that holds that step (1.308333 / 1.316667 /
+  1.333333 s) shows RECOVERY + `wall_stopped`, no pending-stop or segment key, and
+  `from_dict()` of it ends the stun at 2.805 s. The same charge with `recovery` 0 is rejected (AC15).
+- [ ] AC9 — **Report errors:** `report_charge_reach()` with an empty segment (no lunge this step,
+  or a second report in the same step) returns false, logs an error and changes nothing.
 - [ ] AC10 — **Stomp:** windup 0.60 s, a 360° circle of 1.6 tiles active 0.10 s, 20 damage, 1.2 tiles
   knockback, 0.70 s recovery. A player whose center is more than 1.95 tiles (1.6 + the Warrior's
   0.35 hurtbox) from the brute's center at every contact during active isn't hit; at 1.94 it is.
@@ -289,17 +419,30 @@ Testable, observable. The Auditor checks each one.
   the same wall-stop step, stun end, hits and positions at 30, 60 and 120 ticks/s, in core (stub
   reports) and once in a scene over real physics.
 - [ ] AC13 — **Snapshots:** `from_dict(to_dict())` mid-charge, mid-stun and mid-stomp reproduces the
-  rest of the run exactly, including `wall_stopped` and the latched attack's new fields.
+  rest of the run exactly, including `wall_stopped` and the latched attack's new fields. The
+  snapshot at the end of a tick holding a stop step is covered by AC8.
 - [ ] AC14 — **Reload:** editing `brute_charge.tres` mid-windup doesn't change the running charge.
   The next charge uses the new values. Editing `brute.tres` reloads both attacks.
 - [ ] AC15 — **Validation:** each C9 rule rejects with a named error (empty list, null entry, min >
-  max, negative stun, stun on a projectile, stun with lunge 0, wrong kind per brain). Exact limits pass.
+  max, negative stun, stun on a projectile, stun with lunge 0, stun with `recovery` under 2 steps,
+  stun shorter than `recovery`, wrong kind per brain). Exact limits pass (`recovery` exactly 2
+  steps, stun exactly `recovery`). Lowering `combat_step_rate` is refused while a running charge
+  in WINDUP or ACTIVE has a latched `recovery` under 2 steps at the new rate (C11).
 - [ ] AC16 — **Migration:** chaser and caster pass every F-004/F-005 assertion (C14).
 - [ ] AC17 — **Views:** the charge lane shows during windup and changes look at lock. The stomp
   shows its circle telegraph. The stun shows the open tint and `RECOVERY (stun)`. Views re-sync
   after restore/reset.
 - [ ] AC18 — **Co-op ready:** with two players, the brute targets the nearest one (ties by
   registration order) and keeps that target for the whole attack.
+- [ ] AC19 — **Segment starts inside a wall** (scene, 120 ticks/s): a brute charging parallel to
+  a wall with its center 0.7 tiles from it; between ticks, `brute.tres` is reloaded with
+  `hurtbox_radius_tiles` 1.0, so the next lunge step's segment starts overlapping the wall.
+  That step is a wall stop (`reached = start`) and the stun follows, also when that step is the
+  charge's **last** lunge step, and also when the charge points away from the wall. Controls: the
+  same run without the reload (body touching or 0.7 tiles from the wall, moving along it) → no
+  stop; overlapping only a chaser's body → no stop (AC7b).
+- [ ] AC20 — **Other combatants unchanged by `end_step()`:** the player and the dummy inherit the
+  no-op, and every F-001/F-003/F-004/F-005 test passes with the new call in the sim loop.
 
 **How to verify manually:** open `scenes/debug/f006_brute.tscn`. Play ~5 min with KB/M, then a
 gamepad.
@@ -326,9 +469,9 @@ Small, ordered, each independently committable.
 |---|---|---|---|
 | T1 | Attack list migration, no behavior change | `enemy_data.gd`, `enemy_attack_data.gd`, `enemy_intent.gd`, `enemy_brain.gd`, `chaser_brain.gd`, `caster_brain.gd`, `enemy_logic.gd`, `data/enemies/chaser.tres`, `caster.tres`, `data/attacks/chaser_swipe.tres`, `caster_bolt.tres`, tests' data-building lines | C4, C9 (list + band rules), C14. All existing assertions pass. New tests: AC1-style selection with stub data, AC2, AC15 (list/band rules). |
 | T2 | `Brain.BRUTE` + `BruteBrain` | `enemy_data.gd`, `src/core/enemies/brute_brain.gd`, `enemy_brain.gd` | C5, C13, kind rule. Tests AC1, AC3, AC18. |
-| T3 | Wall stop in core | `enemy_attack_data.gd` (`wall_stun_duration` + validation), `enemy_logic.gd` (`get_charge_segment`, `report_charge_reach`, `wall_stopped`, snapshot) | C7, C10, C11. Core tests with stub reports: AC6, AC7c, AC8, AC9, AC13, AC15 (stun rules). |
+| T3 | Wall stop in core | `src/core/combat/combatant.gd` (`end_step()` no-op), `src/core/combat/combat_sim.gd` (call it after `_apply_contact()` each step), `enemy_attack_data.gd` (`wall_stun_duration` + C9 stun rules), `enemy_logic.gd` (`get_charge_segment`, `report_charge_reach`, pending stop, `end_step`, `wall_stopped`, `_phase_time_left`, `_extra_rate_errors`, snapshot) | C7, C9, C10, C11. Core tests with stub reports from the `move_bodies` callable: AC6 (incl. state between report and contact, and death at the stop contact), AC7c, AC8 (all three rates + snapshot), AC9, AC13, AC15 (stun rules + rate refusal), AC20. |
 | T4 | Brute data | `data/enemies/brute.tres`, `data/attacks/brute_charge.tres`, `brute_stomp.tres`, `src/autoload/tunables.gd` | Values in the design doc's tunables index. AC4, AC10, AC11 in core. |
-| T5 | Glue sweep | `src/entities/enemies/enemy.gd` | C7 glue half: sweep on layer 1 after the body move, report. Scene tests AC6, AC7a/b, AC12 physics run. |
+| T5 | Glue report | `src/entities/enemies/enemy.gd` | C7 glue half: after the body move, start-overlap check then sweep, layer 1 only, one report. Scene tests AC6, AC7a/b, AC12 physics run, AC19. |
 | T6 | Views | `enemy.gd` drawing / telegraph, debug text | C12, AC17. |
 | T7 | Debug scene | `scenes/debug/f006_brute.tscn`, `tests/scenes/test_f006_*.gd` | Walled room ~16×12 tiles. Player at center; `brute_1` ~5 tiles away; a straight wall ~4 tiles behind the player's start; `chaser_1` off to one side. `CombatRunner` last, `refill_player_on_died` on, shake and overlay as in F-005's scene. AC5, AC14 end to end. |
 
@@ -385,6 +528,20 @@ when ordinary recovery already expired inside that step. Extend AC6/AC8 with the
 example, the state immediately after the stop contact, and a snapshot at that tick's end at
 all three rates; existing death handling must still win if the brute dies at that contact.
 
+> **Planner reply (Combat):** accepted. Changed §4 C7: per step, `step()` plans → the glue
+> reports → contact → a new `Combatant.end_step()` (no-op by default, called by
+> `CombatSim.tick()` after `_apply_contact()` every step) applies. The report only sets a per-step
+> pending stop, so the stop contact keeps its sector; `end_step()` switches to the stun before the
+> next `sense()`, `finish_tick()` or snapshot, and drops the stop if the brute died at that
+> contact. Zero-recovery case: C9 now requires a wall-stun attack's `recovery` ≥ 2 combat steps
+> and `wall_stun_duration` ≥ `recovery`, which guarantees the latched attack is still in RECOVERY at
+> that step's `end_step()` (reasoning in C7); C11 adds the matching rate refusal. Options and
+> rejected alternatives (switch in the report, defer to next sense/tick end, flagged live sector,
+> undoing a finished attack) in §3. AC6 extended (state between report and contact, state right
+> after, death at the stop contact), AC8 rewritten with your timing example at the 2-step minimum
+> plus the tick-end snapshot at 30/60/120, AC9/AC13/AC15 extended, AC20 added. T3 now lists
+> `combatant.gd` and `combat_sim.gd`; §2 notes the missing post-contact call.
+
 ### PR-2 🟡 Define charge sweeps that start overlapping a wall
 
 **Location:** §4 C7 sweep (lines 220–224), C11's inherited radius reload behavior;
@@ -406,6 +563,15 @@ the sweep, reusing F-005's overlap-query approach where appropriate. Add scene c
 radius increase before the final lunge step and controls for a merely touching, parallel wall
 and enemy-body overlap, so AC7's exclusions remain explicit.
 
+> **Planner reply (Combat):** accepted. Changed §4 C7: before the sweep the glue runs F-005's
+> overlap query (radius − `DISTANCE_EPSILON`, layer 1 only) at the segment start; an overlap
+> reports `reached = start`, a stop whatever the direction. It runs for every lunge segment, so
+> the last lunge step is covered. §3 records the choice and rejects the direction-aware variant
+> (needs contact normals, only a debug reload reaches it) and ignoring the overlap. New AC19 is your
+> radius-increase scene test (incl. last lunge step and charging away), with touching/parallel and
+> enemy-body controls; AC7b now names body overlap at a segment start. T5 updated. §10 Q4 asks
+> Direction whether the D-008 refinement text should mention this, as F-005's blocked launch was.
+
 ### PR-3 🟡 State the aggro precondition for the selection examples
 
 **Location:** §4 C5 step 2 and “Beyond 7 → walk in” (lines 204–212); §5 AC1 (lines 259–261).
@@ -419,6 +585,10 @@ unqualified C5 example can be read as overriding the aggro rule.
 
 **Suggested fix:** Qualify the walk-in example and AC1 as using an already-aggroed brute. Add
 a non-aggroed 7.5-tile control that stays idle, retaining the 7.0-tile inclusive aggro boundary.
+
+> **Planner reply (Combat):** accepted. Changed §4 C5's example (already aggroed; step 2 still
+> first: not aggroed beyond 7.0 → idle, at exactly 7.0 → aggroes and charges in that decision)
+> and §5 AC1 (aggroed precondition + both non-aggroed controls).
 
 **Verification:** Read the complete feature, studio workflow, PROJECT/DECISIONS, Combat brief,
 design doc and glossary; inspected the current enemy timeline, brains, validation, snapshots,
@@ -474,6 +644,7 @@ or tests changed, and no runtime checks were run.
 | Q1 | Combat | → Direction: C7 applies D-008 to a moving body (the charge), not only projectiles. Add a refinement to D-008? Proposed text: *"Refined at F-006 (PROPOSED): the same rule covers a body's planned attack movement. Core exposes the planned segment; the glue sweeps the body's circle against `world` only and reports the reach; short of the plan = wall stop. Enemy bodies never count as walls."* | no | **Direction:** added to D-008 as a PROPOSED refinement; recommended. Lucas decides at Gate A. |
 | Q2 | Combat | → Direction: C14 allows mechanical edits to F-004/F-005 tests (data-building lines only). OK, or do you want T1 split into its own feature? | no | **Direction:** keep T1 in F-006 (a split adds a feature with no player-facing change). C14 was widened to the real test lines (§2): accessor renames in assertions are allowed, asserted values are not. |
 | Q3 | Combat | → Art & Game Feel (CX5): look of the charge lane, the stomp's raised foot, and the wall stun (stars, a dazed pose). Combat fixes only the timing. | no | |
+| Q4 | Combat | → Direction: after plan review round 1, C7 adds two details to D-008's body rule: a segment that **starts inside a wall** is a stop (`reached = start`), and a body's stop is **applied after that step's contact** (`end_step()`). F-005's blocked launch was written into D-008 at its Gate A. Should Lucas's Gate A text for the PROPOSED F-006 refinement include these two lines too? | no | |
 
 ---
 
