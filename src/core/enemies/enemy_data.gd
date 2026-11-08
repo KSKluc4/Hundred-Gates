@@ -3,7 +3,8 @@ extends Resource
 ## One enemy archetype as data (F-004 §3, G9). Distances in tiles, times in seconds.
 
 ## Which brain decides for this enemy. A new kind of behavior is a new value and a new class.
-enum Brain { CHASER }
+## F-005/C13: new values are appended, so saved data keeps its meaning.
+enum Brain { CHASER, CASTER }
 
 @export var id: StringName = &""
 @export var brain: Brain = Brain.CHASER
@@ -14,6 +15,8 @@ enum Brain { CHASER }
 @export var aggro_radius_tiles: float = 0.0
 @export var attack_range_tiles: float = 0.0
 @export var stop_distance_tiles: float = 0.0
+## F-005/C7: backs off straight away from the target below this. 0 never retreats.
+@export var retreat_distance_tiles: float = 0.0
 @export var attack_cooldown: float = 0.0
 @export var attack: EnemyAttackData = null
 
@@ -39,6 +42,8 @@ func validate(step_rate: int, tunables: EnemyCombatTunables) -> PackedStringArra
 		errors.append("attack_range_tiles must be > 0")
 	if not stop_distance_tiles >= 0.0:
 		errors.append("stop_distance_tiles must be >= 0")
+	if not (retreat_distance_tiles >= 0.0 and retreat_distance_tiles <= stop_distance_tiles):
+		errors.append("retreat_distance_tiles must be >= 0 and <= stop_distance_tiles")
 	if not attack_cooldown >= 0.0:
 		errors.append("attack_cooldown must be >= 0")
 	if attack == null:
@@ -46,6 +51,7 @@ func validate(step_rate: int, tunables: EnemyCombatTunables) -> PackedStringArra
 	else:
 		for error: String in attack.validate_enemy(step_rate, tunables):
 			errors.append("%s: %s" % [attack.id, error])
+		errors.append_array(_attack_kind_errors())
 	return errors
 
 
@@ -60,4 +66,17 @@ func validate_against_class(class_data: ClassData) -> PackedStringArray:
 				% [id, move_speed, class_data.id, class_data.move_speed]
 			)
 		)
+	return errors
+
+
+## F-005/C9: a brain may only use the attack kind it supports.
+func _attack_kind_errors() -> PackedStringArray:
+	var errors: PackedStringArray = []
+	match brain:
+		Brain.CHASER:
+			if attack.is_projectile():
+				errors.append("brain CHASER needs a melee attack, %s is a projectile" % attack.id)
+		Brain.CASTER:
+			if not attack.is_projectile():
+				errors.append("brain CASTER needs a projectile attack, %s is melee" % attack.id)
 	return errors
