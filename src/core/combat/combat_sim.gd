@@ -121,12 +121,19 @@ func _ids() -> Array[StringName]:
 
 ## F-003/C16: candidates are found once, before any is applied. Only the target is rechecked,
 ## so hits at one instant trade and registration order never decides an exchange.
+## F-005/C6: a single-target hitbox stops at its first landed hit at this contact.
 func _apply_contact() -> void:
+	var landed: Array[Hitbox] = []
 	for candidate: HitCandidate in _resolver.find_candidates(_combatants):
+		var hitbox: Hitbox = candidate.hitbox
 		var target: Combatant = candidate.target
+		if hitbox.single_target and landed.has(hitbox):
+			continue
 		if not target.can_be_hit():
 			continue
-		candidate.hitbox.mark_hit(target.get_combat_id())
+		hitbox.mark_hit(target.get_combat_id())
+		landed.append(hitbox)
 		var event: HitEvent = HitEvent.from_candidate(candidate, target.get_knockback_scale())
 		target.apply_hit(event, _tunables)
-		candidate.attacker.get_combat_state().apply_landed(event, _tunables)
+		var attacker_state: CombatState = candidate.attacker.get_combat_state()
+		attacker_state.apply_landed(event, _tunables, hitbox.attacker_hitstop)

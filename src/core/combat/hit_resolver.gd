@@ -5,17 +5,16 @@ extends RefCounted
 ## rebuilds it just by registering the same combatants (C19).
 
 
-## F-003/C16: ordered by the hitbox owner's, then the hurtbox owner's registration order.
+## F-003/C16: ordered by the hitbox owner's registration order, then each owner's own hitbox
+## order (F-005/C6), then the hurtbox owner's registration order.
 func find_candidates(combatants: Array[Combatant]) -> Array[HitCandidate]:
 	var candidates: Array[HitCandidate] = []
 	for attacker: Combatant in combatants:
-		var hitbox: Hitbox = attacker.get_live_hitbox()
-		if hitbox == null:
-			continue
-		for target: Combatant in combatants:
-			var hurtbox: Hurtbox = target.get_hurtbox()
-			if _touches(hitbox, hurtbox):
-				candidates.append(HitCandidate.new(attacker, target, hitbox, hurtbox))
+		for hitbox: Hitbox in attacker.get_live_hitboxes():
+			for target: Combatant in combatants:
+				var hurtbox: Hurtbox = target.get_hurtbox()
+				if _touches(hitbox, hurtbox):
+					candidates.append(HitCandidate.new(attacker, target, hitbox, hurtbox))
 	return candidates
 
 

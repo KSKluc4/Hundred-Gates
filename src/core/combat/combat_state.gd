@@ -52,9 +52,13 @@ func apply_hit(event: HitEvent, tunables: PlayerCombatTunables) -> void:
 
 
 ## AC11, on the attacker. C16: one attack hitting several targets at one instant gets one
-## hitstop, because the second max() changes nothing.
-func apply_landed(event: HitEvent, tunables: PlayerCombatTunables) -> void:
-	_extend_hitstop(event, tunables)
+## hitstop, because the second max() changes nothing. F-005/C6: with_hitstop false (a
+## projectile) leaves the hitstop alone, and the signal still fires.
+func apply_landed(
+	event: HitEvent, tunables: PlayerCombatTunables, with_hitstop: bool = true
+) -> void:
+	if with_hitstop:
+		_extend_hitstop(event, tunables)
 	hit_landed.emit(event)
 
 

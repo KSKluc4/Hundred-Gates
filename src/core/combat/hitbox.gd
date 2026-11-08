@@ -14,6 +14,10 @@ var knockback_tiles: float
 var is_finisher: bool = false
 ## AC12: false pushes along `direction` instead of from the attacker to the target's center.
 var knockback_from_center: bool = true
+## F-005/C6: once it lands on one hurtbox, it lands on no other at that contact.
+var single_target: bool = false
+## F-005/C6: false lands with no hitstop for the attacker. Its hit_landed still fires.
+var attacker_hitstop: bool = true
 var hit_ids: Array[StringName] = []
 
 
