@@ -1,7 +1,7 @@
 ---
 id: F-005
 title: Ranged caster + minimal projectiles
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: DONE             # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Lucas     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-07
 updated: 2026-11-08
@@ -896,3 +896,4 @@ Gate B evaluation. No source or tests changed. Status remains `CODE_REVIEW`; nex
 ## 11. Director Notes  ·  _Lucas_
 
 <Overrides, priorities, gut calls. Everyone obeys these.>
+- **2026-11-08 (Gate B):** Gate B: playtested, feel approved. Aim line is a placeholder: final telegraph look must be subtler, to Art & Game Feel (Q2).

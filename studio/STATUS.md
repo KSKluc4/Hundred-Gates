@@ -11,7 +11,7 @@
 | F-002 | Studio autopilot (tools/studio) | DONE | — | — |
 | F-003 | Warrior sword chain + hit/hurt + hitstop + training dummy | DONE | — | — |
 | F-004 | Enemy base + melee chaser | DONE | — | — |
-| F-005 | Ranged caster + minimal projectiles | CODE_REVIEW | Lucas | — |
+| F-005 | Ranged caster + minimal projectiles | DONE | — | — |
 
 ## Open questions waiting on Lucas
 - _none_
