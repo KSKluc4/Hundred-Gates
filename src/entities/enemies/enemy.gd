@@ -124,13 +124,12 @@ func refresh_view() -> void:
 
 func get_debug_text() -> String:
 	var target: StringName = logic.get_target_id()
+	var state: String = EnemyLogic.State.find_key(logic.get_state())
+	if logic.is_wall_stopped():
+		state += " (stun)"  # F-006/C12: the stun is the recovery, lengthened.
 	return (
 		"%s\ncd %.2f\n> %s"
-		% [
-			EnemyLogic.State.find_key(logic.get_state()),
-			logic.get_cooldown_remaining(),
-			target if target != &"" else &"-",
-		]
+		% [state, logic.get_cooldown_remaining(), target if target != &"" else &"-"]
 	)
 
 
@@ -162,12 +161,15 @@ func get_damage_numbers() -> DamageNumbers:
 
 
 ## F-005 AC24: during a projectile attack's windup, the line its bolt will fly, from the enemy
-## along its aim, as long as the bolt's max distance. Global px. Empty when there's none.
+## along its aim, as long as the bolt's max distance. F-006/C12: during the windup of a melee
+## attack that lunges further than it reaches (a charge), its lane: lunge + range long. Global
+## px. Empty when there's none.
 func get_aim_line() -> PackedVector2Array:
-	var attack: EnemyAttackData = logic.get_running_attack()
-	if logic.get_state() != EnemyLogic.State.WINDUP or not attack.is_projectile():
+	if logic.get_state() != EnemyLogic.State.WINDUP:
 		return PackedVector2Array()
-	var length: float = attack.projectile_max_distance_tiles
+	var length: float = _lane_length(logic.get_running_attack())
+	if length <= 0.0:
+		return PackedVector2Array()
 	var start: Vector2 = logic.get_position_tiles()
 	return PackedVector2Array(
 		[
@@ -287,14 +289,15 @@ func _wall_query(centre_tiles: Vector2, radius_tiles: float) -> PhysicsShapeQuer
 
 ## AC23: placeholder look. The sector always points along the aim. F-005 AC24: a projectile
 ## attack shows its aim line instead, and its bolts are drawn wherever logic has them.
+## F-006/C12: a charge shows its lane during windup, with its sector.
 func _draw_telegraph() -> void:
 	_draw_bolts()
 	var telegraph: Telegraph = get_telegraph()
 	if telegraph == Telegraph.NONE:
 		return
 	var attack: EnemyAttackData = logic.get_running_attack()
+	_draw_aim_line(telegraph)  # F-006/C12: a charge shows its lane as well as its sector.
 	if attack.is_projectile():
-		_draw_aim_line(telegraph)
 		return
 	var arc: float = attack.arc_angle_deg
 	var radius: float = Units.tiles_to_px(attack.range_tiles)
@@ -320,6 +323,15 @@ func _draw_aim_line(telegraph: Telegraph) -> void:
 		return
 	var color: Color = locked_color if telegraph == Telegraph.LOCKED else tracking_color
 	draw_line(line[0] - global_position, line[1] - global_position, color, line_width_px)
+
+
+## Tiles. 0 when the attack has no line to show.
+func _lane_length(attack: EnemyAttackData) -> float:
+	if attack.is_projectile():
+		return attack.projectile_max_distance_tiles
+	if attack.lunge_tiles > attack.range_tiles:
+		return attack.lunge_tiles + attack.range_tiles
+	return 0.0
 
 
 func _draw_bolts() -> void:
