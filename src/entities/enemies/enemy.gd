@@ -7,7 +7,8 @@ extends CombatBody
 ## What the telegraph shows right now (AC23). The look → Art & Game Feel, §10 Q1.
 enum Telegraph { NONE, TRACKING, LOCKED, ACTIVE }
 
-## F-005/C5: projectiles meet layer 1 `world` only.
+## F-005/C5: projectiles meet layer 1 `world` only. F-006/C7: so does a charge's sweep, so enemy
+## bodies never stop it.
 const WALL_LAYER_MASK: int = 1
 
 @export var data: EnemyData
@@ -83,6 +84,7 @@ func move_with_combatant(physics_delta: float) -> void:
 	super(physics_delta)
 	_publish_transform()
 	_report_walls()
+	_report_charge()
 
 
 func sync_body_from_logic() -> void:
@@ -224,25 +226,47 @@ func _report_walls() -> void:
 		return
 	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
 	for projectile: ProjectileSet.Projectile in projectiles.get_projectiles().duplicate():
-		if projectile.launched_in_step and _overlaps_wall(space, projectile):
+		var shrunk: float = projectile.radius - Geometry.DISTANCE_EPSILON
+		if projectile.launched_in_step and _overlaps_wall(space, projectile.origin, shrunk):
 			projectiles.report_blocked_launch(projectile.serial)
 			continue
-		projectiles.report_position(projectile.serial, _sweep(space, projectile))
+		var reached: Vector2 = _sweep(
+			space, projectile.step_start, projectile.position, projectile.radius
+		)
+		projectiles.report_position(projectile.serial, reached)
 
 
-func _overlaps_wall(space: PhysicsDirectSpaceState2D, projectile: ProjectileSet.Projectile) -> bool:
-	var radius: float = projectile.radius - Geometry.DISTANCE_EPSILON
-	var query: PhysicsShapeQueryParameters2D = _wall_query(projectile.origin, radius)
+## F-006/C7 (D-008): after this body moved, the step's planned charge segment, if any. Its
+## circle, shrunk by DISTANCE_EPSILON, is first checked for a wall overlap at the segment's
+## start: a sweep can't see shapes it starts inside, so that is a stop (reached = start),
+## whatever the direction. Otherwise the segment is swept. One report per step. The body's
+## position stays the physics result (F-001/C18): the report only decides the stop.
+func _report_charge() -> void:
+	var segment: PackedVector2Array = logic.get_charge_segment()
+	if segment.is_empty():
+		return
+	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	var radius: float = logic.get_data().hurtbox_radius_tiles - Geometry.DISTANCE_EPSILON
+	var reached: Vector2 = segment[0]
+	if not _overlaps_wall(space, segment[0], radius):
+		reached = _sweep(space, segment[0], segment[1], radius)
+	logic.report_charge_reach(reached)
+
+
+func _overlaps_wall(
+	space: PhysicsDirectSpaceState2D, centre_tiles: Vector2, radius_tiles: float
+) -> bool:
+	var query: PhysicsShapeQueryParameters2D = _wall_query(centre_tiles, radius_tiles)
 	return not space.intersect_shape(query, 1).is_empty()
 
 
 ## The planned position when nothing is in the way, exactly, so float noise is never a stop.
-func _sweep(space: PhysicsDirectSpaceState2D, projectile: ProjectileSet.Projectile) -> Vector2:
-	var start: Vector2 = projectile.step_start
-	var planned: Vector2 = projectile.position
+func _sweep(
+	space: PhysicsDirectSpaceState2D, start: Vector2, planned: Vector2, radius_tiles: float
+) -> Vector2:
 	if start == planned:
 		return planned  # A launch exactly at the step's end: no segment to sweep.
-	var query: PhysicsShapeQueryParameters2D = _wall_query(start, projectile.radius)
+	var query: PhysicsShapeQueryParameters2D = _wall_query(start, radius_tiles)
 	query.motion = Units.vector_tiles_to_px(planned - start)
 	var safe: float = space.cast_motion(query)[0]
 	if safe >= 1.0:

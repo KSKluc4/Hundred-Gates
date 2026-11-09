@@ -1,11 +1,13 @@
 class_name BruteWallStub
 extends RefCounted
 ## Stands in for the glue's charge reports (F-006/C7) as a move_bodies callable: a wall whose
-## face stops the brute's centre at x = limit, for a charge in +x. Like the glue, it moves the
-## body to where it got to (F-001/C18) and reports once per step with a segment.
+## face stops the brute's centre at x = limit, for a charge in +x, when the segment starts with
+## y inside `span` (a pillar). Like the glue, it moves the body to where it got to (F-001/C18)
+## and reports once per step with a segment.
 
 var brute: EnemyLogic
 var limit: float
+var span: Vector2 = Vector2(-INF, INF)
 ## One entry per report: the step end, what was reported, and the brute right after it.
 var reports: Array[Dictionary] = []
 var _sim_ref: WeakRef
@@ -30,7 +32,7 @@ func report() -> void:
 		return
 	var start: Vector2 = segment[0]
 	var reached: Vector2 = segment[1]
-	if reached.x > limit:
+	if reached.x > limit and start.y >= span.x and start.y <= span.y:
 		var fraction: float = 0.0
 		if reached.x > start.x:
 			fraction = clampf((limit - start.x) / (reached.x - start.x), 0.0, 1.0)
