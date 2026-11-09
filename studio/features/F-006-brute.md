@@ -2,7 +2,7 @@
 id: F-006
 title: Brute — charge, stomp, wall stun
 status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-08
 updated: 2026-11-09
 depends_on: [F-004, F-005, D-007, D-008]
@@ -756,6 +756,69 @@ None.
 ### CR-1 🔴 <title>  ·  `path/to/file:line`
 <problem, why it matters, suggested fix>
 > **Builder reply:** <fixed in abc123 / disagree because …>
+
+<!-- review-round: 1 verdict: APPROVE -->
+
+**Reviewed commit:** 7c7b26791cf7a4cad64c7475bf834b3cd9fe8af0
+
+**Verdict:** APPROVE — no findings.
+
+**AC evidence:** Source locations below refer to the reviewed HEAD. Test paths are relative
+to `tests/`; their passing result comes from the Mode B preflight on this commit.
+
+| AC | Result | Code and verification evidence |
+|---|---|---|
+| AC1 | ✅ | `src/core/enemies/brute_brain.gd:7` implements aggro-before-selection, attack choice and walk/hold; `enemy_brain.gd:36` applies inclusive bands with ε. `core/enemies/test_brute_brain.gd` checks all six distances, fresh-brute aggro controls, ε boundaries and swapped registration. |
+| AC2 | ✅ | `src/core/enemies/enemy_brain.gd:38` returns the first matching list index; `enemy_logic.gd:392` latches that entry. `core/enemies/test_attack_list.gd` checks overlapping/reordered bands and an actual two-attack chaser. |
+| AC3 | ✅ | `src/core/enemies/enemy_logic.gd:218,440,545` uses one cooldown, starts it after recovery and advances it on the enemy clock; `brute_brain.gd:17` gates both attacks on readiness. `test_ac3_no_stomp_until_the_shared_cooldown_has_passed` checks charge → hold → stomp at all three rates. |
+| AC4 | ✅ | `data/attacks/brute_charge.tres` supplies 0.80/0.50/0.90 phases, 0.50 tracking, and 6.0 lunge; `data/enemies/brute.tres` supplies 1.0 cooldown. `src/core/enemies/enemy_logic.gd:404,439,478` implements lock, constant-speed movement and phase crossing. `core/enemies/test_brute_attacks.gd` checks the timeline and per-step displacement at 30/60/120. |
+| AC5 | ✅ | Charge data supplies 25 damage/1.5 knockback; `src/core/enemies/enemy_logic.gd:143,330,447` pauses for hitstop, shares the attack's hit-id set and continues the lunge. Core attack tests and `scenes/test_f006_scene.gd` verify one hit, full travel after the pause and a sideways dash escaping the lane. |
+| AC6 | ✅ | `src/entities/enemies/enemy.gd:246` reports the world sweep; `src/core/enemies/enemy_logic.gd:166,180,426,520` preserves the contact before applying the longer recovery. `combat_sim.gd:64` applies hits before `end_step()`. Core wall-stop tests cover the live stop contact, phase zero immediately afterward, stun duration, damage/hitstop without push and death winning a trade; `scenes/test_f006_walls.gd` covers the real wall and pinned player. |
+| AC7 | ✅ | `src/entities/enemies/enemy.gd:251,279` uses the shrunk body radius and only layer 1, excluding enemy bodies. No short report leaves normal recovery untouched. Scene wall tests cover touching/parallel walls and chaser collision/initial overlap; the core full-charge test checks normal 0.90 recovery and no stun at all rates. |
+| AC8 | ✅ | `src/core/enemies/enemy_logic.gd:528` preserves recovery elapsed when active already ended; `end_step()` clears transient reports before tick snapshots. `core/enemies/test_brute_wall_stop.gd:160` checks step 157, 0.003333 recovery elapsed, every containing tick boundary and restored continuation at 30/60/120. Its cooldown remainder at step 337 establishes the exact 2.805 s stun end despite the next observation being at 2.808333 s. Zero recovery is separately rejected. |
+| AC9 | ✅ | `src/core/enemies/enemy_logic.gd:167` rejects an empty segment before any mutation, logging the error and returning false. `core/enemies/test_brute_wall_stop.gd:220` checks both a windup report and a duplicate report, unchanged snapshots, and retention of the first pending stop. |
+| AC10 | ✅ | `data/attacks/brute_stomp.tres` supplies 0.60/0.10/0.70 timing, 360°, range 1.6, damage 20, knockback 1.2 and zero lunge. The existing sector path in `src/core/enemies/enemy_logic.gd:330` is reused. Core stomp tests check timing, no movement, a hit at 1.94 and misses at 1.951/1.96. |
+| AC11 | ✅ | `data/enemies/brute.tres` supplies HP 120, radius 0.6, knockback scale 0, speed 2 and aggro 7; `src/core/enemies/enemy_logic.gd:188,196` aggroes on damage and prevents committed knockback. Data, brain and attack tests cover those values, walk speed/stop, aggro boundaries, damage aggro and no push outside an attack; AC6 covers no push during the stun. |
+| AC12 | ✅ | `src/core/combat/combat_sim.gd:50` keeps decisions, body reports, contacts and finalization on the shared step grid. `core/enemies/test_brute_parity.gd` and `scenes/test_f006_physics.gd` run the shared `BruteScript` at 30/60/120, asserting a wall charge, one stomp and an unstopped charge, with matching stop step, stun end, hit times and sampled positions. The scene test also checks body/logic agreement at every contact. |
+| AC13 | ✅ | `src/core/enemies/enemy_logic.gd:256,276` serializes/restores `wall_stopped` and clears transient report state; `enemy_attack_data.gd:7,35,93` round-trips all three new latched attack fields. `core/enemies/test_brute_snapshot.gd` compares resumed sim snapshots step by step from charge windup/lunge, stun and stomp. AC8 covers the stop-containing tick snapshot. |
+| AC14 | ✅ | `src/core/enemies/enemy_logic.gd:99,392` replaces future data while retaining the running duplicate. `src/world/combat_runner.gd:213,264` loads and applies the complete enemy resource graph; `Tunables.load_fresh()` retains deep fresh loading. `scenes/test_f006_reload.gd` uses actual F5 on temporary resource files to check mid-windup latching, next-charge values, both attack reloads and atomic rejection of an invalid stun. |
+| AC15 | ✅ | `src/core/enemies/enemy_data.gd:68` validates every list entry and brain kind; `enemy_attack_data.gd:81,101,113` validates bands, stun kind/lunge, two-step recovery and minimum stun duration. `enemy_logic.gd:353` checks latched recovery on rate changes. Attack-list/data/snapshot tests cover named errors, exact limits, WINDUP/ACTIVE refusal, and the RECOVERY/stomp controls. |
+| AC16 | ✅ | Chaser/caster data now use one-entry lists with their original 1.6/7.0 ranges; their brains route through `pick_attack()` and otherwise retain their decisions. Inspected every changed existing test hunk: only C14's data construction/modification, accessor renames and the specified bound-test move appear; expected values and behavior remain intact. Existing tests passed in the preflight. |
+| AC17 | ✅ | `src/entities/enemies/enemy.gd:125,141,150,167,293,329,343` derives stun text/tint, tracking/locked lane, stomp sector and restored views from logic. `scenes/test_f006_views.gd` checks lane length/direction, tracking and lock, no stomp lane, stun versus normal recovery text, and immediate restore/reset synchronization. |
+| AC18 | ✅ | `src/core/enemies/brute_brain.gd:10` uses `nearest_player()`; `enemy_logic.gd:119,375` decides only while free and retains the target while committed. `core/enemies/test_brute_brain.gd` checks nearest of two players, a nearer player arriving during windup, retention through attack completion and both registration-order ties. |
+| AC19 | ✅ | `src/entities/enemies/enemy.gd:251` checks the saved segment start for world overlap before sweeping, using current body data; an overlap reports the start regardless of direction. Scene wall tests cover radius growth during a parallel charge, on its last lunge step and while charging away, plus no-reload and chaser-only controls. |
+| AC20 | ✅ | `src/core/combat/combatant.gd:107` is a no-op for player/dummy; `combat_sim.gd:65` calls every combatant once per step in registration order after contact. `core/enemies/test_brute_wall_stop.gd:247,261` checks unchanged player/dummy snapshots and hook order/count at each rate. The full existing suite passed the preflight. |
+
+**Rejected-option and constraint checks:** No §3 rejected option is implemented. Selection uses
+one ordered list and shared cooldown, with no RNG or parallel single-attack API. Wall detection
+uses world-only queries of the planned segment, rather than slide collisions or the body's
+authoritative shortfall. The report defers the transition until the same step's post-contact
+hook, with no separate stun state, recovery hitbox or attack resurrection.
+
+C1–C15 and PROJECT G1–G9 are respected: behavior and timing remain in core; the glue only
+reports physics reach and derives views; authored combat values and new resource paths are in
+the required data files/constants; `BRUTE` is appended; snapshots include persistent new state
+and exclude cleared per-step state. The debug scene supplies isolation, and there are no new
+dependencies, actions or collision layers. The wall policy matches the accepted F-006 D-008
+refinement and the shared D-007 contact grid. Existing projectile query arguments retain their
+original radii and segment origins after the helper refactor.
+
+**Deviation and assumption audit:** §8 records no DEV entries; none were found in the diff.
+ASSUMPTION-1's additional segment clear is harmless within the prescribed lifecycle.
+ASSUMPTION-2 is valid because only the lunge contributes movement while the attack is latched,
+and C9 retains that attack through finalization. ASSUMPTION-3 exercises the actual radius-apply
+path at a controlled boundary, with separate F5/file coverage under AC14. ASSUMPTION-4's samples
+cover both sides requested by AC10. ASSUMPTION-5 separates a stop-contact hit in core from the
+earlier hit naturally produced by the real pinned-player geometry; both required behaviors
+are covered. All five choices are reasonable and reversible.
+
+**Verification:** Read the full feature and studio guidance, PROJECT/DECISIONS, glossary and
+Combat design; reviewed the branch diff against `main`, changed test assertions and the shared
+sim/body/reload integration. Mode B preflight already passed `tools/test`, `tools/lint` and
+`tools/check_core_purity` on this exact HEAD; §8 records 748 passing tests. These checks were
+not rerun by the Auditor. The manual KB/M/gamepad feel test remains for Lucas at Gate B.
+
+Status remains `CODE_REVIEW`; next actor is `Lucas`. No source or test files changed.
 
 ---
 
