@@ -4,6 +4,7 @@ extends GutTest
 ## `world`, a player, a brute, maybe a chaser, a CombatRunner) around the origin, where float32
 ## positions are exact enough (F-004 ASSUMPTION-3), and runs scripted ticks.
 
+const DEBUG_SCENE: PackedScene = preload("res://scenes/debug/f006_brute.tscn")
 const PLAYER_SCENE: PackedScene = preload("res://src/entities/player/player.tscn")
 const ENEMY_SCENE: PackedScene = preload("res://src/entities/enemies/enemy.tscn")
 const TIME: float = 0.000001
@@ -16,6 +17,7 @@ var _player: Player
 var _brute: Enemy
 var _chaser: Enemy
 var _runner: CombatRunner
+var _overlay_label: Label
 ## Sim time when the run started: see build().
 var _t0: float = 0.0
 var _ticks_per_second_before: int
@@ -63,6 +65,42 @@ func build(
 		_chaser.logic.set_ai_enabled(false)
 	_runner.reset()
 	_t0 = _runner.get_sim().get_time()
+
+
+## The real debug scene, f006_brute.tscn. `prepare` runs before it enters the tree. The
+## chaser's AI is off unless `chaser_ai`. Ends right after the debug reset, like build().
+func spawn_debug_scene(prepare: Callable = Callable(), chaser_ai: bool = false) -> void:
+	_scene = DEBUG_SCENE.instantiate()
+	_player = _scene.get_node("Player")
+	_brute = _scene.get_node("Brute1")
+	_chaser = _scene.get_node("Chaser1")
+	_runner = _scene.get_node("CombatRunner")
+	_overlay_label = _scene.get_node("MotorDebugOverlay/Label")
+	_player.input_enabled = false
+	if prepare.is_valid():
+		prepare.call()
+	add_child_autofree(_scene)
+	await get_tree().physics_frame
+	_chaser.logic.set_ai_enabled(chaser_ai)
+	_runner.reset()
+	_t0 = _runner.get_sim().get_time()
+
+
+func press_key(key: Key) -> void:
+	for pressed: bool in [true, false]:
+		var event: InputEventKey = InputEventKey.new()
+		event.physical_keycode = key
+		event.pressed = pressed
+		Input.parse_input_event(event)
+	Input.flush_buffered_events()
+
+
+## The overlay writes its text on the next process frame.
+func overlay_text() -> String:
+	await wait_process_frames(1)
+	var text: String = _overlay_label.text
+	await get_tree().physics_frame
+	return text
 
 
 ## One runner tick per iteration. Presses fall on the first tick.

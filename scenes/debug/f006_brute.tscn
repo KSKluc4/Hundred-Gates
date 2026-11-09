@@ -1,0 +1,125 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://src/entities/player/player.tscn" id="1"]
+[ext_resource type="PackedScene" path="res://src/entities/enemies/enemy.tscn" id="2"]
+[ext_resource type="Resource" path="res://data/enemies/chaser.tres" id="3"]
+[ext_resource type="Script" path="res://src/world/camera/placeholder_shake.gd" id="4"]
+[ext_resource type="Script" path="res://src/ui/debug/combat_debug_draw.gd" id="5"]
+[ext_resource type="Script" path="res://src/ui/debug/motor_debug_overlay.gd" id="6"]
+[ext_resource type="Script" path="res://src/world/combat_runner.gd" id="7"]
+[ext_resource type="Resource" path="res://data/enemies/brute.tres" id="8"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_288x16"]
+size = Vector2(288, 16)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_16x224"]
+size = Vector2(16, 224)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_inner"]
+size = Vector2(16, 128)
+
+[node name="F006Brute" type="Node2D"]
+
+[node name="World" type="Node2D" parent="."]
+
+[node name="NorthWall" type="StaticBody2D" parent="World"]
+position = Vector2(128, -8)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/NorthWall"]
+shape = SubResource("RectangleShape2D_288x16")
+
+[node name="Visual" type="ColorRect" parent="World/NorthWall"]
+offset_left = -144.0
+offset_top = -8.0
+offset_right = 144.0
+offset_bottom = 8.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="SouthWall" type="StaticBody2D" parent="World"]
+position = Vector2(128, 200)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/SouthWall"]
+shape = SubResource("RectangleShape2D_288x16")
+
+[node name="Visual" type="ColorRect" parent="World/SouthWall"]
+offset_left = -144.0
+offset_top = -8.0
+offset_right = 144.0
+offset_bottom = 8.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="WestWall" type="StaticBody2D" parent="World"]
+position = Vector2(-8, 96)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/WestWall"]
+shape = SubResource("RectangleShape2D_16x224")
+
+[node name="Visual" type="ColorRect" parent="World/WestWall"]
+offset_left = -8.0
+offset_top = -112.0
+offset_right = 8.0
+offset_bottom = 112.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="EastWall" type="StaticBody2D" parent="World"]
+position = Vector2(264, 96)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/EastWall"]
+shape = SubResource("RectangleShape2D_16x224")
+
+[node name="Visual" type="ColorRect" parent="World/EastWall"]
+offset_left = -8.0
+offset_top = -112.0
+offset_right = 8.0
+offset_bottom = 112.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="InnerWall" type="StaticBody2D" parent="World"]
+position = Vector2(200, 96)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/InnerWall"]
+shape = SubResource("RectangleShape2D_inner")
+
+[node name="Visual" type="ColorRect" parent="World/InnerWall"]
+offset_left = -8.0
+offset_top = -64.0
+offset_right = 8.0
+offset_bottom = 64.0
+color = Color(0.2, 0.22, 0.28, 1)
+
+[node name="Player" parent="." instance=ExtResource("1")]
+position = Vector2(128, 96)
+
+[node name="PlaceholderShake" type="Camera2D" parent="Player"]
+script = ExtResource("4")
+
+[node name="Brute1" parent="." instance=ExtResource("2")]
+position = Vector2(48, 96)
+combat_id = &"brute_1"
+data = ExtResource("8")
+body_color = Color(0.55, 0.4, 0.3, 1)
+
+[node name="Chaser1" parent="." instance=ExtResource("2")]
+position = Vector2(96, 24)
+combat_id = &"chaser_1"
+data = ExtResource("3")
+
+[node name="CombatDebugDraw" type="Node2D" parent="." node_paths=PackedStringArray("runner")]
+script = ExtResource("5")
+runner = NodePath("../CombatRunner")
+
+[node name="MotorDebugOverlay" type="CanvasLayer" parent="." node_paths=PackedStringArray("player", "runner")]
+script = ExtResource("6")
+player = NodePath("../Player")
+runner = NodePath("../CombatRunner")
+
+[node name="Label" type="Label" parent="MotorDebugOverlay"]
+offset_left = 4.0
+offset_top = 4.0
+theme_override_font_sizes/font_size = 8
+
+[node name="CombatRunner" type="Node" parent="."]
+script = ExtResource("7")
+combatant_paths = Array[NodePath]([NodePath("../Player"), NodePath("../Brute1"), NodePath("../Chaser1")])
+refill_player_on_died = true
+shake_path = NodePath("../Player/PlaceholderShake")
