@@ -63,7 +63,7 @@ func test_ac2_idle_until_a_player_comes_within_the_radius() -> void:
 func test_ac2_taking_damage_aggroes_from_the_next_step_start() -> void:
 	var arena: EnemyArena = EnemyArena.new()
 	arena.chaser_data.aggro_radius_tiles = 0.0
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	arena.add_player()
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(0, 1))
 	var watch: EnemyWatch = arena.watch(enemy)
@@ -78,7 +78,7 @@ func test_ac2_taking_damage_aggroes_from_the_next_step_start() -> void:
 
 func test_ac2_once_aggroed_moving_out_of_the_radius_doesnt_stop_it() -> void:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	var player: PlayerMotor = arena.add_player(Vector2(0, 5))
 	var enemy: EnemyLogic = arena.add_chaser(Vector2.ZERO)
 	for _i: int in 120:
@@ -89,7 +89,7 @@ func test_ac2_once_aggroed_moving_out_of_the_radius_doesnt_stop_it() -> void:
 
 func test_ac4_chases_straight_at_move_speed_then_holds_at_the_stop_distance() -> void:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	arena.add_player()
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(3, 4))
 	var watch: EnemyWatch = arena.watch(enemy)
@@ -130,9 +130,9 @@ func test_ac4b_exact_aggro_radius_after_accumulated_steps_at_every_rate() -> voi
 
 func test_ac6_recovery_ending_mid_step_holds_still_until_the_next_step_start() -> void:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack.recovery = 0.6 + STEP * 0.5
-	arena.chaser_data.attack.range_tiles = 0.01
-	arena.chaser_data.attack.lunge_tiles = 0.0
+	arena.chaser_data.attacks[0].recovery = 0.6 + STEP * 0.5
+	arena.chaser_data.attacks[0].range_tiles = 0.01
+	arena.chaser_data.attacks[0].lunge_tiles = 0.0
 	arena.add_player()
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(0, 1.6))
 	var watch: EnemyWatch = arena.watch(enemy)
@@ -161,7 +161,7 @@ func test_ac6_hitstop_ending_mid_step_holds_still_until_the_next_step_start() ->
 	var arena: EnemyArena = EnemyArena.new()
 	arena.rules.hitstop_normal = 0.05 + STEP * 0.5
 	arena.chaser_data.knockback_scale = 0.0
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	arena.add_player()
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(0, 1.95))
 	var watch: EnemyWatch = arena.watch(enemy)
@@ -217,7 +217,7 @@ func test_c4_with_ai_off_a_chasing_enemy_stops_at_the_next_step_start() -> void:
 
 func _chasing_arena() -> EnemyArena:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	arena.add_player()
 	arena.add_chaser(Vector2(0, 1.95))
 	return arena
@@ -234,7 +234,7 @@ func _windup_time(rate: int, extra: float) -> float:
 ## How far it still moved in the step after it should have arrived.
 func _moved_after_arriving(rate: int, extra: float) -> float:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	arena.add_player(Vector2(0, -extra))
 	var watch: EnemyWatch = arena.watch(arena.add_chaser(Vector2(0, 3)))
 	arena.play(rate, 0, 21)

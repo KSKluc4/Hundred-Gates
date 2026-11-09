@@ -9,6 +9,9 @@ const ENEMY_SNAPSHOT_KEYS: Array[String] = [
 	"lunge_tiles",
 	"projectile_speed_tiles",
 	"projectile_max_distance_tiles",
+	"trigger_min_tiles",
+	"trigger_max_tiles",
+	"wall_stun_duration",
 ]
 const FULL_CIRCLE_DEG: float = 360.0
 
@@ -20,6 +23,12 @@ const FULL_CIRCLE_DEG: float = 360.0
 @export var projectile_speed_tiles: float = 0.0
 ## F-005/C4: the projectile stops exactly this far from its launch point. 0 for melee.
 @export var projectile_max_distance_tiles: float = 0.0
+## F-006/C4: the trigger band. A brain may start this attack when the target's distance is
+## within [trigger_min_tiles, trigger_max_tiles] (EnemyBrain.pick_attack()).
+@export var trigger_min_tiles: float = 0.0
+@export var trigger_max_tiles: float = 0.0
+## F-006/C7: above 0, a charge stopped by a wall recovers this long instead of `recovery`.
+@export var wall_stun_duration: float = 0.0
 
 
 ## F-004/C6: a latched attack lives in snapshots, so it can be rebuilt without its file.
@@ -50,6 +59,8 @@ func validate_enemy(step_rate: int, tunables: EnemyCombatTunables) -> PackedStri
 		errors.append("lunge_tiles must be >= 0")
 	if is_finisher:
 		errors.append("is_finisher must be false")
+	errors.append_array(_trigger_errors())
+	errors.append_array(_wall_stun_errors(step_rate))
 	errors.append_array(_projectile_errors(step_rate))
 	return errors
 
@@ -59,11 +70,61 @@ func is_projectile() -> bool:
 	return projectile_speed_tiles > 0.0
 
 
+## F-006/C7: a melee attack that a wall can stop, and then stuns.
+func is_wall_stun() -> bool:
+	return not is_projectile() and wall_stun_duration > 0.0
+
+
+## F-006/C9, C11: a wall-stun attack's recovery lasts at least two combat steps at this rate, so
+## the attack is still latched when its last lunge step's report is applied (end_step()). Same
+## shape as CombatTiming.window_errors(). Empty for any other attack.
+func wall_stun_recovery_errors(step_rate: int) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	if not is_wall_stun() or step_rate <= 0:
+		return errors
+	var min_recovery: float = 2.0 / step_rate
+	if recovery < min_recovery - CombatTiming.TIME_EPSILON:
+		errors.append(
+			"recovery must be >= 2 combat steps (%.4f s) for a wall-stun attack" % min_recovery
+		)
+	return errors
+
+
 func to_dict() -> Dictionary:
 	var snapshot: Dictionary = super.to_dict()
 	for key: String in ENEMY_SNAPSHOT_KEYS:
 		snapshot[key] = get(key)
 	return snapshot
+
+
+## F-006/C9. Bands of different attacks may overlap: list order decides.
+func _trigger_errors() -> PackedStringArray:
+	var errors: PackedStringArray = []
+	if not trigger_min_tiles >= 0.0:
+		errors.append("trigger_min_tiles must be >= 0")
+	if not trigger_max_tiles > 0.0:
+		errors.append("trigger_max_tiles must be > 0")
+	if not trigger_min_tiles <= trigger_max_tiles:
+		errors.append("trigger_min_tiles must be <= trigger_max_tiles")
+	return errors
+
+
+## F-006/C9. Rejected, never clamped.
+func _wall_stun_errors(step_rate: int) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	if not wall_stun_duration >= 0.0:
+		errors.append("wall_stun_duration must be >= 0")
+	if not wall_stun_duration > 0.0:
+		return errors
+	if is_projectile():
+		errors.append("wall_stun_duration > 0 needs a melee attack, not a projectile")
+		return errors
+	if not lunge_tiles > 0.0:
+		errors.append("wall_stun_duration > 0 needs lunge_tiles > 0")
+	errors.append_array(wall_stun_recovery_errors(step_rate))
+	if not wall_stun_duration >= recovery - CombatTiming.TIME_EPSILON:
+		errors.append("wall_stun_duration must be >= recovery (a wall never shortens the punish)")
+	return errors
 
 
 ## F-005/C9. Rejected, never clamped.

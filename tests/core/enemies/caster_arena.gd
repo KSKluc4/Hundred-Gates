@@ -13,7 +13,10 @@ var caster_landed_times: Array[float] = []
 ## A deep copy: the attack is a separate resource, and tests change it too.
 static func caster_values() -> EnemyData:
 	var data: EnemyData = (load(Tunables.CASTER_PATH) as EnemyData).duplicate()
-	data.attack = data.attack.duplicate()
+	var attacks: Array[EnemyAttackData] = []
+	for attack: EnemyAttackData in data.attacks:
+		attacks.append(attack.duplicate())
+	data.attacks = attacks
 	return data
 
 

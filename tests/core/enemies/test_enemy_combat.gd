@@ -65,7 +65,7 @@ func test_ac12_a_hit_while_chasing_pushes_it_and_it_chases_again_after() -> void
 
 func test_ac12_knockback_scale_multiplies_the_push() -> void:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	arena.chaser_data.knockback_scale = 2.0
 	arena.add_player()
 	var enemy: EnemyLogic = arena.add_chaser(CHASING_START)
@@ -77,20 +77,20 @@ func test_ac12_knockback_scale_multiplies_the_push() -> void:
 func test_ac12b_zero_attack_distance_on_a_chasing_chaser() -> void:
 	var arena: EnemyArena = EnemyArena.new()
 	arena.class_data.attack_chain[0].knockback_tiles = 0.0
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	_assert_zero_distance_on_a_chaser(arena)
 
 
 func test_ac12b_zero_target_scale_on_a_chasing_chaser() -> void:
 	var arena: EnemyArena = EnemyArena.new()
 	arena.chaser_data.knockback_scale = 0.0
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	_assert_zero_distance_on_a_chaser(arena)
 
 
 func test_ac12b_zero_attack_distance_in_the_middle_of_a_push() -> void:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	arena.add_player()
 	var no_push: ClassData = CombatArena.warrior()
 	no_push.attack_chain[0].knockback_tiles = 0.0
@@ -100,7 +100,7 @@ func test_ac12b_zero_attack_distance_in_the_middle_of_a_push() -> void:
 
 func test_ac12b_zero_target_scale_in_the_middle_of_a_push() -> void:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	arena.add_player()
 	var second: PlayerMotor = arena.add_player(PUSHED_START, &"player_2")
 	_assert_zero_distance_ends_a_push(arena, second, true)
@@ -109,7 +109,7 @@ func test_ac12b_zero_target_scale_in_the_middle_of_a_push() -> void:
 func test_ac12b_a_committed_chaser_keeps_its_timeline_for_either_source() -> void:
 	for scale: float in [0.0, 1.0]:
 		var arena: EnemyArena = EnemyArena.new()
-		arena.chaser_data.attack.range_tiles = NOT_A_RANGE
+		arena.chaser_data.attacks[0].range_tiles = NOT_A_RANGE
 		arena.chaser_data.knockback_scale = scale
 		arena.class_data.attack_chain[0].knockback_tiles = 1.0 - scale
 		arena.add_player()
@@ -164,7 +164,7 @@ func test_ac13_dash_iframes_skip_it_unmarked_and_the_vulnerable_tail_is_hit() ->
 func test_ac14_teams_a_chasers_hitbox_never_touches_a_chaser_or_a_dummy() -> void:
 	var arena: EnemyArena = EnemyArena.new()
 	arena.chaser_data.aggro_radius_tiles = 10.0
-	arena.chaser_data.attack_range_tiles = 10.0
+	arena.chaser_data.attacks[0].trigger_max_tiles = 10.0
 	arena.add_player(Vector2(0, -9))
 	var enemy: EnemyLogic = arena.add_chaser(Vector2.ZERO, &"chaser_1")
 	arena.add_chaser(Vector2(0, -1), &"chaser_2")
@@ -184,7 +184,7 @@ func test_ac15_a_full_chain_plus_one_hit_1_kills_it_once() -> void:
 	var arena: EnemyArena = EnemyArena.new()
 	arena.chaser_data.move_speed = 0.0
 	arena.chaser_data.knockback_scale = 0.0
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	arena.add_player()
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(0, 1))
 	var state: CombatState = enemy.get_combat_state()
@@ -200,7 +200,7 @@ func test_ac15_a_full_chain_plus_one_hit_1_kills_it_once() -> void:
 func test_ac15_a_kill_in_the_middle_of_a_push_stops_it_dead() -> void:
 	var arena: EnemyArena = EnemyArena.new()
 	arena.chaser_data.max_hp = 1
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	arena.add_player()
 	var enemy: EnemyLogic = arena.add_chaser(CHASING_START)
 	arena.tick(120, Vector2.ZERO, false, true)
@@ -271,7 +271,7 @@ func _assert_zero_distance_ends_a_push(
 	assert_eq(enemy.get_state(), EnemyLogic.State.KNOCKBACK)
 	if scale_goes_to_zero:
 		var no_push: EnemyData = EnemyArena.chaser_values()
-		no_push.attack_range_tiles = NOT_A_RANGE
+		no_push.attacks[0].trigger_max_tiles = NOT_A_RANGE
 		no_push.knockback_scale = 0.0
 		assert_true(enemy.apply_data(no_push, arena.enemy_rules, 120))
 	second.submit(AttackCommand.new())
@@ -303,7 +303,7 @@ func _assert_inert(arena: EnemyArena, enemy: EnemyLogic, position: Vector2) -> v
 ## A chaser committed from the first step, whose swing can't reach the player.
 func _committed() -> EnemyArena:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack.range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].range_tiles = NOT_A_RANGE
 	arena.add_player()
 	arena.add_chaser(Vector2(0, 1.6))
 	return arena
@@ -312,7 +312,7 @@ func _committed() -> EnemyArena:
 ## A chaser walking in, that never gets to attack.
 func _chasing() -> EnemyArena:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack_range_tiles = NOT_A_RANGE
+	arena.chaser_data.attacks[0].trigger_max_tiles = NOT_A_RANGE
 	arena.add_player()
 	arena.add_chaser(CHASING_START)
 	return arena

@@ -14,12 +14,12 @@ func test_the_shipped_files_are_valid_and_hold_the_design_values() -> void:
 	assert_eq(data.knockback_scale, 1.2)
 	assert_eq(data.move_speed, 2.5)
 	assert_eq(data.aggro_radius_tiles, 8.0)
-	assert_eq(data.attack_range_tiles, 7.0)
+	assert_eq(data.attacks[0].trigger_max_tiles, 7.0)
 	assert_eq(data.stop_distance_tiles, 6.0)
 	assert_eq(data.retreat_distance_tiles, 3.0)
 	assert_eq(data.attack_cooldown, 1.2)
 	var bolt: EnemyAttackData = load(Tunables.CASTER_BOLT_PATH)
-	assert_eq(data.attack.id, bolt.id, "caster.tres uses the bolt file")
+	assert_eq(data.attacks[0].id, bolt.id, "caster.tres uses the bolt file")
 	assert_eq(bolt.windup, 0.6)
 	assert_eq(bolt.aim_track_time, 0.35)
 	assert_eq(bolt.active, 0.1)
@@ -59,13 +59,13 @@ func test_ac1_retreat_distance_between_zero_and_the_stop_distance() -> void:
 func test_ac1_projectile_fields_are_never_negative() -> void:
 	_assert_attack_field("projectile_speed_tiles", 0.001, -0.001)
 	_assert_attack_field("projectile_max_distance_tiles", 0.001, -0.001)
-	var swipe: EnemyAttackData = EnemyArena.chaser_values().attack
+	var swipe: EnemyAttackData = EnemyArena.chaser_values().attacks[0]
 	swipe.projectile_speed_tiles = -0.001
 	assert_false(_attack_valid(swipe))
 
 
 func test_ac1_a_melee_attack_has_no_max_distance() -> void:
-	var swipe: EnemyAttackData = EnemyArena.chaser_values().attack
+	var swipe: EnemyAttackData = EnemyArena.chaser_values().attacks[0]
 	assert_true(_attack_valid(swipe))
 	swipe.projectile_max_distance_tiles = 0.5
 	var errors: PackedStringArray = _attack_errors(swipe)
@@ -91,7 +91,7 @@ func test_ac1_sampling_limit_at_120_with_the_exact_limit_passing() -> void:
 
 
 func test_ac1_sampling_limit_at_240_with_the_exact_limit_passing() -> void:
-	var bolt: EnemyAttackData = CasterArena.caster_values().attack
+	var bolt: EnemyAttackData = CasterArena.caster_values().attacks[0]
 	bolt.projectile_speed_tiles = 60.0
 	assert_true(_attack_valid(bolt, 240), "60 / 240 = radius 0.25")
 	assert_false(_attack_valid(bolt, 120), "the same at 120 moves 0.5 per step")
@@ -104,7 +104,7 @@ func test_ac1_sampling_limit_at_240_with_the_exact_limit_passing() -> void:
 
 func test_ac1_a_chaser_with_a_projectile_attack_is_rejected() -> void:
 	var data: EnemyData = EnemyArena.chaser_values()
-	data.attack = CasterArena.caster_values().attack
+	data.attacks = [CasterArena.caster_values().attacks[0]]
 	var errors: PackedStringArray = data.validate(RATE, Tunables.enemy_combat)
 	assert_eq(errors.size(), 1)
 	assert_string_contains(errors[0], "CHASER needs a melee attack")
@@ -112,7 +112,7 @@ func test_ac1_a_chaser_with_a_projectile_attack_is_rejected() -> void:
 
 func test_ac1_a_caster_with_a_melee_attack_is_rejected() -> void:
 	var data: EnemyData = CasterArena.caster_values()
-	data.attack = EnemyArena.chaser_values().attack
+	data.attacks = [EnemyArena.chaser_values().attacks[0]]
 	var errors: PackedStringArray = data.validate(RATE, Tunables.enemy_combat)
 	assert_eq(errors.size(), 1)
 	assert_string_contains(errors[0], "CASTER needs a projectile attack")
@@ -120,7 +120,7 @@ func test_ac1_a_caster_with_a_melee_attack_is_rejected() -> void:
 
 func test_ac1_attack_errors_name_the_bolt() -> void:
 	var data: EnemyData = CasterArena.caster_values()
-	data.attack.lunge_tiles = 0.5
+	data.attacks[0].lunge_tiles = 0.5
 	var errors: PackedStringArray = data.validate(RATE, Tunables.enemy_combat)
 	assert_eq(errors.size(), 1)
 	assert_string_contains(errors[0], "caster_bolt")
@@ -156,7 +156,7 @@ func _assert_field(field: String, valid: Variant, invalid: Variant) -> void:
 
 
 func _assert_attack_field(field: String, valid: Variant, invalid: Variant) -> void:
-	var bolt: EnemyAttackData = CasterArena.caster_values().attack
+	var bolt: EnemyAttackData = CasterArena.caster_values().attacks[0]
 	bolt.set(field, valid)
 	assert_true(_attack_valid(bolt), "%s = %s valid" % [field, valid])
 	bolt.set(field, invalid)

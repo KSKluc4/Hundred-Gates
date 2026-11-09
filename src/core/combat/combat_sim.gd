@@ -62,6 +62,8 @@ func tick(delta: float, move_bodies: Callable = Callable()) -> void:
 		if move_bodies.is_valid():
 			move_bodies.call()
 		_apply_contact()
+		for combatant: Combatant in _combatants:
+			combatant.end_step()  # F-006/C7: after this step's contact, in registration order.
 	for combatant: Combatant in _combatants:
 		combatant.finish_tick()
 

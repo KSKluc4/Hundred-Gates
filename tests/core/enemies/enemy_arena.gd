@@ -25,7 +25,10 @@ var sword_times: Array[float] = []
 ## A deep copy: the attack is a separate resource, and tests change it too.
 static func chaser_values() -> EnemyData:
 	var data: EnemyData = (load(Tunables.CHASER_PATH) as EnemyData).duplicate()
-	data.attack = data.attack.duplicate()
+	var attacks: Array[EnemyAttackData] = []
+	for attack: EnemyAttackData in data.attacks:
+		attacks.append(attack.duplicate())
+	data.attacks = attacks
 	return data
 
 

@@ -96,8 +96,8 @@ func _blocked_launch_run(windup: float, with_wall: bool) -> Array[float]:
 	caster.name = "Caster"
 	caster.combat_id = &"caster_1"
 	var data: EnemyData = caster_copy()
-	data.attack.range_tiles = 0.5
-	data.attack.windup = windup
+	data.attacks[0].range_tiles = 0.5
+	data.attacks[0].windup = windup
 	caster.data = data
 	caster.position = Vector2(192 - 5.6, 100)  # Its 0.35-tile body touches the wall.
 	_scene.add_child(caster)

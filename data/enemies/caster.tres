@@ -1,7 +1,8 @@
 [gd_resource type="Resource" script_class="EnemyData" format=3]
 
 [ext_resource type="Script" path="res://src/core/enemies/enemy_data.gd" id="1"]
-[ext_resource type="Resource" path="res://data/attacks/caster_bolt.tres" id="2"]
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="2"]
+[ext_resource type="Resource" path="res://data/attacks/caster_bolt.tres" id="3"]
 
 [resource]
 script = ExtResource("1")
@@ -12,8 +13,7 @@ hurtbox_radius_tiles = 0.35
 knockback_scale = 1.2
 move_speed = 2.5
 aggro_radius_tiles = 8.0
-attack_range_tiles = 7.0
 stop_distance_tiles = 6.0
 retreat_distance_tiles = 3.0
 attack_cooldown = 1.2
-attack = ExtResource("2")
+attacks = Array[ExtResource("2")]([ExtResource("3")])

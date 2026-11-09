@@ -55,7 +55,7 @@ func test_ac22_a_bolt_in_flight_finishes_on_latched_values_and_the_next_uses_the
 	_write(BOLT_PATH, "projectile_speed_tiles", 8.0)
 	press_key(KEY_F5)
 	assert_string_contains(await overlay_text(), "reload: ok")
-	assert_eq(_casters[0].logic.get_data().attack.damage, 25, "CACHE_MODE_IGNORE_DEEP")
+	assert_eq(_casters[0].logic.get_data().attacks[0].damage, 25, "CACHE_MODE_IGNORE_DEEP")
 	var flying: ProjectileSet.Projectile = _casters[0].logic.get_projectiles().get_projectiles()[0]
 	assert_eq(flying.speed, 6.0, "latched")
 	await run_ticks(220)  # To 4.5 s: this bolt lands, the next one launches at 3.3 s and lands.
@@ -97,7 +97,7 @@ func test_ac22_a_rate_a_bolt_in_flight_cant_take_is_rejected_and_names_it() -> v
 	assert_string_contains(text, "reload rejected: running hit or pulse on caster_1: ")
 	assert_string_contains(text, "projectile 0 in flight")
 	assert_eq(_runner.get_sim().get_step_rate(), 240, "nothing changed")
-	assert_eq(_casters[0].logic.get_data().attack.projectile_speed_tiles, SPEED_AT_240)
+	assert_eq(_casters[0].logic.get_data().attacks[0].projectile_speed_tiles, SPEED_AT_240)
 
 
 func test_ac22_a_pending_launch_rejects_the_rate_and_launches_at_its_latched_speed() -> void:
@@ -124,9 +124,9 @@ func test_ac22_a_pending_launch_rejects_the_rate_and_launches_at_its_latched_spe
 
 ## Fresh, valid copies of every file. The caster copy points at the bolt copy.
 func _write_copies() -> void:
-	assert_eq(ResourceSaver.save(caster_copy().attack, BOLT_PATH), OK)
+	assert_eq(ResourceSaver.save(caster_copy().attacks[0], BOLT_PATH), OK)
 	var caster: EnemyData = caster_copy()
-	caster.attack = ResourceLoader.load(BOLT_PATH, "", ResourceLoader.CACHE_MODE_IGNORE)
+	caster.attacks = [ResourceLoader.load(BOLT_PATH, "", ResourceLoader.CACHE_MODE_IGNORE)]
 	assert_eq(ResourceSaver.save(caster, CASTER_PATH), OK)
 	assert_eq(ResourceSaver.save(Tunables.enemy_combat.duplicate(), RULES_PATH), OK)
 	assert_eq(ResourceSaver.save(load(Tunables.WARRIOR_PATH).duplicate(), CLASS_PATH), OK)
