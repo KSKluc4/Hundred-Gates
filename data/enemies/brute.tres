@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_data.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="2"]
+[ext_resource type="Resource" path="res://data/attacks/brute_stomp.tres" id="3"]
+[ext_resource type="Resource" path="res://data/attacks/brute_charge.tres" id="4"]
+
+[resource]
+script = ExtResource("1")
+id = &"brute"
+brain = 2
+max_hp = 120
+hurtbox_radius_tiles = 0.6
+knockback_scale = 0.0
+move_speed = 2.0
+aggro_radius_tiles = 7.0
+stop_distance_tiles = 1.5
+retreat_distance_tiles = 0.0
+attack_cooldown = 1.0
+attacks = Array[ExtResource("2")]([ExtResource("3"), ExtResource("4")])

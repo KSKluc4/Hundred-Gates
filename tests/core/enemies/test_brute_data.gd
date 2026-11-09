@@ -1,8 +1,70 @@
 extends GutTest
-## F-006 AC15: the wall-stun rules of C9, with their exact limits.
+## F-006 AC15: the wall-stun rules of C9, with their exact limits. AC4, AC10, AC11: the shipped
+## files hold the design doc's values.
 
 const RATE: int = 120
 const CHARGE: int = BruteArena.CHARGE
+
+
+func test_the_shipped_files_are_valid_and_hold_the_design_values() -> void:
+	var data: EnemyData = load(Tunables.BRUTE_PATH)
+	assert_eq(data.validate(RATE, Tunables.enemy_combat), PackedStringArray())
+	assert_eq(data.validate_against_class(load(Tunables.WARRIOR_PATH)), PackedStringArray())
+	assert_eq(data.id, &"brute")
+	assert_eq(data.brain, EnemyData.Brain.BRUTE)
+	assert_eq(data.max_hp, 120)
+	assert_eq(data.hurtbox_radius_tiles, 0.6)
+	assert_eq(data.knockback_scale, 0.0)
+	assert_eq(data.move_speed, 2.0)
+	assert_eq(data.aggro_radius_tiles, 7.0)
+	assert_eq(data.stop_distance_tiles, 1.5)
+	assert_eq(data.retreat_distance_tiles, 0.0)
+	assert_eq(data.attack_cooldown, 1.0)
+	var stomp: EnemyAttackData = load(Tunables.BRUTE_STOMP_PATH)
+	var charge: EnemyAttackData = load(Tunables.BRUTE_CHARGE_PATH)
+	assert_eq(data.attacks.size(), 2)
+	assert_eq(data.attacks[0].id, stomp.id, "stomp first")
+	assert_eq(data.attacks[1].id, charge.id, "then charge")
+	_assert_values(
+		charge,
+		{
+			"id": &"brute_charge",
+			"windup": 0.8,
+			"aim_track_time": 0.5,
+			"active": 0.5,
+			"recovery": 0.9,
+			"wall_stun_duration": 1.5,
+			"damage": 25,
+			"arc_angle_deg": 120.0,
+			"range_tiles": 0.9,
+			"knockback_tiles": 1.5,
+			"lunge_tiles": 6.0,
+			"trigger_min_tiles": 3.0,
+			"trigger_max_tiles": 7.0,
+			"projectile_speed_tiles": 0.0,
+			"is_finisher": false,
+		}
+	)
+	_assert_values(
+		stomp,
+		{
+			"id": &"brute_stomp",
+			"windup": 0.6,
+			"aim_track_time": 0.0,
+			"active": 0.1,
+			"recovery": 0.7,
+			"wall_stun_duration": 0.0,
+			"damage": 20,
+			"arc_angle_deg": 360.0,
+			"range_tiles": 1.6,
+			"knockback_tiles": 1.2,
+			"lunge_tiles": 0.0,
+			"trigger_min_tiles": 0.0,
+			"trigger_max_tiles": 1.5,
+			"projectile_speed_tiles": 0.0,
+			"is_finisher": false,
+		}
+	)
 
 
 func test_ac15_the_stub_charge_is_valid() -> void:
@@ -80,3 +142,8 @@ func _assert_one_error(attack: EnemyAttackData, error: String) -> void:
 	assert_eq(errors.size(), 1, str(errors))
 	if errors.size() == 1:
 		assert_string_contains(errors[0], error)
+
+
+func _assert_values(attack: EnemyAttackData, values: Dictionary) -> void:
+	for key: String in values:
+		assert_eq(attack.get(key), values[key], "%s.%s" % [attack.id, key])

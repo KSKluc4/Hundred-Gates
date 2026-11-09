@@ -11,6 +11,9 @@ const CHASER_PATH: String = "res://data/enemies/chaser.tres"  # G5
 const CHASER_SWIPE_PATH: String = "res://data/attacks/chaser_swipe.tres"  # G5
 const CASTER_PATH: String = "res://data/enemies/caster.tres"  # G5
 const CASTER_BOLT_PATH: String = "res://data/attacks/caster_bolt.tres"  # G5
+const BRUTE_PATH: String = "res://data/enemies/brute.tres"  # G5
+const BRUTE_STOMP_PATH: String = "res://data/attacks/brute_stomp.tres"  # G5
+const BRUTE_CHARGE_PATH: String = "res://data/attacks/brute_charge.tres"  # G5
 
 var game: GameTunables = preload(GAME_TUNABLES_PATH)
 var player_combat: PlayerCombatTunables = preload(PLAYER_COMBAT_PATH)

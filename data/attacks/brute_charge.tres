@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EnemyAttackData" format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+aim_track_time = 0.5
+lunge_tiles = 6.0
+trigger_min_tiles = 3.0
+trigger_max_tiles = 7.0
+wall_stun_duration = 1.5
+id = &"brute_charge"
+windup = 0.8
+active = 0.5
+recovery = 0.9
+damage = 25
+arc_angle_deg = 120.0
+range_tiles = 0.9
+knockback_tiles = 1.5
+is_finisher = false
