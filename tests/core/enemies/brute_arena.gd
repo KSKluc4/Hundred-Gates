@@ -7,6 +7,8 @@ const STOMP: int = 0
 const CHARGE: int = 1
 
 var brute_data: EnemyData = brute_values()
+## The BruteWallStub installed as move_bodies, if any.
+var wall_stub: RefCounted = null
 
 
 ## A deep copy: the attacks are separate resources, and tests change them too.
@@ -43,6 +45,7 @@ static func brute_values() -> EnemyData:
 	charge.range_tiles = 0.9
 	charge.knockback_tiles = 1.5
 	charge.lunge_tiles = 6.0
+	charge.wall_stun_duration = 1.5
 	charge.trigger_min_tiles = 3.0
 	charge.trigger_max_tiles = 7.0
 	data.attacks = [stomp, charge]

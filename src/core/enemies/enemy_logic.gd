@@ -27,6 +27,7 @@ const SNAPSHOT_KEYS: Array[String] = [
 	"combat",
 	"projectiles",
 	"next_projectile_serial",
+	"wall_stopped",
 ]
 
 var _data: EnemyData = null
@@ -51,6 +52,12 @@ var _move_left: float = 0.0
 var _projectiles: ProjectileSet = ProjectileSet.new()
 # Per-step only: sim time left in the step after the current segment, for a launch inside it.
 var _step_time_left: float = 0.0
+# F-006/C7: the running wall-stun attack was stopped by a wall, so its recovery is the stun.
+var _wall_stopped: bool = false
+# F-006/C7, C10: per-step only, never in a snapshot. end_step() clears both before any snapshot
+# boundary. The charge's [start, planned_end] for the glue, and a short report not applied yet.
+var _charge_segment: PackedVector2Array = PackedVector2Array()
+var _stop_pending: bool = false
 
 
 func _init() -> void:
@@ -82,6 +89,7 @@ func setup(
 	_cooldown_remaining = 0.0
 	_clear_attack()
 	_clear_intent()
+	_clear_charge_report()
 	_projectiles.reset()  # F-005/C4: serials start again from 0.
 	_combat.setup(data.max_hp, false)  # F-004/C7: no hurt i-frames for enemies.
 	return true
@@ -110,6 +118,7 @@ func is_ai_enabled() -> bool:
 ## that is the same for everyone, and the decision then holds for the whole step.
 func sense(view: CombatView) -> void:
 	_clear_intent()
+	_clear_charge_report()
 	# F-005/C4, C5: the step start. Spent and landed projectiles go before this step advances.
 	_projectiles.begin_step()
 	_tick_displacement = Vector2.ZERO  # A windup of 0 launches here, from where it stands.
@@ -129,6 +138,7 @@ func step(duration: float) -> void:
 	if _data == null:
 		return
 	_tick_displacement = Vector2.ZERO
+	_charge_segment = PackedVector2Array()
 	_projectiles.advance(duration)  # F-005/C4: the sim clock, never this enemy's hitstop.
 	var remaining: float = _combat.consume_hitstop(duration)  # F-003/C7, C15: hitstop first.
 	while remaining > TIME_EPSILON and _state != State.DEAD:
@@ -137,8 +147,40 @@ func step(duration: float) -> void:
 		_advance(segment)
 		remaining -= segment
 	_step_time_left = 0.0
+	var step_start: Vector2 = _position
 	_position += _tick_displacement
+	_plan_charge_segment(step_start)
 	_clear_intent()
+
+
+## F-006/C7 (D-008): this step's planned charge movement, [start, planned_end] in tiles, for
+## the glue to sweep against walls. Empty when no wall-stun lunge moved in this step, or once
+## it was reported.
+func get_charge_segment() -> PackedVector2Array:
+	return _charge_segment
+
+
+## F-006/C7: the glue's report of where the charge got to this step. Short of the plan by more
+## than DISTANCE_EPSILON is a wall stop, but it only takes effect in end_step(), after this
+## step's contact: nothing else changes here. With no segment to report on, nothing changes.
+func report_charge_reach(reached: Vector2) -> bool:
+	if _charge_segment.is_empty():
+		push_error("EnemyLogic %s: charge report with no charge segment this step" % _combat_id)
+		return false
+	var start: Vector2 = _charge_segment[0]
+	var planned: Vector2 = _charge_segment[1] - start
+	_charge_segment = PackedVector2Array()
+	var got: float = (reached - start).dot(planned.normalized())
+	if planned.length() - got > Geometry.DISTANCE_EPSILON:
+		_stop_pending = true
+	return true
+
+
+## F-006/C7: a pending wall stop becomes the stun here, after the contact that could still hit.
+func end_step() -> void:
+	if _stop_pending:
+		_apply_wall_stop()
+	_clear_charge_report()
 
 
 ## F-004/C7. Everything a hit needs from CombatState runs there. get_knockback_scale() has
@@ -194,6 +236,11 @@ func is_aim_locked() -> bool:
 	return _aim_locked
 
 
+## F-006/C7: the running attack's recovery is a wall stun.
+func is_wall_stopped() -> bool:
+	return _wall_stopped
+
+
 ## The latched attack, for the telegraph view. Null outside an attack.
 func get_running_attack() -> EnemyAttackData:
 	return _attack
@@ -220,6 +267,7 @@ func to_dict() -> Dictionary:
 		"target_id": _target_id,
 		"ai_enabled": _ai_enabled,
 		"combat": _combat.to_dict(),
+		"wall_stopped": _wall_stopped,
 	}
 	snapshot.merge(_projectiles.to_dict())  # F-005/C10.
 	return snapshot
@@ -242,9 +290,11 @@ func from_dict(snapshot: Dictionary) -> void:
 	_aggroed = snapshot["aggroed"]
 	_target_id = snapshot["target_id"]
 	_ai_enabled = snapshot["ai_enabled"]
+	_wall_stopped = snapshot["wall_stopped"]
 	_combat.from_dict(snapshot["combat"])
 	_projectiles.from_dict(snapshot)
 	_clear_intent()
+	_clear_charge_report()
 	state_restored.emit()
 
 
@@ -306,6 +356,10 @@ func _extra_rate_errors(step_rate: int) -> PackedStringArray:
 		var speed: float = _attack.projectile_speed_tiles
 		for error: String in ProjectileSet.sampling_errors(speed, _attack.range_tiles, step_rate):
 			errors.append("pending projectile of %s %s" % [_attack.id, error])
+	# F-006/C11: the running charge must still be latched when its last report is applied.
+	if (_state == State.WINDUP or _state == State.ACTIVE) and _attack.is_wall_stun():
+		for error: String in _attack.wall_stun_recovery_errors(step_rate):
+			errors.append("%s %s" % [_attack.id, error])
 	return errors
 
 
@@ -376,7 +430,9 @@ func _phase_time_left() -> float:
 		State.ACTIVE:
 			return _attack.active - _phase_elapsed
 		State.RECOVERY:
-			return _attack.recovery - _phase_elapsed
+			# F-006/C7: the stun is the recovery, lengthened.
+			var recovery: float = _attack.wall_stun_duration if _wall_stopped else _attack.recovery
+			return recovery - _phase_elapsed
 	return 0.0
 
 
@@ -449,6 +505,42 @@ func _launch_projectile() -> void:
 	)
 
 
+## F-006/C7: only a latched wall-stun attack whose lunge moved this step has a segment. A
+## stopped charge doesn't move again, and a step spent in hitstop doesn't move at all.
+func _plan_charge_segment(step_start: Vector2) -> void:
+	if _attack == null or not _attack.is_wall_stun() or _wall_stopped:
+		return
+	if _tick_displacement == Vector2.ZERO:
+		return
+	_charge_segment = PackedVector2Array([step_start, _position])
+
+
+## F-006/C7: C9 keeps a wall-stun attack latched until here (recovery >= 2 steps), so only
+## these three states can hold a pending stop. Death wins (F-004/C11).
+func _apply_wall_stop() -> void:
+	match _state:
+		State.DEAD:
+			pass
+		State.ACTIVE:
+			_state = State.RECOVERY  # The rest of active is dropped at this contact instant.
+			_phase_elapsed = 0.0
+			_wall_stopped = true
+		State.RECOVERY:
+			_wall_stopped = true  # Active ended earlier in this step: keep the time since.
+		_:
+			push_error(
+				(
+					"EnemyLogic %s: wall stop pending in state %s"
+					% [_combat_id, State.find_key(_state)]
+				)
+			)
+
+
+func _clear_charge_report() -> void:
+	_charge_segment = PackedVector2Array()
+	_stop_pending = false
+
+
 ## F-004/C5: the punish window is over, and the cooldown starts.
 func _finish_attack() -> void:
 	_clear_attack()
@@ -461,6 +553,7 @@ func _clear_attack() -> void:
 	_phase_elapsed = 0.0
 	_aim_locked = false
 	_hit_ids = []
+	_wall_stopped = false  # F-006/C7: when the attack ends, on reset and on death.
 
 
 func _clear_intent() -> void:

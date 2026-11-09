@@ -102,6 +102,12 @@ func fire_due_actions() -> void:
 	_fire_due_actions()
 
 
+## F-006/C7: the end of each combat step, right after that step's contact and before the next
+## sense(), finish_tick() or snapshot. Nothing may be left pending past it.
+func end_step() -> void:
+	pass
+
+
 ## F-003/C15: the end of the tick, after its last step.
 func finish_tick() -> void:
 	pass
