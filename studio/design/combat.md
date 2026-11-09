@@ -4,7 +4,7 @@
 > Source of truth for how fighting works. Specs must match it; if they don't, one of
 > them changes explicitly.
 > **Status:** core player decisions set (CQ1–CQ8, 2026-10-31). Phase 1 enemy archetypes set
-> (CQ10–CQ12, 2026-11-01; chaser → F-004 DONE, caster → F-005 DONE, brute → F-006). Bosses next.
+> (CQ10–CQ12, 2026-11-01; chaser → F-004 DONE, caster → F-005 DONE, brute → F-006 DONE). Bosses next.
 
 ## Fixed so far (from PROJECT.md / Lucas)
 - Real-time action, top-down camera.
