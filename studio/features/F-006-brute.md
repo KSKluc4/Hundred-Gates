@@ -1,8 +1,8 @@
 ---
 id: F-006
 title: Brute — charge, stomp, wall stun
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-08
 updated: 2026-11-09
 depends_on: [F-004, F-005, D-007, D-008]
@@ -649,26 +649,102 @@ Gate A remains with Lucas. Status stays `PLAN_REVIEW`; next actor is `Lucas`.
 **Started:** 2026-11-09  ·  **Branch:** `feature/F-006-brute`
 
 ### Progress
-- [ ] T1 — <commit hash when done>
-- [ ] T2
-- [ ] T3
-- [ ] T4
-- [ ] T5
-- [ ] T6
-- [ ] T7
+- [x] T1 — `944d622` attack list + trigger bands, `pick_attack()`, chaser/caster migrated (C4, C9 list/band rules, C14)
+- [x] T2 — `af4e732` `Brain.BRUTE` (appended) + `BruteBrain` (C5, C13, kind rule)
+- [x] T3 — `2363a71` core wall stop: `Combatant.end_step()`, the sim call after `_apply_contact()`, `wall_stun_duration` + C9 stun rules, charge segment / report / pending stop / `end_step()` / `wall_stopped`, stun length, rate refusal, snapshot (C7, C9, C10, C11)
+- [x] T4 — `99c39de` `brute.tres`, `brute_charge.tres`, `brute_stomp.tres`, path constants (C2)
+- [x] T5 — `1bca8b9` glue report in `enemy.gd`: start overlap, then sweep, layer 1 only, one report per step (C7)
+- [x] T6 — `92fc7d6` charge lane view, `RECOVERY (stun)` debug text (C12)
+- [x] T7 — `5c113bb` `scenes/debug/f006_brute.tscn` + AC5/AC14 end to end
+
+**AC → tests** (all under `tests/`):
+| AC | Where |
+|---|---|
+| AC1 | `core/enemies/test_brute_brain.gd` (selection table, ε bounds, non-aggroed 7.5 idle / 7.0 aggro+charge, registration swap); `test_attack_list.gd` (stub data) |
+| AC2 | `core/enemies/test_attack_list.gd` (overlap, list order, a chaser with two attacks) |
+| AC3 | `core/enemies/test_brute_brain.gd` `test_ac3_…` (30/60/120) |
+| AC4 | `core/enemies/test_brute_attacks.gd` `test_ac4_…` (30/60/120); values in `test_brute_data.gd` |
+| AC5 | core: `test_brute_attacks.gd`; scene: `scenes/test_f006_scene.gd` |
+| AC6 | core: `test_brute_wall_stop.gd` (report→contact state, state right after, 1.5 s stun, stop contact hits, hits during stun + hitstop pause, death wins); scene: `scenes/test_f006_walls.gd` |
+| AC7 | (a)(b) `scenes/test_f006_walls.gd`; (c) `core/enemies/test_brute_wall_stop.gd` + scene AC7a controls |
+| AC8 | `core/enemies/test_brute_wall_stop.gd` `test_ac8_…` (30/60/120, tick-end snapshot, restore ends the stun at 2.805 s) |
+| AC9 | `core/enemies/test_brute_wall_stop.gd` `test_ac9_…` |
+| AC10 | `core/enemies/test_brute_attacks.gd` `test_ac10_…` |
+| AC11 | `core/enemies/test_brute_data.gd` (values), `test_brute_attacks.gd` `test_ac11_…`, walk/aggro in `test_brute_brain.gd` |
+| AC12 | core: `core/enemies/test_brute_parity.gd`; physics: `scenes/test_f006_physics.gd` (both on `BruteScript`, at 30/60/120) |
+| AC13 | `core/enemies/test_brute_snapshot.gd` (mid-windup, mid-lunge, mid-stun, mid-stomp; AC8 covers the stop-step tick end) |
+| AC14 | `scenes/test_f006_reload.gd` (real F5 on user:// copies); latching on `apply_data()` in `test_brute_snapshot.gd` |
+| AC15 | `core/enemies/test_attack_list.gd` (list/band/kind), `test_brute_data.gd` (stun rules, exact limits), `test_brute_snapshot.gd` (rate refusal), `test_brute_wall_stop.gd` (AC8 charge with recovery 0) |
+| AC16 | every F-004/F-005 test, unchanged except the C14 edits below |
+| AC17 | `scenes/test_f006_views.gd` |
+| AC18 | `core/enemies/test_brute_brain.gd` `test_ac18_…` |
+| AC19 | `scenes/test_f006_walls.gd` `test_ac19_…` (parallel, last lunge step, pointing away, controls, chaser-only overlap) |
+| AC20 | `core/enemies/test_brute_wall_stop.gd` `test_ac20_…` + the full suite |
+
+**C14 — edits to existing tests** (every line is one of the three allowed kinds; no expected value changed):
+- (a) data-building / data-modifying lines, `.attack` → `.attacks[0]`, `attack_range_tiles` → `attacks[0].trigger_max_tiles`, `x.attack = y` → `x.attacks = [y]`:
+  `core/enemies/enemy_arena.gd` and `caster_arena.gd` (`chaser_values()`/`caster_values()` deep-copy the list),
+  `test_caster_attack.gd`, `test_caster_data.gd`, `test_caster_snapshot.gd`, `test_enemy_attack.gd`,
+  `test_enemy_combat.gd`, `test_enemy_data.gd` (incl. `data.attack = null` → `data.attacks = [null]`),
+  `test_enemy_logic.gd`, `test_enemy_snapshot.gd`; `scenes/test_f004_reload.gd`, `test_f005_reload.gd`,
+  `test_f005_walls.gd`.
+- (b) accessor rename inside an assertion, same expected value: `test_enemy_data.gd:17,21`,
+  `test_caster_data.gd:17,22`, `test_f004_reload.gd:48,104`, `test_f005_reload.gd:58,100`.
+- (c) `test_enemy_data.gd:52`: `_assert_field("attack_range_tiles", 0.001, 0.0)` →
+  `_assert_attack_field("trigger_max_tiles", 0.001, 0.0)`, same boundary values.
 
 ### Deviations from plan
-<Every place the code differs from §3–§6, with reason. "None" if none.>
-- DEV-1: <what changed> — **Why:** <reason> — **Impact:** <what else this affects>
+None.
 
 ### Assumptions made (small, reversible)
-- ASSUMPTION-1: <the gap in the spec> → <what I chose> — **Why:** <reason>
+- ASSUMPTION-1: C7 lists who clears the charge segment; `step()` also clears it at its own start
+  (before planning the new one). → Kept: it can never hold a previous step's segment even if a
+  caller skipped `sense()`. — **Why:** same per-step rule as `_tick_displacement`; no visible change.
+- ASSUMPTION-2: "moved by its lunge" (C7 Segment) → a segment exists when a latched wall-stun
+  attack (melee, `wall_stun_duration > 0`), not `wall_stopped`, ends `step()` with a non-zero
+  `_tick_displacement`. While an attack is latched the only displacement is the lunge (windup and
+  recovery are planted), so a step spent wholly in hitstop or with no ACTIVE time gives none. —
+  **Why:** simplest exact test of the C7 wording.
+- ASSUMPTION-3: AC19 "brute.tres is reloaded" → the scene tests call `Enemy.apply_reloaded_data()`,
+  the exact call `CombatRunner._apply_reload()` makes after the group passed validation, between
+  ticks. The file-and-F5 path itself is covered by AC14's tests. — **Why:** a radius reload is only
+  reachable through that call, and it pins the reload to a chosen step.
+- ASSUMPTION-4: AC10 "more than 1.95 … isn't hit; at 1.94 it is" → tested 1.94 (hit), 1.951 and
+  1.96 (not hit). Exactly 1.95 is the touching case, which the AC doesn't name. — **Why:** the AC
+  only bounds "more than 1.95".
+- ASSUMPTION-5: AC6 "that contact can still hit a player standing between the brute and the wall"
+  → the core test puts the player just out of reach one step before the stub's stop (1.24 tiles
+  ahead of the stop position) and checks the hit lands at the stop contact, at the brute's synced
+  (physics) position. With a real wall a player truly between them is reached earlier (reach
+  0.9 + 0.35 = 1.25 tiles > 0.1 tiles per step); the scene test checks that case: one hit, then
+  the stun. — **Why:** it's the only geometry where "the stop contact" is the hitting one.
 
 ### Things the Auditor should look at closely
-- <tricky spots, edge cases you're unsure about>
+- `CombatSim.tick()` now calls `end_step()` on every combatant after `_apply_contact()`, every step
+  (`combat_sim.gd`). Player, dummy and probes inherit the no-op; the whole F-001…F-005 suite passes.
+- `EnemyLogic.end_step()` / `_apply_wall_stop()`: ACTIVE → RECOVERY with `phase_elapsed = 0`;
+  RECOVERY keeps its elapsed time; DEAD drops the stop; anything else pushes an error. It doesn't
+  call `_cross_finished_phases()` after the switch: C9's `wall_stun_duration ≥ recovery ≥ 2 steps`
+  guarantees time is left (AC8 checks the tightest case at all rates).
+- `report_charge_reach()` uses F-005's shortfall rule (`planned − (reached−start)·dir > ε`), and
+  never touches state, position, aim or hitbox (AC6 checks state and live hitbox between report and
+  contact; AC9 checks a refused report changes nothing via `to_dict()`).
+- `enemy.gd`: `_overlaps_wall()` and `_sweep()` now take a centre and radius instead of a
+  projectile, so the charge reuses them. The projectile calls pass exactly the old values
+  (overlap: radius − ε at `origin`; sweep: full radius from `step_start`); every F-005 wall test
+  passes.
+- `wall_stopped` is cleared in `_clear_attack()`, so attack end, setup/reset and death all clear it.
+- Suite runtime: 76 scripts / 748 tests in 187 s wall clock (was 115 s for 662 tests before
+  F-006). Most of the increase is the physics scene tests (walls ~29 s, parity at 3 rates ~26 s).
 
 ### How to test
-<exact steps / commands / scene to run>
+- `tools/lint` → `Success: no problems found`.
+- `tools/check_core_purity` → `core purity ok`.
+- `tools/test` → 76 scripts, 748 tests, all passing (run 2026-11-09).
+- One file: `tools/test -gselect=test_brute_wall_stop` (or any other file name above).
+- Manual (Lucas, §5): open `scenes/debug/f006_brute.tscn` and play the five steps. Keys as in
+  F-005: F5 reload, R reset, I AI on/off, F3 hitboxes. The inner wall is 4 tiles right of the
+  player's start; the brute starts 5 tiles left of it; `chaser_1` is at the top.
 
 ---
 
