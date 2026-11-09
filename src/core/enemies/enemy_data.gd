@@ -13,12 +13,14 @@ enum Brain { CHASER, CASTER }
 @export var knockback_scale: float = 0.0
 @export var move_speed: float = 0.0
 @export var aggro_radius_tiles: float = 0.0
-@export var attack_range_tiles: float = 0.0
 @export var stop_distance_tiles: float = 0.0
 ## F-005/C7: backs off straight away from the target below this. 0 never retreats.
 @export var retreat_distance_tiles: float = 0.0
+## F-006/C4: one cooldown shared by every attack in the list, from the end of any recovery.
 @export var attack_cooldown: float = 0.0
-@export var attack: EnemyAttackData = null
+## F-006/C4: in priority order. A brain uses the first one whose trigger band holds the target
+## distance (EnemyBrain.pick_attack()).
+@export var attacks: Array[EnemyAttackData] = []
 
 
 ## F-004/C12. Empty result means valid. The speed rule isn't here: see validate_against_class().
@@ -38,20 +40,13 @@ func validate(step_rate: int, tunables: EnemyCombatTunables) -> PackedStringArra
 		errors.append("move_speed must be >= 0")
 	if not aggro_radius_tiles >= 0.0:
 		errors.append("aggro_radius_tiles must be >= 0")
-	if not attack_range_tiles > 0.0:
-		errors.append("attack_range_tiles must be > 0")
 	if not stop_distance_tiles >= 0.0:
 		errors.append("stop_distance_tiles must be >= 0")
 	if not (retreat_distance_tiles >= 0.0 and retreat_distance_tiles <= stop_distance_tiles):
 		errors.append("retreat_distance_tiles must be >= 0 and <= stop_distance_tiles")
 	if not attack_cooldown >= 0.0:
 		errors.append("attack_cooldown must be >= 0")
-	if attack == null:
-		errors.append("attack must be set")
-	else:
-		for error: String in attack.validate_enemy(step_rate, tunables):
-			errors.append("%s: %s" % [attack.id, error])
-		errors.append_array(_attack_kind_errors())
+	errors.append_array(_attacks_errors(step_rate, tunables))
 	return errors
 
 
@@ -69,8 +64,24 @@ func validate_against_class(class_data: ClassData) -> PackedStringArray:
 	return errors
 
 
-## F-005/C9: a brain may only use the attack kind it supports.
-func _attack_kind_errors() -> PackedStringArray:
+## F-006/C9: at least one attack, no null entry, each valid on its own and of the brain's kind.
+func _attacks_errors(step_rate: int, tunables: EnemyCombatTunables) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	if attacks.is_empty():
+		errors.append("attacks must not be empty")
+	for index: int in attacks.size():
+		var attack: EnemyAttackData = attacks[index]
+		if attack == null:
+			errors.append("attacks[%d] must not be null" % index)
+			continue
+		for error: String in attack.validate_enemy(step_rate, tunables):
+			errors.append("%s: %s" % [attack.id, error])
+		errors.append_array(_attack_kind_errors(attack))
+	return errors
+
+
+## F-005/C9, F-006/C9: a brain may only use the attack kind it supports.
+func _attack_kind_errors(attack: EnemyAttackData) -> PackedStringArray:
 	var errors: PackedStringArray = []
 	match brain:
 		Brain.CHASER:

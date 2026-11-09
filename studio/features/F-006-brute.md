@@ -1,7 +1,7 @@
 ---
 id: F-006
 title: Brute — charge, stomp, wall stun
-status: APPROVED         # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-08
 updated: 2026-11-09
@@ -646,7 +646,7 @@ Gate A remains with Lucas. Status stays `PLAN_REVIEW`; next actor is `Lucas`.
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** YYYY-MM-DD  ·  **Branch:** `feature/F-006-brute`
+**Started:** 2026-11-09  ·  **Branch:** `feature/F-006-brute`
 
 ### Progress
 - [ ] T1 — <commit hash when done>

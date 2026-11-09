@@ -14,8 +14,10 @@ func decide(enemy: EnemyLogic, view: CombatView) -> EnemyIntent:
 	var epsilon: float = Geometry.DISTANCE_EPSILON
 	if not enemy.is_aggroed() and distance > data.aggro_radius_tiles + epsilon:
 		return EnemyIntent.idle()
-	if enemy.is_attack_ready() and distance <= data.attack_range_tiles + epsilon:
-		return EnemyIntent.attack(target.combat_id)
+	if enemy.is_attack_ready():
+		var attack_index: int = EnemyBrain.pick_attack(data, distance)  # F-006/C4.
+		if attack_index >= 0:
+			return EnemyIntent.attack(target.combat_id, attack_index)
 	var gap: float = distance - data.stop_distance_tiles
 	var max_distance: float = gap if gap > epsilon else 0.0
 	var direction: Vector2 = own_position.direction_to(target.position)

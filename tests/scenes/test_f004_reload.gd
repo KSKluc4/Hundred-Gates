@@ -19,7 +19,7 @@ func before_each() -> void:
 
 ## Fresh, valid copies of every file.
 func _write_copies() -> void:
-	assert_eq(ResourceSaver.save(EnemyArena.chaser_values().attack, SWIPE_PATH), OK)
+	assert_eq(ResourceSaver.save(EnemyArena.chaser_values().attacks[0], SWIPE_PATH), OK)
 	_write_chaser_copy(chaser_copy())
 	assert_eq(ResourceSaver.save(Tunables.enemy_combat.duplicate(), RULES_PATH), OK)
 	assert_eq(ResourceSaver.save(load(Tunables.WARRIOR_PATH).duplicate(), CLASS_PATH), OK)
@@ -45,7 +45,7 @@ func test_ac20_a_valid_reload_takes_every_enemy_file() -> void:
 	assert_string_contains(await overlay_text(), "reload: ok")
 	for chaser: Enemy in _chasers:
 		assert_eq(chaser.logic.get_data().attack_cooldown, 1.5, String(chaser.combat_id))
-		assert_eq(chaser.logic.get_data().attack.damage, 33, "CACHE_MODE_IGNORE_DEEP")
+		assert_eq(chaser.logic.get_data().attacks[0].damage, 33, "CACHE_MODE_IGNORE_DEEP")
 	assert_eq(_chasers[0].logic.get_data(), _chasers[1].logic.get_data(), "one file, loaded once")
 	assert_eq(Tunables.enemy_combat.min_telegraph, 0.25)
 
@@ -101,7 +101,7 @@ func test_ac20_a_rate_change_that_breaks_a_running_enemy_window_is_rejected() ->
 	var text: String = await overlay_text()
 	assert_string_contains(text, "reload rejected: running hit or pulse on chaser_1")
 	assert_eq(_runner.get_sim().get_step_rate(), 240, "nothing changed")
-	assert_almost_eq(_chasers[0].logic.get_data().attack.active, ACTIVE_AT_240, TIME)
+	assert_almost_eq(_chasers[0].logic.get_data().attacks[0].active, ACTIVE_AT_240, TIME)
 
 
 func test_ac20_the_speed_rule_rejects_the_whole_group_from_either_side() -> void:
@@ -187,7 +187,7 @@ func _record_damage() -> Array[int]:
 
 ## The chaser copy points at the swipe copy, so F5 re-reads that file too.
 func _write_chaser_copy(data: EnemyData) -> void:
-	data.attack = ResourceLoader.load(SWIPE_PATH, "", ResourceLoader.CACHE_MODE_IGNORE)
+	data.attacks = [ResourceLoader.load(SWIPE_PATH, "", ResourceLoader.CACHE_MODE_IGNORE)]
 	assert_eq(ResourceSaver.save(data, CHASER_PATH), OK)
 
 

@@ -54,7 +54,7 @@ func test_c5_a_target_on_top_of_it_leaves_the_aim_as_it_was() -> void:
 
 func test_assumption_an_aim_track_time_of_zero_aims_once_at_windup_start() -> void:
 	var arena: EnemyArena = _harmless()
-	arena.chaser_data.attack.aim_track_time = 0.0
+	arena.chaser_data.attacks[0].aim_track_time = 0.0
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(1.6, 0))
 	arena.tick()
 	assert_eq(enemy.get_aim(), Vector2.LEFT)
@@ -108,7 +108,7 @@ func test_ac9_no_hitbox_while_its_owner_is_in_hitstop() -> void:
 
 func test_ac10_cooldown_starts_when_recovery_ends_and_it_walks_during_it() -> void:
 	var arena: EnemyArena = _harmless()
-	arena.chaser_data.attack.lunge_tiles = 0.0
+	arena.chaser_data.attacks[0].lunge_tiles = 0.0
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(0, 1.6))
 	var watch: EnemyWatch = arena.watch(enemy)
 	arena.ticks(241)
@@ -121,7 +121,7 @@ func test_ac10_cooldown_starts_when_recovery_ends_and_it_walks_during_it() -> vo
 
 func test_ac10_hitstop_pauses_the_cooldown() -> void:
 	var arena: EnemyArena = _harmless()
-	arena.chaser_data.attack.lunge_tiles = 0.0
+	arena.chaser_data.attacks[0].lunge_tiles = 0.0
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(0, 1.6))
 	var watch: EnemyWatch = arena.watch(enemy)
 	arena.ticks(150)
@@ -143,8 +143,8 @@ func test_ac10_a_cooldown_of_zero_attacks_at_the_next_step_start() -> void:
 
 func test_ac11_the_shortest_valid_telegraph_runs_at_its_full_length() -> void:
 	var arena: EnemyArena = _harmless()
-	arena.chaser_data.attack.windup = 0.3
-	arena.chaser_data.attack.aim_track_time = 0.15
+	arena.chaser_data.attacks[0].windup = 0.3
+	arena.chaser_data.attacks[0].aim_track_time = 0.15
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(0, 1.6))
 	var watch: EnemyWatch = arena.watch(enemy)
 	arena.ticks(40)
@@ -162,9 +162,9 @@ func test_c5_zero_recovery_and_a_windup_of_zero_cross_at_once() -> void:
 	var arena: EnemyArena = _harmless()
 	arena.enemy_rules.min_telegraph = 0.0
 	arena.enemy_rules.min_locked_telegraph = 0.0
-	arena.chaser_data.attack.windup = 0.0
-	arena.chaser_data.attack.aim_track_time = 0.0
-	arena.chaser_data.attack.recovery = 0.0
+	arena.chaser_data.attacks[0].windup = 0.0
+	arena.chaser_data.attacks[0].aim_track_time = 0.0
+	arena.chaser_data.attacks[0].recovery = 0.0
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(1.6, 0))
 	var watch: EnemyWatch = arena.watch(enemy)
 	arena.tick()
@@ -178,7 +178,7 @@ func test_c5_zero_recovery_and_a_windup_of_zero_cross_at_once() -> void:
 ## A player the swing can't reach: a 0.01 tile sector, and data set before any add_chaser().
 func _harmless() -> EnemyArena:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack.range_tiles = 0.01
+	arena.chaser_data.attacks[0].range_tiles = 0.01
 	arena.add_player()
 	return arena
 

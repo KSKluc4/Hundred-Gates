@@ -28,6 +28,20 @@ static func nearest_player(view: CombatView, from: Vector2) -> CombatView.Entry:
 	return nearest
 
 
+## F-006/C4: the index of the first attack in list order whose trigger band holds `distance`,
+## or -1 if none does. Never random: the player reads the next attack from position (§3).
+static func pick_attack(data: EnemyData, distance: float) -> int:
+	var epsilon: float = Geometry.DISTANCE_EPSILON
+	for index: int in data.attacks.size():
+		var attack: EnemyAttackData = data.attacks[index]
+		if (
+			distance >= attack.trigger_min_tiles - epsilon
+			and distance <= attack.trigger_max_tiles + epsilon
+		):
+			return index
+	return -1
+
+
 ## F-004/C4: asked once, at a step start where the enemy is free.
 func decide(_enemy: EnemyLogic, _view: CombatView) -> EnemyIntent:
 	return EnemyIntent.idle()

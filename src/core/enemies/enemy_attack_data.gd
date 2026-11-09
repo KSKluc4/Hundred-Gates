@@ -9,6 +9,8 @@ const ENEMY_SNAPSHOT_KEYS: Array[String] = [
 	"lunge_tiles",
 	"projectile_speed_tiles",
 	"projectile_max_distance_tiles",
+	"trigger_min_tiles",
+	"trigger_max_tiles",
 ]
 const FULL_CIRCLE_DEG: float = 360.0
 
@@ -20,6 +22,10 @@ const FULL_CIRCLE_DEG: float = 360.0
 @export var projectile_speed_tiles: float = 0.0
 ## F-005/C4: the projectile stops exactly this far from its launch point. 0 for melee.
 @export var projectile_max_distance_tiles: float = 0.0
+## F-006/C4: the trigger band. A brain may start this attack when the target's distance is
+## within [trigger_min_tiles, trigger_max_tiles] (EnemyBrain.pick_attack()).
+@export var trigger_min_tiles: float = 0.0
+@export var trigger_max_tiles: float = 0.0
 
 
 ## F-004/C6: a latched attack lives in snapshots, so it can be rebuilt without its file.
@@ -50,6 +56,7 @@ func validate_enemy(step_rate: int, tunables: EnemyCombatTunables) -> PackedStri
 		errors.append("lunge_tiles must be >= 0")
 	if is_finisher:
 		errors.append("is_finisher must be false")
+	errors.append_array(_trigger_errors())
 	errors.append_array(_projectile_errors(step_rate))
 	return errors
 
@@ -64,6 +71,18 @@ func to_dict() -> Dictionary:
 	for key: String in ENEMY_SNAPSHOT_KEYS:
 		snapshot[key] = get(key)
 	return snapshot
+
+
+## F-006/C9. Bands of different attacks may overlap: list order decides.
+func _trigger_errors() -> PackedStringArray:
+	var errors: PackedStringArray = []
+	if not trigger_min_tiles >= 0.0:
+		errors.append("trigger_min_tiles must be >= 0")
+	if not trigger_max_tiles > 0.0:
+		errors.append("trigger_max_tiles must be > 0")
+	if not trigger_min_tiles <= trigger_max_tiles:
+		errors.append("trigger_min_tiles must be <= trigger_max_tiles")
+	return errors
 
 
 ## F-005/C9. Rejected, never clamped.

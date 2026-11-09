@@ -97,9 +97,9 @@ func test_ac20_a_reload_mid_attack_finishes_on_latched_values_and_the_next_uses_
 	arena.ticks(10)
 	var harder: EnemyData = EnemyArena.chaser_values()
 	harder.attack_cooldown = 0.1
-	harder.attack.damage = 33
-	harder.attack.windup = 0.6
-	harder.attack.recovery = 0.2
+	harder.attacks[0].damage = 33
+	harder.attacks[0].windup = 0.6
+	harder.attacks[0].recovery = 0.2
 	assert_true(enemy.apply_data(harder, arena.enemy_rules, 120))
 	arena.ticks(61)
 	_assert_steps(watch.times_entered(EnemyLogic.State.ACTIVE), [60])
@@ -114,7 +114,7 @@ func test_ac20_invalid_data_changes_nothing() -> void:
 	var arena: EnemyArena = _fight()
 	var enemy: EnemyLogic = arena.enemies[0]
 	var bad: EnemyData = EnemyArena.chaser_values()
-	bad.attack.windup = 0.1
+	bad.attacks[0].windup = 0.1
 	assert_false(enemy.apply_data(bad, arena.enemy_rules, 120))
 	assert_push_error("data rejected")
 	assert_eq(enemy.get_data(), arena.chaser_data)
@@ -158,7 +158,7 @@ func test_c12_new_telegraph_rules_never_recheck_a_running_attack() -> void:
 	var stricter: EnemyCombatTunables = arena.enemy_rules.duplicate()
 	stricter.min_telegraph = 0.55
 	var fitting: EnemyData = EnemyArena.chaser_values()
-	fitting.attack.windup = 0.6
+	fitting.attacks[0].windup = 0.6
 	assert_true(enemy.apply_data(fitting, stricter, 120))
 	arena.ticks(51)
 	assert_eq(enemy.get_state(), EnemyLogic.State.ACTIVE, "0.5 s of windup still runs")
@@ -167,7 +167,7 @@ func test_c12_new_telegraph_rules_never_recheck_a_running_attack() -> void:
 func test_ac20_a_rate_that_would_break_a_running_window_is_refused_and_names_it() -> void:
 	var arena: EnemyArena = EnemyArena.new()
 	arena.rules.combat_step_rate = 240
-	arena.chaser_data.attack.active = 1.0 / 240.0
+	arena.chaser_data.attacks[0].active = 1.0 / 240.0
 	arena.add_player()
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(0, 3), &"chaser_7")
 	assert_eq(enemy.get_running_window_errors(120).size(), 0, "nothing running yet")
@@ -181,8 +181,8 @@ func test_ac20_a_rate_that_would_break_a_running_window_is_refused_and_names_it(
 func test_ac20_the_same_rate_passes_once_the_attack_is_in_recovery() -> void:
 	var arena: EnemyArena = EnemyArena.new()
 	arena.rules.combat_step_rate = 240
-	arena.chaser_data.attack.active = 1.0 / 240.0
-	arena.chaser_data.attack.range_tiles = 0.01
+	arena.chaser_data.attacks[0].active = 1.0 / 240.0
+	arena.chaser_data.attacks[0].range_tiles = 0.01
 	arena.add_player()
 	var enemy: EnemyLogic = arena.add_chaser(Vector2(0, 1.6))
 	arena.ticks(62)
@@ -236,7 +236,7 @@ func _run_b(ticks: int) -> EnemyArena:
 
 func _untouched_pushed() -> EnemyArena:
 	var arena: EnemyArena = EnemyArena.new()
-	arena.chaser_data.attack_range_tiles = 0.01
+	arena.chaser_data.attacks[0].trigger_max_tiles = 0.01
 	arena.add_player()
 	arena.add_chaser(Vector2(0, 1.95))
 	return arena

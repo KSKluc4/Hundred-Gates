@@ -41,7 +41,7 @@ func test_ac7_it_flies_along_the_locked_aim() -> void:
 
 func test_ac7_a_launch_inside_a_step_flies_the_rest_of_it() -> void:
 	var arena: CasterArena = CasterArena.new()
-	arena.caster_data.attack.windup = 0.605
+	arena.caster_data.attacks[0].windup = 0.605
 	arena.add_player()
 	var caster: EnemyLogic = arena.add_caster(START)
 	var watch: CasterWatch = arena.watch_caster(caster)
@@ -277,7 +277,7 @@ func test_ac27_a_blocked_report_for_one_launched_earlier_changes_nothing() -> vo
 ## the player.
 func _ac27(windup: float) -> CasterArena:
 	var arena: CasterArena = CasterArena.new()
-	arena.caster_data.attack.windup = windup
+	arena.caster_data.attacks[0].windup = windup
 	arena.add_player(Vector2(0, 6.0))
 	arena.add_caster(START)
 	return arena

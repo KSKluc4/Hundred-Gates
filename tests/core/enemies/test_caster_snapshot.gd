@@ -91,8 +91,8 @@ func test_ac22_a_projectile_in_flight_keeps_its_latched_values() -> void:
 	arena.ticks(100)  # Projectile 0 in flight, the caster in recovery.
 	var faster: EnemyData = CasterArena.caster_values()
 	faster.attack_cooldown = 0.0
-	faster.attack.projectile_speed_tiles = 12.0
-	faster.attack.damage = 25
+	faster.attacks[0].projectile_speed_tiles = 12.0
+	faster.attacks[0].damage = 25
 	assert_true(caster.apply_data(faster, arena.enemy_rules, 120))
 	arena.ticks(300)
 	assert_eq(damage, [18, 25] as Array[int], "latched 18, then the new 25")
@@ -113,8 +113,8 @@ func test_ac22_a_latched_windup_launches_with_its_latched_values() -> void:
 	var caster: EnemyLogic = arena.add_caster(START)
 	arena.ticks(30)
 	var other: EnemyData = CasterArena.caster_values()
-	other.attack.damage = 25
-	other.attack.projectile_speed_tiles = 12.0
+	other.attacks[0].damage = 25
+	other.attacks[0].projectile_speed_tiles = 12.0
 	assert_true(caster.apply_data(other, arena.enemy_rules, 120))
 	arena.ticks(50)
 	assert_eq(caster.get_projectiles().get_projectiles()[0].speed, 6.0)
@@ -126,9 +126,9 @@ func test_ac22_a_latched_windup_launches_with_its_latched_values() -> void:
 func test_ac22_invalid_caster_or_bolt_values_change_nothing() -> void:
 	var edits: Array[Callable] = [
 		func(d: EnemyData) -> void: d.retreat_distance_tiles = 6.5,
-		func(d: EnemyData) -> void: d.attack.projectile_max_distance_tiles = 0.0,
-		func(d: EnemyData) -> void: d.attack.projectile_speed_tiles = 31.0,
-		func(d: EnemyData) -> void: d.attack.arc_angle_deg = 90.0,
+		func(d: EnemyData) -> void: d.attacks[0].projectile_max_distance_tiles = 0.0,
+		func(d: EnemyData) -> void: d.attacks[0].projectile_speed_tiles = 31.0,
+		func(d: EnemyData) -> void: d.attacks[0].arc_angle_deg = 90.0,
 	]
 	for edit: Callable in edits:
 		var arena: CasterArena = _run_a(100)
@@ -164,8 +164,8 @@ func test_ac22_a_pending_launch_refuses_the_rate_and_launches_at_its_latched_spe
 	assert_eq(caster.get_state(), EnemyLogic.State.WINDUP)
 	assert_eq(caster.get_projectiles().get_projectiles().size(), 0, "not launched yet")
 	var candidate: EnemyData = arena.caster_data.duplicate()
-	candidate.attack = candidate.attack.duplicate()
-	candidate.attack.projectile_speed_tiles = 30.0
+	candidate.attacks = [candidate.attacks[0].duplicate()]
+	candidate.attacks[0].projectile_speed_tiles = 30.0
 	assert_eq(candidate.validate(120, arena.enemy_rules).size(), 0, "valid on its own at 120")
 	var errors: PackedStringArray = arena.sim.rate_change_errors(120)
 	assert_eq(errors.size(), 1)
@@ -181,10 +181,10 @@ func test_ac22_a_pending_launch_refuses_the_rate_and_launches_at_its_latched_spe
 func _at_240() -> CasterArena:
 	var arena: CasterArena = CasterArena.new()
 	arena.rules.combat_step_rate = 240
-	arena.caster_data.attack.projectile_speed_tiles = 60.0
-	arena.caster_data.attack.windup = 0.3
-	arena.caster_data.attack.aim_track_time = 0.1
-	arena.caster_data.attack_range_tiles = 7.9
+	arena.caster_data.attacks[0].projectile_speed_tiles = 60.0
+	arena.caster_data.attacks[0].windup = 0.3
+	arena.caster_data.attacks[0].aim_track_time = 0.1
+	arena.caster_data.attacks[0].trigger_max_tiles = 7.9
 	arena.add_player()
 	arena.add_caster(Vector2(0, 7.5), &"caster_7")
 	return arena
@@ -235,7 +235,7 @@ func _walled(ticks: int) -> CasterArena:
 func _quick(ticks: int) -> CasterArena:
 	var arena: CasterArena = CasterArena.new()
 	arena.caster_data.attack_cooldown = 0.0
-	arena.caster_data.attack.recovery = 0.3
+	arena.caster_data.attacks[0].recovery = 0.3
 	arena.add_player()
 	arena.add_caster(Vector2(0, 6.9))
 	arena.ticks(ticks)

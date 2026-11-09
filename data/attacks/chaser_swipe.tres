@@ -6,6 +6,8 @@
 script = ExtResource("1")
 aim_track_time = 0.3
 lunge_tiles = 0.8
+trigger_min_tiles = 0.0
+trigger_max_tiles = 1.6
 id = &"chaser_swipe"
 windup = 0.5
 active = 0.1

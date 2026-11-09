@@ -15,8 +15,10 @@ func decide(enemy: EnemyLogic, view: CombatView) -> EnemyIntent:
 	if not enemy.is_aggroed() and distance > data.aggro_radius_tiles + epsilon:
 		return EnemyIntent.idle()
 	# C7: shooting beats retreating, at any distance, so a cornered caster still shoots.
-	if enemy.is_attack_ready() and distance <= data.attack_range_tiles + epsilon:
-		return EnemyIntent.attack(target.combat_id)
+	if enemy.is_attack_ready():
+		var attack_index: int = EnemyBrain.pick_attack(data, distance)  # F-006/C4.
+		if attack_index >= 0:
+			return EnemyIntent.attack(target.combat_id, attack_index)
 	var direction: Vector2 = own_position.direction_to(target.position)
 	return _keep_distance(data, target.combat_id, direction, distance)
 

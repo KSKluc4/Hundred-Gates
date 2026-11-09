@@ -1,7 +1,8 @@
 [gd_resource type="Resource" script_class="EnemyData" format=3]
 
 [ext_resource type="Script" path="res://src/core/enemies/enemy_data.gd" id="1"]
-[ext_resource type="Resource" path="res://data/attacks/chaser_swipe.tres" id="2"]
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="2"]
+[ext_resource type="Resource" path="res://data/attacks/chaser_swipe.tres" id="3"]
 
 [resource]
 script = ExtResource("1")
@@ -12,7 +13,6 @@ hurtbox_radius_tiles = 0.4
 knockback_scale = 1.0
 move_speed = 3.0
 aggro_radius_tiles = 6.0
-attack_range_tiles = 1.6
 stop_distance_tiles = 1.0
 attack_cooldown = 0.8
-attack = ExtResource("2")
+attacks = Array[ExtResource("2")]([ExtResource("3")])

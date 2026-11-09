@@ -326,7 +326,7 @@ func _decide(view: CombatView) -> void:
 		return
 	_aggroed = true
 	if intent.start_attack:
-		_start_attack(view)
+		_start_attack(view, intent.attack_index)
 		return
 	_state = State.CHASE
 	_move_direction = intent.move_direction
@@ -334,9 +334,9 @@ func _decide(view: CombatView) -> void:
 
 
 ## F-004/C5: WINDUP begins at this step start, so it aims from this view. With an
-## aim_track_time of 0 that's also where it locks.
-func _start_attack(view: CombatView) -> void:
-	_attack = _data.attack.duplicate()
+## aim_track_time of 0 that's also where it locks. F-006/C4: the brain picked which attack.
+func _start_attack(view: CombatView, attack_index: int) -> void:
+	_attack = _data.attacks[attack_index].duplicate()
 	_hit_ids = []
 	_phase_elapsed = 0.0
 	_aim_locked = false

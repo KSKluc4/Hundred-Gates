@@ -14,11 +14,11 @@ func test_the_shipped_files_are_valid_and_hold_the_design_values() -> void:
 	assert_eq(data.knockback_scale, 1.0)
 	assert_eq(data.move_speed, 3.0)
 	assert_eq(data.aggro_radius_tiles, 6.0)
-	assert_eq(data.attack_range_tiles, 1.6)
+	assert_eq(data.attacks[0].trigger_max_tiles, 1.6)
 	assert_eq(data.stop_distance_tiles, 1.0)
 	assert_eq(data.attack_cooldown, 0.8)
 	var swipe: EnemyAttackData = load(Tunables.CHASER_SWIPE_PATH)
-	assert_eq(data.attack.id, swipe.id, "chaser.tres uses the swipe file")
+	assert_eq(data.attacks[0].id, swipe.id, "chaser.tres uses the swipe file")
 	assert_eq(swipe.windup, 0.5)
 	assert_eq(swipe.aim_track_time, 0.3)
 	assert_eq(swipe.active, 0.1)
@@ -49,17 +49,17 @@ func test_ac1_enemy_data_fields_on_both_sides_of_each_bound() -> void:
 	_assert_field("knockback_scale", 0.0, -0.001)
 	_assert_field("move_speed", 0.0, -0.001)
 	_assert_field("aggro_radius_tiles", 0.0, -0.001)
-	_assert_field("attack_range_tiles", 0.001, 0.0)
+	_assert_attack_field("trigger_max_tiles", 0.001, 0.0)  # F-006/C14 (c): was attack_range_tiles.
 	_assert_field("stop_distance_tiles", 0.0, -0.001)
 	_assert_field("attack_cooldown", 0.0, -0.001)
 
 
 func test_ac1_attack_must_be_set_and_valid() -> void:
 	var data: EnemyData = EnemyArena.chaser_values()
-	data.attack = null
+	data.attacks = [null]
 	assert_false(data.validate(RATE, Tunables.enemy_combat).is_empty())
 	data = EnemyArena.chaser_values()
-	data.attack.damage = 0
+	data.attacks[0].damage = 0
 	var errors: PackedStringArray = data.validate(RATE, Tunables.enemy_combat)
 	assert_eq(errors.size(), 1)
 	assert_string_contains(errors[0], "chaser_swipe")
@@ -84,7 +84,7 @@ func test_ac1_enemy_attack_rules() -> void:
 
 func test_ac1_c8_windup_floor_with_the_exact_minimum_passing() -> void:
 	_assert_attack_field("windup", 0.45, 0.449)  # aim_track_time 0.3 + locked 0.15.
-	var attack: EnemyAttackData = EnemyArena.chaser_values().attack
+	var attack: EnemyAttackData = EnemyArena.chaser_values().attacks[0]
 	attack.aim_track_time = 0.1
 	attack.windup = 0.3
 	assert_true(attack.validate_enemy(RATE, Tunables.enemy_combat).is_empty(), "exact minimum")
@@ -131,7 +131,7 @@ func _assert_field(field: String, valid: Variant, invalid: Variant) -> void:
 
 
 func _assert_attack_field(field: String, valid: Variant, invalid: Variant) -> void:
-	var attack: EnemyAttackData = EnemyArena.chaser_values().attack
+	var attack: EnemyAttackData = EnemyArena.chaser_values().attacks[0]
 	attack.set(field, valid)
 	assert_true(attack.validate_enemy(RATE, Tunables.enemy_combat).is_empty(), "%s valid" % field)
 	attack.set(field, invalid)
