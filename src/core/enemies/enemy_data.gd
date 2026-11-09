@@ -4,7 +4,7 @@ extends Resource
 
 ## Which brain decides for this enemy. A new kind of behavior is a new value and a new class.
 ## F-005/C13: new values are appended, so saved data keeps its meaning.
-enum Brain { CHASER, CASTER }
+enum Brain { CHASER, CASTER, BRUTE }  # F-006/C13: BRUTE appended.
 
 @export var id: StringName = &""
 @export var brain: Brain = Brain.CHASER
@@ -84,9 +84,14 @@ func _attacks_errors(step_rate: int, tunables: EnemyCombatTunables) -> PackedStr
 func _attack_kind_errors(attack: EnemyAttackData) -> PackedStringArray:
 	var errors: PackedStringArray = []
 	match brain:
-		Brain.CHASER:
+		Brain.CHASER, Brain.BRUTE:
 			if attack.is_projectile():
-				errors.append("brain CHASER needs a melee attack, %s is a projectile" % attack.id)
+				errors.append(
+					(
+						"brain %s needs a melee attack, %s is a projectile"
+						% [Brain.find_key(brain), attack.id]
+					)
+				)
 		Brain.CASTER:
 			if not attack.is_projectile():
 				errors.append("brain CASTER needs a projectile attack, %s is melee" % attack.id)

@@ -11,6 +11,8 @@ static func for_data(data: EnemyData) -> EnemyBrain:
 			return ChaserBrain.new()
 		EnemyData.Brain.CASTER:
 			return CasterBrain.new()
+		EnemyData.Brain.BRUTE:
+			return BruteBrain.new()
 	return null
 
 
