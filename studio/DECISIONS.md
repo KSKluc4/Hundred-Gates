@@ -46,10 +46,12 @@
   contact, so it never hits. The per-step speed bound (`speed / step_rate ≤ radius`) is a
   **sampling limit**, not a swept-hit guarantee: hits stay checked only at contact instants
   (D-007), so a graze that exists only between two contacts is missed.
-- **Refined at F-006 (PROPOSED — Lucas decides at F-006 Gate A):** the same rule covers a body's
-  planned attack movement (the brute's charge). Core exposes the planned segment; the glue sweeps
-  the body's circle against `world` only and reports the reach; short of the plan = wall stop.
-  Enemy bodies never count as walls.
+- **Refined at F-006 Gate A (accepted by Lucas, 2026-11-09, F-006 §10 Q1/Q4):** the same rule
+  covers a body's planned attack movement (the brute's charge). Core exposes the planned segment;
+  the glue sweeps the body's circle against `world` only and reports the reach; short of the plan
+  = wall stop. Enemy bodies never count as walls. A segment that **starts inside a wall** is a stop
+  (`reached = start`). A body's stop is **applied after that step's contact**, so the moving
+  attack can still hit at the step where it meets the wall.
 
 ## D-007 — Combat runs on a shared step grid
 - **Status:** ACCEPTED
