@@ -12,7 +12,7 @@
 | F-003 | Warrior sword chain + hit/hurt + hitstop + training dummy | DONE | — | — |
 | F-004 | Enemy base + melee chaser | DONE | — | — |
 | F-005 | Ranged caster + minimal projectiles | DONE | — | — |
-| F-006 | Brute — charge, stomp, wall stun | CODE_REVIEW | Lucas | — |
+| F-006 | Brute — charge, stomp, wall stun | DONE | — | — |
 
 ## Open questions waiting on Lucas
 - _none_

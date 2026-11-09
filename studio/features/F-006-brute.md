@@ -1,7 +1,7 @@
 ---
 id: F-006
 title: Brute — charge, stomp, wall stun
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: DONE             # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Lucas     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-08
 updated: 2026-11-09
@@ -836,3 +836,4 @@ Status remains `CODE_REVIEW`; next actor is `Lucas`. No source or test files cha
 ## 11. Director Notes  ·  _Lucas_
 
 <Overrides, priorities, gut calls. Everyone obeys these.>
+- **2026-11-09 (Gate B):** Gate B: playtested brute, chaser and caster unchanged, feel approved.
