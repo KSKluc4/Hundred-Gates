@@ -4,7 +4,8 @@
 > Source of truth for how fighting works. Specs must match it; if they don't, one of
 > them changes explicitly.
 > **Status:** core player decisions set (CQ1–CQ8, 2026-10-31). Phase 1 enemy archetypes set
-> (CQ10–CQ12, 2026-11-01; chaser → F-004 DONE, caster → F-005 DONE, brute → F-006 DONE). Bosses next.
+> (CQ10–CQ12, 2026-11-01; chaser → F-004 DONE, caster → F-005 DONE, brute → F-006 DONE).
+> Bosses for floors 1–3 designed (2026-11-09; Warden → F-007, Hexer → F-008, Juggernaut → F-009).
 
 ## Fixed so far (from PROJECT.md / Lucas)
 - Real-time action, top-down camera.
@@ -58,6 +59,12 @@
 - **Random/weighted enemy attack choice** — the player can't read the next attack from position; needs synced RNG. *Tempting because:* feels alive.
 - **Per-attack cooldowns** — a charge ending next to you could stomp at once and erase its punish window. *Tempting because:* flexible, bosses may want it.
 - **Wall stun from slide collisions or body position** — enemy bodies and sliding would stun it falsely; physics would decide outcomes (G6). *Tempting because:* one line.
+- **A separate boss class/system** — duplicates everything enemies share (step grid, planted, targets, snapshots) and the two drift apart. *Tempting because:* bosses feel special.
+- **Scripted attack rotation (fixed cycle that ignores distance)** — a second selection rule plus per-enemy memory outside the attack state; the player can no longer read the next attack from position. *Tempting because:* it's the classic boss script. Revisit if a boss gets "solved" by standing at one distance.
+- **Stage change interrupts the running attack** — crossing an HP line would cancel a telegraphed attack, which is a flinch by another name (CQ10). *Tempting because:* the change feels instant.
+- **Invulnerable stage shift** — takes the player's reward away mid-fight and adds an enemy invulnerability state ("no enemy hurt i-frames"). *Tempting because:* protects the show moment.
+- **Enrage timer / boss HP that scales** — a stat check, not a pattern check (pillar 2). *Tempting because:* stops slow, safe play.
+- **Summoned adds (combatants spawned mid-fight)** — breaks fixed ids/order in snapshots (F-003/C19). *Tempting because:* fits the floor 2 lesson. Possible later as pre-placed dormant enemies (CX9).
 
 ## Player
 
@@ -222,11 +229,111 @@ Floor 1: chasers only. Floor 2: chasers + casters. Floor 3: all three. Each boss
 floor's lesson.
 
 ## Bosses (floors 1–3)
-Template per boss:
-- **Concept:** one line
-- **Phases:** HP thresholds and what changes
-- **Attacks:** name → telegraph (what the player sees/hears, how long) → hitbox → punish window
-- **What it teaches:** the skill this boss tests before the next floor
+
+A boss is an **enemy**: same `EnemyLogic`, same shared rules (telegraph floor, track then lock,
+planted while committed, no hurt i-frames, slower than the player on foot, nearest-player
+target, ordered attack list with trigger bands, one shared cooldown, never random). Names are
+working names (→ Lore, CX7). Boss **stages** are not called phases: *phase* already means
+windup / active / recovery (GLOSSARY).
+
+### Rules shared by every boss
+- **Stages (F-007).** A boss has ordered stages, each entered at an HP percent. A stage swaps
+  the attack list, `move_speed` and `attack_cooldown`. Stages only go forward.
+- **Stage shift.** A stage is entered at the first step start at which the boss is **free**
+  after its HP crossed the line, so a running attack or pattern always finishes. The boss
+  then stands planted for `shift_duration`: no hitbox, no movement, **takes damage normally**.
+  The shift is a free punish, never an invulnerable pause. The attack cooldown keeps counting
+  through it.
+- **Patterns (F-007).** An attack may name a **follow-up**: when its recovery ends, the
+  follow-up's windup starts at that instant, with no cooldown, no trigger band and no free
+  moment. The target is re-picked at each follow-up (co-op), and aim tracks then locks again.
+  Each attack of a pattern is its own attack instance and obeys the telegraph floor.
+- **Gap vs punish window.** The recovery before a follow-up is a **gap**: short, hittable, but
+  not safe. The **punish window** (principle 2) is the recovery of the pattern's last attack.
+  It must fit at least hits 1 and 2.
+- **A wall-stopped attack drops its follow-up.** The stun ends the pattern.
+- **Never pushed.** Every boss has `knockback_scale` 0.
+- **Damage stays in the floor's band** (floor 1–3: 18–25). Bosses are harder by pattern, not
+  by number.
+- **Not a sponge.** HP is budgeted in punishes: about 10–12 full chains for a clean fight,
+  60–120 s. If a boss needs more HP to last, it needs more pattern instead.
+- **No summons, no enrage timer, no invulnerability** (see Rejected).
+- **Distance picks the attack.** The player chooses what the boss does by where they stand.
+  That's the readable part; patterns and stages are what keeps it from being solved.
+
+### Floor 1 — Warden (F-007)
+- **Concept:** a big chaser with a real moveset. The exam for read → dodge → punish: now in
+  sequences, with one delayed swing that punishes dodging on the first twitch.
+- **Body:** 400 HP, hurtbox 0.7 tiles, `knockback_scale` 0. Chases at 3.0 tiles/s, holds at
+  1.2 tiles, aggro 10 tiles. Cooldown 1.0 s. Uses the chaser brain.
+- **Stage 1 (100–50%)** — list order:
+  1. **Cleave** (target within 2.0 tiles) — pattern of two swipes.
+     - Swipe A: 0.50 s windup (tracks 0.30, locked 0.20) → 110° sector, 1.6 tiles, active
+       0.10 s, lunges 0.6 tiles → 20 damage, 0.8 knockback → gap 0.25 s.
+     - Swipe B: 0.45 s windup (0.25 / 0.20) → same sector, lunges 0.8 → 20 damage →
+       **punish: 0.80 s recovery**.
+  2. **Dashing cut** (target 3.0–6.0 tiles) — 0.70 s windup (0.45 / 0.25) → 120° sector,
+     1.2 tiles, during a 0.30 s active that lunges 5.0 tiles → 22 damage, 1.2 knockback →
+     **punish: 0.90 s recovery**. Walk out of the lane if you read it early; dash if late.
+  - Between 2.0 and 3.0 tiles it walks in.
+- **Stage 2 (≤ 50%)** — shift 1.2 s. Walks at 3.5 tiles/s, cooldown 0.7 s.
+  1. **Triple cleave** (within 2.0) — Swipe A → Swipe B (now a 0.25 s gap) → **Overhead**:
+     0.75 s windup (0.50 / 0.25), 150° sector, 2.0 tiles, active 0.10 s, lunges 1.0 →
+     25 damage, 1.5 knockback → **punish: 1.00 s recovery**. The long windup is the trap:
+     dash on the rhythm of A and B and the dash is over before it lands.
+  2. **Dashing cut → Spin** (3.0–6.0) — the cut's recovery becomes a 0.30 s gap, then
+     **Spin**: 0.45 s windup, no aim, full circle of 1.8 tiles, active 0.10 s → 20 damage,
+     1.2 knockback → **punish: 0.90 s recovery**. Stage 1's habit (rush in after the cut)
+     now gets hit.
+- **What it teaches:** dodge each hit of a sequence, not the sequence once; wait for the real
+  opening; a windup's length is information.
+
+### Floor 2 — Hexer (F-008, needs volleys)
+- **Concept:** a caster that fills the room with lanes. The exam for closing distance under
+  fire, dashing *through* shots and using cover.
+- **Body:** 320 HP, hurtbox 0.5 tiles, `knockback_scale` 0. Keeps 4–7 tiles from the target
+  at 2.5 tiles/s (catchable), aggro 10 tiles. Cooldown 1.2 s. Uses the caster brain.
+- **Stage 1 (100–50%)** — list order:
+  1. **Nova** (within 2.5 tiles) — 0.60 s windup, no aim → full circle of 2.5 tiles, active
+     0.10 s → 18 damage, 3.0 knockback → **punish: 1.00 s recovery**. Reaching it is not the
+     win; baiting the nova and dashing through it is.
+  2. **Fan volley** (2.5–9.0) — Fan A: 0.70 s windup (0.45 / 0.25) with aim lines → 3 bolts
+     at −20° / 0° / +20° → gap 0.30 s → Fan B: 0.45 s windup (0.25 / 0.20) → 2 bolts at ±10°
+     (the lanes that were safe) → **punish: 0.90 s recovery**. Bolts as the caster's
+     (0.25 tiles, 6 tiles/s, 18 damage, single target).
+- **Stage 2 (≤ 50%)** — shift 1.2 s. Moves at 3.0 tiles/s, cooldown 0.9 s.
+  1. **Nova → Ring** (within 2.5) — after the nova's 0.30 s gap: 0.60 s windup → 12 bolts,
+     one every 30°, at 4 tiles/s → **punish: 1.00 s recovery**. The nova pushes you out, the
+     ring comes after you: dash through it back in.
+  2. **Triple fan** (2.5–9.0) — 3 → 2 → 3 bolts → **punish: 0.90 s recovery**.
+- **What it teaches:** move toward danger, i-frame through a line instead of away from it,
+  break line of sight, and that arriving in melee starts a new read.
+- **Needs:** several projectiles per attack (count + spread, F-008). A boss room with cover
+  (CX9). One hit gives hurt i-frames, so a volley never hits one player twice.
+
+### Floor 3 — Juggernaut (F-009)
+- **Concept:** a brute that owns the room. The exam for not trading: its normal recovery is
+  too short to punish, so the wall is the only real opening.
+- **Body:** 500 HP, hurtbox 0.8 tiles, `knockback_scale` 0. Chases at 2.0 tiles/s, holds at
+  1.5 tiles, aggro 10 tiles. Cooldown 1.0 s. Uses the brute brain.
+- **Stage 1 (100–50%)** — list order:
+  1. **Stomp** (within 1.8 tiles) — 0.60 s windup, no aim → full circle of 2.0 tiles, active
+     0.10 s → 22 damage, 1.5 knockback → **punish: 0.70 s recovery**.
+  2. **Double charge** (3.0–9.0) — Charge A: 0.80 s windup (0.50 / 0.30) with a lane → 120°
+     sector, 1.0 tile, during a 0.50 s active that lunges 7 tiles → 25 damage, 1.5 knockback
+     → gap 0.35 s → Charge B: 0.60 s windup (0.35 / 0.25), re-aimed, same charge →
+     recovery 0.60 s. **A wall stop on either charge: stunned 1.5 s and the pattern ends** —
+     that's the punish.
+- **Stage 2 (≤ 50%)** — shift 1.2 s. Chases at 2.5 tiles/s, cooldown 0.8 s.
+  1. **Stomp → Debris** (within 1.8) — after a 0.30 s gap: 0.50 s windup → 8 bolts, one every
+     45°, at 5 tiles/s, 18 damage → **punish: 0.80 s recovery** (needs F-008 volleys).
+  2. **Triple charge** (3.0–9.0) — a third charge with a 0.50 s windup (0.30 / 0.20).
+- **What it teaches:** position before the attack, not during it; make the room do the
+  damage window for you; a boss that looks open isn't always open.
+
+### Build order
+F-007 boss base + Warden → F-008 volleys + Hexer → F-009 Juggernaut. Each in a test room;
+boss rooms, doors and floor gates belong to Direction.
 
 ## Tunables index
 > Starting values for the first playtest — expect to change them. Distances in **tiles**
@@ -290,6 +397,20 @@ Template per boss:
 | Brute stomp windup / `aim_track_time` / active / recovery | 0.60 / 0 / 0.10 / 0.70 s | `data/attacks/brute_stomp.tres` |
 | Brute stomp damage / arc / range / knockback / `lunge_tiles` / trigger band | 20 / 360° / 1.6 / 1.2 / 0 / 0–1.5 tiles | same |
 | Chaser swipe / caster bolt trigger band | 0–1.6 / 0–7.0 tiles (was `EnemyData.attack_range_tiles`, removed by F-006) | their attack files |
+| Warden `max_hp` / `hurtbox_radius_tiles` / `knockback_scale` | 400 / 0.7 / 0 | `data/enemies/warden.tres` |
+| Warden `move_speed` / `aggro_radius_tiles` / `stop_distance_tiles` / `retreat_distance_tiles` | 3.0 tiles/s / 10.0 / 1.2 / 0 | same |
+| Warden `attack_cooldown` / `attacks` (stage 1) | 1.0 s / [swipe_a, dashing_cut] | same |
+| Warden stage 2 `enter_at_hp_percent` / `shift_duration` / `move_speed` / `attack_cooldown` / `attacks` | 50 / 1.2 s / 3.5 tiles/s / 0.7 s / [p2_swipe_a, p2_dashing_cut] | `data/enemies/warden_stage_2.tres` |
+| Warden swipe A windup / `aim_track_time` / active / recovery (gap) | 0.50 / 0.30 / 0.10 / 0.25 s | `data/attacks/warden_swipe_a.tres`, `warden_p2_swipe_a.tres` |
+| Warden swipe B windup / `aim_track_time` / active / recovery | 0.45 / 0.25 / 0.10 / 0.80 s (stage 2: 0.25 s gap) | `data/attacks/warden_swipe_b.tres`, `warden_p2_swipe_b.tres` |
+| Warden swipe A / B damage / arc / range / knockback / `lunge_tiles` | 20 / 110° / 1.6 / 0.8 / 0.6 (A), 0.8 (B) tiles | same files |
+| Warden cleave trigger band | 0–2.0 tiles (on swipe A) | same files |
+| Warden dashing cut windup / `aim_track_time` / active / recovery | 0.70 / 0.45 / 0.30 / 0.90 s (stage 2: 0.30 s gap) | `data/attacks/warden_dashing_cut.tres`, `warden_p2_dashing_cut.tres` |
+| Warden dashing cut damage / arc / range / knockback / `lunge_tiles` / trigger band | 22 / 120° / 1.2 / 1.2 / 5.0 / 3.0–6.0 tiles | same files |
+| Warden overhead windup / `aim_track_time` / active / recovery | 0.75 / 0.50 / 0.10 / 1.00 s | `data/attacks/warden_overhead.tres` |
+| Warden overhead damage / arc / range / knockback / `lunge_tiles` | 25 / 150° / 2.0 / 1.5 / 1.0 tiles | same |
+| Warden spin windup / `aim_track_time` / active / recovery | 0.45 / 0 / 0.10 / 0.90 s | `data/attacks/warden_spin.tres` |
+| Warden spin damage / arc / range / knockback / `lunge_tiles` | 20 / 360° / 1.8 / 1.2 / 0 tiles | same |
 
 ## Open questions (cross-department)
 | # | To | Question | Blocking? |
@@ -300,4 +421,6 @@ Template per boss:
 | CX4 | → Direction | The death/re-entry rule (CQ6) affects Floors and Items later — promote to a D-###? | **Answered:** yes → D-006 |
 | CX5 | → Art & Game Feel | Look and sound of enemy telegraphs: windup cue, lock cue, active, "open" recovery; caster aim line and brute charge lane. Combat fixes only the timing. | No |
 | CX6 | → Direction | Floor mix for floors 1–3 (proposal in *Enemies*). Floors starts in phase 2, but phase 1 needs it. | No |
-| CX7 | → Lore | Names for chaser, caster, brute (working names only; no SAO names). | No |
+| CX7 | → Lore | Names for chaser, caster, brute and the three bosses (Warden, Hexer, Juggernaut are working names; no SAO names). | No |
+| CX8 | → Art & Game Feel | Look and sound of the boss bar, the stage shift cue, and how a gap reads differently from a punish window. Combat fixes only the timing. | No |
+| CX9 | → Direction | Boss rooms: size, cover for the Hexer, clear walls for the Juggernaut. Are pre-placed dormant adds wanted for floor 2? Combat designed without them. | No (F-007 uses a test room) |

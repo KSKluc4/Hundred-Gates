@@ -2,7 +2,7 @@
 
 > Updated by whoever changes a feature's status. Lucas checks this first.
 
-**Last updated:** 2026-11-08
+**Last updated:** 2026-11-09
 
 | ID | Feature | Status | Next actor | Blocked by |
 |---|---|---|---|---|
@@ -13,6 +13,7 @@
 | F-004 | Enemy base + melee chaser | DONE | — | — |
 | F-005 | Ranged caster + minimal projectiles | DONE | — | — |
 | F-006 | Brute — charge, stomp, wall stun | DONE | — | — |
+| F-007 | Boss base + floor 1 boss (Warden) | PLAN_REVIEW | Auditor | — |
 
 ## Open questions waiting on Lucas
 - _none_

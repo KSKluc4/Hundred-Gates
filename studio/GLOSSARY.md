@@ -51,3 +51,9 @@
 | Charge | A lunge long enough to cross the room (the brute's). Wall-stopped by D-008's report | `brute_charge` |
 | Wall stop / Wall stun | A charge reported short of its planned step by a `world` wall (or starting that step inside one). Applied right after that step's contact, so the step still hits; its recovery then lasts `wall_stun_duration`. Enemy bodies never cause it | `wall_stun_duration`, `wall_stopped`, `report_charge_reach()` |
 | End of step | The point right after a contact instant's hits are applied, before the next step starts. Where a combatant applies what was reported during the step | `Combatant.end_step()` |
+| Boss | An enemy with stages and patterns that ends a floor. Same `EnemyLogic` and rules as any enemy; never pushed (`knockback_scale` 0) | `EnemyData.stages` |
+| Stage | One step of a boss fight, entered at an HP percent. Swaps the attack list, move speed and attack cooldown. Only goes forward. Stage 0 is the `EnemyData` itself | `EnemyStageData`, `get_stage_index()` |
+| Stage shift | The planted pause when a stage is entered: no hitbox, no movement, takes damage normally. Starts only when the enemy is free | `shift_duration`, `stage_changed` |
+| Pattern | An attack plus its chain of follow-ups, run without a free moment in between. The cooldown starts when its last recovery ends | `follow_up` |
+| Follow-up | The attack that starts the instant another attack's recovery ends. Its trigger band is not read; its target is re-picked | `EnemyAttackData.follow_up` |
+| Gap | The recovery of a pattern attack that has a follow-up. Hittable, but not the punish window | — |

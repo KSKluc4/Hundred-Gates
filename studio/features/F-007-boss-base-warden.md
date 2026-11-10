@@ -1,0 +1,366 @@
+---
+id: F-007
+title: Boss base + floor 1 boss (Warden)
+status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+created: 2026-11-09
+updated: 2026-11-09
+depends_on: [F-003, F-004, F-005, F-006, D-005, D-007, D-008]
+pillars: [2]
+department: Combat
+---
+
+# F-007 — Boss base + floor 1 boss (Warden)
+
+> **How to use this file.** This is the single source of truth for this feature.
+> Every agent reads the WHOLE file before acting. Write only in the sections you own
+> (see studio/README.md). Never delete another role's text — reply under it.
+
+---
+
+## 1. Goal  ·  _Planner_
+
+**Player-facing outcome (one sentence):**
+In a test room, the player fights the Warden: a two-stage boss whose attacks come in
+sequences that must be dodged hit by hit and punished only at the real opening.
+
+**Why now:** The three phase-1 enemies are DONE. Bosses are the other half of pillar 2 and
+phase 1 needs three. This feature adds the two things every boss needs (stages, patterns) and
+proves them with the simplest boss, which uses only melee sectors and lunges that already exist.
+
+**Out of scope (explicitly):**
+- Boss room door, floor gate, floor structure, town return and boss re-entry (D-006) → Direction.
+- The floor 2 and floor 3 bosses (F-008, F-009) and several projectiles per attack.
+- A new brain: the Warden uses the chaser brain unchanged.
+- Loot, rewards, a victory screen, music, final art or VFX.
+- Summoned enemies, enrage timers, any invulnerability.
+- Changing any value or behavior of the chaser, caster or brute.
+
+---
+
+## 2. Context  ·  _Planner_
+
+What the Builder needs to know that isn't obvious from the code:
+- **Existing systems this touches (checked by Direction on `main` at `a799822`):**
+  - `src/core/enemies/enemy_data.gd` (`EnemyData`): `id`, `brain` (`Brain { CHASER, CASTER, BRUTE }`,
+    appended only), `max_hp: int`, `hurtbox_radius_tiles`, `knockback_scale`, `move_speed`,
+    `aggro_radius_tiles`, `stop_distance_tiles`, `retreat_distance_tiles`, `attack_cooldown`,
+    `attacks: Array[EnemyAttackData]`. `validate(step_rate, tunables)` checks the fields and calls
+    `_attacks_errors()` (list not empty, no null, each `validate_enemy()`, and the brain kind rule
+    `_attack_kind_errors()`). The speed rule is separate: `validate_against_class(class_data)`,
+    called by `CombatRunner` at setup and on reload (`combat_runner.gd` ~173 and ~260).
+  - `src/core/enemies/enemy_attack_data.gd` (`EnemyAttackData extends AttackData`): `aim_track_time`,
+    `lunge_tiles`, projectile fields, `trigger_min_tiles`, `trigger_max_tiles`, `wall_stun_duration`;
+    `validate_enemy()`, `ENEMY_SNAPSHOT_KEYS`, `to_dict()` / `from_snapshot()`. A running attack is
+    snapshotted **by value**, never as a resource reference.
+  - `src/core/enemies/enemy_logic.gd` (`EnemyLogic`): `State { IDLE, CHASE, WINDUP, ACTIVE, RECOVERY,
+    KNOCKBACK, DEAD }`; `SNAPSHOT_KEYS`; `_is_free()` (IDLE/CHASE, not in hitstop), `_is_committed()`;
+    `_decide()` asks the brain; `_start_attack(view, index)` latches `_data.attacks[index].duplicate()`
+    (a **shallow** copy: its `follow_up` would still point at the pre-reload resource);
+    `_finish_attack()` starts the cooldown from `_data.attack_cooldown`; `_advance_move()` walks at
+    `_data.move_speed`. `setup()` **is** the debug reset (F-004/C15); `apply_data()` is the reload.
+    **Naming:** `_phase_elapsed`, `_advance_phase()`, `_phase_time_left()`, `_cross_finished_phases()`
+    already use *phase* for windup/active/recovery, as `GLOSSARY.md` does. Boss stages are therefore
+    called **stages** everywhere in this feature.
+  - `src/core/enemies/enemy_brain.gd`: `static pick_attack(data: EnemyData, distance)` reads
+    `data.attacks`. It is called by the three brains and by `tests/core/enemies/test_attack_list.gd`
+    with an `EnemyData`. Brains also read `data.aggro_radius_tiles`, `stop_distance_tiles`,
+    `retreat_distance_tiles` (unchanged by stages).
+  - `src/core/combat/combat_state.gd`: `get_hp() -> int`, `get_max_hp() -> int`.
+  - `tests/core/enemies/test_brute_wall_stop.gd` checks a snapshot against
+    `EnemyLogic.SNAPSHOT_KEYS.size()`, so appending keys keeps it green.
+  - `src/entities/enemies/enemy.gd`: each enemy already draws a small HP bar (`get_hp_fraction()`)
+    and its telegraph. There is **no** screen-space HUD bar yet; `src/ui/` has `debug_overlay` and
+    `src/ui/debug/` (`combat_debug_draw`, `damage_numbers`, `motor_debug_overlay`).
+  - Debug scenes are `scenes/debug/f00N_<name>.tscn` (F-004–F-006: walled room, `CombatRunner`
+    last with `refill_player_on_died` on, R = reset, F5 = reload).
+- A boss is **not a new system**. It is an `EnemyData` whose data uses two new, optional
+  features. With both left empty, an enemy behaves exactly as before this feature.
+- Terms used below (see `GLOSSARY.md`): free, planted, step start, contact instant, trigger
+  band, attack instance, aim tracking / aim lock, lunge, wall stop.
+- New terms:
+  - **Stage:** one step of a boss fight, entered at an HP percent. Stage 0 is the `EnemyData` itself.
+    (Not "stage": in code and `GLOSSARY.md`, *stage* already means windup / active / recovery.)
+  - **Stage shift:** the planted pause when a stage is entered.
+  - **Follow-up:** the attack that starts the instant another attack's recovery ends.
+  - **Pattern:** an attack plus its chain of follow-ups.
+  - **Gap:** the recovery of an attack that has a follow-up.
+- Relevant prior decisions: D-007 (step grid), D-008 (wall stops, used by C12), D-005 (data-driven), D-002 (G6–G9).
+  `design/combat.md` → *Bosses* and its *Rejected* list.
+- Relevant prior features: F-003 (hit/hurt, snapshots), F-004 (enemy base, chaser brain),
+  F-006 (attack list, trigger bands, wall stun, `end_step()`).
+
+---
+
+## 3. Options Considered  ·  _Planner_
+
+> This section is what stops context loss. Be honest about trade-offs.
+> The Builder MUST NOT implement anything listed under Rejected.
+
+### ✅ Chosen: A boss is an enemy with stages and follow-ups, both as data
+- **How it works:** `EnemyData` gets an ordered `stages` list (`EnemyStageData`: HP percent,
+  shift duration, attack list, move speed, attack cooldown). `EnemyAttackData` gets an optional
+  `follow_up`. `EnemyLogic` keeps a stage index and reads the current stage's values through
+  getters. Attack choice stays F-006's: first attack in the current list whose band holds.
+- **Why chosen:** Bosses inherit every enemy rule and test for free. Two small data fields give
+  stages and sequences, which is what makes a pattern fight. Any enemy can use them later (elites).
+- **Costs we're accepting:** A reused attack with a different follow-up needs its own `.tres`
+  copy (the Warden has 8 attack files). With distance-only selection a player may find one
+  distance that makes a boss repeat a single pattern.
+- **Would revisit if:** In playtests the Warden is beaten by standing at one distance without
+  reading anything, or copies of attack files start to drift apart by mistake.
+
+### ❌ Rejected: A separate `BossLogic` class or boss scene type
+- **How it would work:** Bosses get their own logic class with stages and scripted attacks.
+- **Why rejected:** It would re-implement the step grid, planted rule, targeting, hitstop and
+  snapshots, and every later enemy fix would have to be made twice.
+- **Tempting because:** Bosses feel special, and a blank class looks faster than extending
+  `EnemyLogic` carefully.
+
+### ❌ Rejected: Scripted attack rotation (a fixed cycle that ignores distance)
+- **How it would work:** The boss runs attack 1, 2, 3, 1, 2, 3… wherever the player stands.
+- **Why rejected:** It needs a second selection rule and a counter outside the attack state,
+  and the player can no longer read the next attack from position (F-006's rule).
+- **Tempting because:** It's the classic boss script and guarantees variety.
+
+### ❌ Rejected: A wrapper resource for patterns (`EnemyPatternData` holding a list of attacks)
+- **How it would work:** Attack lists hold patterns; each pattern holds its band and its attacks.
+- **Why rejected:** Trigger bands would move off `EnemyAttackData`, so the chaser, caster and
+  brute data and F-006's tests would all change for a feature they don't use.
+- **Tempting because:** No duplicated attack files; a cleaner model on paper.
+
+### ❌ Rejected: The stage change interrupts the running attack
+- **How it would work:** The instant HP crosses the line, the attack is cancelled and the shift starts.
+- **Why rejected:** A hit would cancel a telegraphed attack, which is the flinch rejected in
+  CQ10, and the player would learn to burst a threshold to escape a pattern.
+- **Tempting because:** It's simpler (no pending state) and the change feels immediate.
+
+### ❌ Rejected: Invulnerable stage shift
+- **How it would work:** The boss can't be hit while it shifts.
+- **Why rejected:** It adds an enemy invulnerability state (the design has none) and takes the
+  player's opening away at the moment they earned it.
+- **Tempting because:** Every boss in the genre does it, and it protects the animation.
+
+### ❌ Rejected: Calling boss stages "phases" in code and data
+- **How it would work:** `EnemyPhaseData`, `phase_index`, `phase_changed`.
+- **Why rejected:** `EnemyLogic` and `GLOSSARY.md` already use *phase* for windup / active /
+  recovery (`_phase_elapsed`, `_advance_phase()`). Two meanings in one class is how bugs start.
+- **Tempting because:** "boss phase" is the genre's word, and the design doc first used it.
+
+### ❌ Rejected: Random or weighted choice between the boss's attacks
+- **How it would work:** Roll among attacks whose band holds.
+- **Why rejected:** Already rejected in `design/combat.md`: unreadable, and needs synced RNG in co-op.
+- **Tempting because:** Makes the boss feel alive with no design work.
+
+---
+
+## 4. Constraints  ·  _Planner_
+
+Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
+
+| ID | Constraint | Reason |
+|---|---|---|
+| C1 | No boss class. Stages and follow-ups live in `EnemyLogic` / `EnemyData` / `EnemyAttackData`, in `src/core/`, with no node or visual dependency. | G6, §3 |
+| C2 | An enemy with empty `stages` and no `follow_up` behaves exactly as before. No value, file or test of the chaser, caster, brute or dummy changes (Direction checked: no existing test asserts an exact field or key set that this feature breaks). | Must not break |
+| C3 | **Stage data.** `EnemyStageData` (Resource): `enter_at_hp_percent: int`, `shift_duration: float`, `attacks: Array[EnemyAttackData]`, `move_speed: float`, `attack_cooldown: float`. `EnemyData.stages` lists stages 1..n in order. Stage 0 uses `EnemyData`'s own `attacks`, `move_speed`, `attack_cooldown`. Every other value (HP, radii, stop/retreat distance, knockback scale, brain) comes from `EnemyData` in all stages. | G9 |
+| C4 | **Effective values.** `EnemyLogic` exposes `get_current_attacks()`, `get_current_move_speed()` and `get_current_attack_cooldown()` (stage 0 = the `EnemyData` fields). `_start_attack()`, `_advance_move()` and `_finish_attack()` read them. Add `EnemyBrain.pick_attack_in(attacks: Array[EnemyAttackData], distance)`; the three brains call it with `enemy.get_current_attacks()`. `pick_attack(data, distance)` stays and delegates with `data.attacks` (its existing callers and tests are unchanged). | One place decides the stage |
+| C5 | **Stage condition.** Stage `i` holds when `hp * 100 <= max_hp * enter_at_hp_percent` (integers). The stage index never decreases, except on the debug reset (back to 0). | Exact, serializable |
+| C6 | **When a stage is entered.** At a step start, after the view is sensed and before the brain decides: if the enemy is free and a deeper stage holds, it enters the **deepest** stage that holds (skipping any in between). Never mid-attack, mid-pattern, in knockback, in hitstop, or when dead. | No interrupt (CQ10) |
+| C7 | **Stage shift.** On entering: the stage index changes, `stage_changed(stage_index: int)` (a new `EnemyLogic` signal) is emitted once, and the enemy is in *stage shift* (a new `State.STAGE_SHIFT`, **appended** after `DEAD` so saved state ints keep their meaning) for that stage's `shift_duration`. During it the enemy is not free, doesn't move, has no hitbox, is planted (no knockback), and takes damage and hitstop normally; hitstop pauses the shift timer. `shift_duration` 0 = no shift state: the enemy stays free and decides in that same step with the new values. | Free punish, not a pause |
+| C8 | The attack cooldown is **not** reset, cleared or paused by a stage shift (hitstop still pauses it, as always). If it is still running after the change, it keeps its remaining time; the new `attack_cooldown` applies from the next time a cooldown starts. | Never erase a punish window |
+| C9 | **Follow-up.** `EnemyAttackData.follow_up: EnemyAttackData` (null = none). When the recovery of an attack with a follow-up ends, the follow-up's windup starts at that exact instant (no time lost or added, as active follows windup). No free moment, no brain decision, no cooldown, and the follow-up's trigger band is not read. The enemy stays planted through the whole pattern. **Which follow-up:** read from the **current data by position**, never from the latched copy's `follow_up` reference: the pattern root is the attack index the brain chose in the current stage's list, and the n-th follow-up is reached by following `follow_up` n times from that root. Each follow-up latches at its own windup start, like any attack. A reload mid-pattern therefore applies from the next follow-up; if the new chain is shorter, the pattern ends there. | Patterns, F-004/C12 |
+| C10 | **Follow-up target and aim.** At a follow-up's start the target is re-picked by the normal rule (nearest living player, ties by registration order) from the combat view sensed at the start of the current step. Aim then tracks and locks by the follow-up's own `aim_track_time`. If that view has no living player, the pattern ends there as if that recovery were the last one. | Co-op ready (D-002) |
+| C11 | Each attack of a pattern is its own attack instance (may hit each hurtbox once). The attack cooldown starts when the pattern's last recovery (or wall stun) ends. | F-003 |
+| C12 | A wall-stopped attack (F-006) drops its follow-up: its wall stun runs and the pattern ends. | Design: Bosses |
+| C13 | **Validation**, at scene setup and on every data reload; bad data is rejected, never clamped. (a) Every attack reachable through `follow_up` passes all existing attack checks: `validate_enemy()` (telegraph floors, step rules, trigger band, wall stun rule) **and** the brain kind rule (`_attack_kind_errors()`). (b) A follow-up chain has no cycle. (c) `enter_at_hp_percent` is 1–99 and strictly decreasing along `stages`. (d) `shift_duration >= 0`. (e) Each stage's `attacks` passes the same checks as `EnemyData.attacks`. (f) Each stage's `move_speed` is below the class's: `validate_against_class()` checks every stage too, so `CombatRunner`'s setup and reload paths cover it unchanged. | Principle 1, G2 |
+| C14 | **Serializable.** Snapshot/restore round-trips the stage index, the shift time left, and which attack of the pattern is running, identified by position (C9): new `SNAPSHOT_KEYS` `stage_index`, `stage_shift_left`, `pattern_root_index`, `pattern_depth`, appended. The running attack itself stays snapshotted by value (`attack`). A restore mid-pattern or mid-shift continues identically. | G7 |
+| C15 | Same results at 30, 60 and 120 physics ticks/s for the stage entry step, the shift end and every follow-up start. | G1, D-007 |
+| C16 | The Warden is data only: `data/enemies/warden.tres`, `data/enemies/warden_stage_2.tres`, eight files in `data/attacks/`, path constants in `src/autoload/tunables.gd` (G5). Brain = the chaser's. No Warden-specific code anywhere. | G9 |
+| C17 | The boss bar (new, screen-space, placeholder: `src/ui/debug/boss_bar.gd`) and the stage shift cue are presentation: they read getters and signals, and nothing in core reads them. Placeholder look. | G6 |
+| C18 | No new input action, autoload or third-party dependency. | G4 |
+
+**Must not break:** all F-001–F-006 behavior and tests; the existing enemy debug scenes; the
+debug reset; the speed check and data reload refusing bad data.
+
+### Warden data (starting values — all tunables)
+
+`data/enemies/warden.tres` — brain: chaser · `max_hp` 400 · `hurtbox_radius_tiles` 0.7 ·
+`knockback_scale` 0 · `move_speed` 3.0 · `aggro_radius_tiles` 10.0 · `stop_distance_tiles` 1.2 ·
+`retreat_distance_tiles` 0 · `attack_cooldown` 1.0 · `attacks` [warden_swipe_a, warden_dashing_cut] ·
+`stages` [warden_stage_2]. Body collision radius = hurtbox radius.
+
+`data/enemies/warden_stage_2.tres` — `enter_at_hp_percent` 50 · `shift_duration` 1.2 ·
+`move_speed` 3.5 · `attack_cooldown` 0.7 · `attacks` [warden_p2_swipe_a, warden_p2_dashing_cut].
+
+| File (`data/attacks/`) | windup | `aim_track_time` | active | recovery | damage | arc | range | knockback | `lunge_tiles` | trigger band | `follow_up` |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `warden_swipe_a` | 0.50 | 0.30 | 0.10 | 0.25 | 20 | 110° | 1.6 | 0.8 | 0.6 | 0–2.0 | `warden_swipe_b` |
+| `warden_swipe_b` | 0.45 | 0.25 | 0.10 | 0.80 | 20 | 110° | 1.6 | 0.8 | 0.8 | 0–2.0 (unused) | — |
+| `warden_dashing_cut` | 0.70 | 0.45 | 0.30 | 0.90 | 22 | 120° | 1.2 | 1.2 | 5.0 | 3.0–6.0 | — |
+| `warden_p2_swipe_a` | 0.50 | 0.30 | 0.10 | 0.25 | 20 | 110° | 1.6 | 0.8 | 0.6 | 0–2.0 | `warden_p2_swipe_b` |
+| `warden_p2_swipe_b` | 0.45 | 0.25 | 0.10 | 0.25 | 20 | 110° | 1.6 | 0.8 | 0.8 | 0–2.0 (unused) | `warden_overhead` |
+| `warden_overhead` | 0.75 | 0.50 | 0.10 | 1.00 | 25 | 150° | 2.0 | 1.5 | 1.0 | 0–2.0 (unused) | — |
+| `warden_p2_dashing_cut` | 0.70 | 0.45 | 0.30 | 0.30 | 22 | 120° | 1.2 | 1.2 | 5.0 | 3.0–6.0 | `warden_spin` |
+| `warden_spin` | 0.45 | 0 | 0.10 | 0.90 | 20 | 360° | 1.8 | 1.2 | 0 | 0–2.0 (unused) | — |
+
+Times in seconds, distances in tiles. Any attack field not listed here takes the value used in
+`chaser_swipe.tres`. No Warden attack uses projectiles or wall stun.
+
+---
+
+## 5. Acceptance Criteria  ·  _Planner_
+
+Testable, observable. The Auditor checks each one.
+
+- [ ] AC1: Given the existing chaser, caster and brute data (no stages, no follow-ups), when
+  the full test suite runs, then every pre-existing test passes **unedited**.
+- [ ] AC2: Given an enemy with one stage at 50% and `max_hp` 400, when its HP goes from 201 to
+  200 while it is free, then at the next step start its stage index is 1, `stage_changed(1)`
+  was emitted exactly once, and it did not decide an attack in that step.
+- [ ] AC3: Given the same enemy in the windup of the first attack of a two-attack pattern,
+  when a hit takes it to 200 HP or less, then both attacks run to the end unchanged and the
+  stage is entered at the first step start after the last recovery ends.
+- [ ] AC4: Given an enemy with stages at 60% and 30%, when one hit takes it from above 60% to
+  below 30% while it is free, then it enters stage 2 directly, with one `stage_changed(2)` and
+  one shift of stage 2's `shift_duration`.
+- [ ] AC5: Given an enemy in a stage shift, when a player hit lands, then it takes the damage
+  and the hitstop, is not knocked back, has no live hitbox, doesn't move, and the shift ends
+  later by exactly the hitstop time.
+- [ ] AC6: Given an enemy that entered a stage with 0.4 s of cooldown left and a 1.2 s shift,
+  when the shift ends with a target inside a trigger band, then it starts that attack at the
+  first step start after the shift. Given `shift_duration` 0 and 0.4 s of cooldown left, then it
+  does not attack until those 0.4 s have passed.
+- [ ] AC7: Given an attack with a follow-up, when its recovery ends, then the follow-up's
+  windup starts at that instant, the enemy was never free in between, no cooldown started, and
+  the follow-up started even with the target outside the follow-up's trigger band.
+- [ ] AC8: Given two players and a pattern whose first attack targeted player A, when player B
+  is the nearest living player in the view of the step where the follow-up starts, then the
+  follow-up targets B and its aim tracks B until its `aim_track_time`, then stays locked.
+- [ ] AC9: Given a pattern and no living player in the view when a follow-up would start, then
+  the pattern ends, the cooldown starts, and no follow-up windup begins.
+- [ ] AC10: Given a player standing inside both attacks of a two-attack pattern without
+  dodging, then the player is hit by the first, protected from nothing but hurt i-frames, and
+  the second attack can hit the same player (a separate attack instance) once those i-frames
+  allow it.
+- [ ] AC11: Given a wall-stun attack with a follow-up, when it is wall-stopped, then the stun
+  runs, no follow-up starts, and the cooldown starts when the stun ends. When it is not
+  wall-stopped, the follow-up starts normally.
+- [ ] AC12: Data with any of these is rejected at setup and on reload, with a message naming
+  the file and the rule: a follow-up cycle (A → B → A); a follow-up whose locked telegraph is
+  under `min_locked_telegraph`; stage percents not strictly decreasing; a percent of 0 or 100;
+  a negative `shift_duration`; a stage `move_speed` at or above the Warrior's.
+- [ ] AC13: Given a snapshot taken (a) mid-gap of a pattern and (b) mid-shift, when it is
+  restored and the same inputs are replayed, then the following states match the original run
+  step by step (stage index, shift time left, running attack, target, aim).
+- [ ] AC14: Given the same scripted fight against the Warden (fixed player commands, including
+  crossing 50% HP mid-pattern), when it runs at 30, 60 and 120 physics ticks/s, then the stage
+  entry instant, every follow-up start, every hit and the final HP values are identical.
+- [ ] AC15: Given `warden.tres` loaded with the real tunables, then validation passes, and a
+  test asserts: stage 1 at 1.5 tiles starts `warden_swipe_a`; at 4.5 tiles starts
+  `warden_dashing_cut`; at 2.5 tiles starts nothing and walks in; stage 2 at 1.5 tiles runs
+  swipe A → swipe B → overhead in order; stage 2 at 4.5 tiles runs dashing cut → spin.
+- [ ] AC16: The debug reset returns the Warden to full HP, stage 0, no shift, no attack.
+- [ ] AC17: `scenes/debug/f007_warden.tscn` runs on its own: a walled room of 20 × 12 tiles, one
+  Warrior, one Warden, a boss bar showing HP with a mark at 50%, and a visible cue during the
+  stage shift. No door, gate or floor logic.
+
+**How to verify manually (Lucas, in `f007_warden.tscn`):**
+1. Stand close: two swipes, then it's open. Dodge each swipe with its own dash; punish with a
+   full chain after the second.
+2. Hit it during the gap between the swipes: you land one hit, but the second swipe is coming.
+3. Stand at 4–5 tiles: it winds up and cuts across the room. Walk sideways early or dash late;
+   it's open after.
+4. Stand at 2.5 tiles: it only walks toward you.
+5. Take it to half HP in the middle of a combo: the combo finishes, then it stops for about a
+   second (hit it freely), then stage 2.
+6. Stage 2, close: after the second swipe a slow third one comes. Dash on the old rhythm and
+   you get hit; wait and it's easy.
+7. Stage 2, far: rush in after the cut and the spin hits you; wait for the spin, then punish.
+8. **Feel test:** every time you're hit you can say which attack it was and what you did wrong.
+   Stage 2 should feel like the same boss asking a harder question, not a new boss. The fight
+   should end in 1–2 minutes when played well, and never feel like chipping at a wall.
+
+---
+
+## 6. Task Breakdown  ·  _Planner_
+
+Small, ordered, each independently committable.
+
+| # | Task | Files likely touched | Notes |
+|---|---|---|---|
+| T1 | Effective-value getters on `EnemyLogic` (attacks, move speed, cooldown) and `EnemyBrain.pick_attack_in()`; brains, `_start_attack()`, `_advance_move()` and `_finish_attack()` use them. No behavior change. | `src/core/enemies/` | C4. All existing tests stay green (AC1). |
+| T2 | `follow_up` on `EnemyAttackData`; pattern logic in `EnemyLogic` (start, target re-pick, end without a living player, wall stop drops it, cooldown at pattern end). | `src/core/enemies/`, `tests/core/enemies/` | C9–C12. AC7–AC11. |
+| T3 | `EnemyStageData`, `EnemyData.stages`, stage index, entry rule, stage shift state, `stage_changed`, debug reset. | `src/core/enemies/`, `tests/core/enemies/` | C3, C5–C8. AC2–AC6, AC16. |
+| T4 | Validation for follow-up chains and stages, at setup and reload. | where enemy data is validated today, tests | C13. AC12. |
+| T5 | Snapshot/restore of stage index, shift time left and pattern position. | `src/core/enemies/`, tests | C14. AC13. |
+| T6 | Warden data: enemy, stage 2, eight attacks. Data test + tick-rate test. | `data/enemies/`, `data/attacks/`, tests | C16. AC14, AC15. |
+| T7 | `f007_warden.tscn` (built like `f006_brute.tscn`): room, Warrior, Warden, `boss_bar.gd` with a 50% mark, stage shift cue. Telegraphs use the existing enemy telegraph presentation. Scene tests `tests/scenes/test_f007_*.gd`. Glossary terms from the design doc. | `scenes/debug/`, `src/ui/debug/`, `src/entities/enemies/`, `tests/scenes/`, `studio/GLOSSARY.md` | C17. AC17. |
+
+---
+
+## 7. Plan Review  ·  _Auditor_
+
+<Each completed round starts with its machine line (format in AGENTS.md), then its findings.
+Severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion. Example finding:>
+
+### PR-1 🔴 <title>
+<What's wrong, where, why it matters, what you'd suggest.>
+> **Planner reply:** <accepted / rejected + reason / changed §X>
+
+---
+
+## 8. Implementation Log  ·  _Builder_
+
+**Started:** YYYY-MM-DD  ·  **Branch:** `feature/F-007-boss-base-warden`
+
+### Progress
+- [ ] T1 — <commit hash when done>
+- [ ] T2
+- [ ] T3
+- [ ] T4
+- [ ] T5
+- [ ] T6
+- [ ] T7
+
+### Deviations from plan
+<Every place the code differs from §3–§6, with reason. "None" if none.>
+- DEV-1: <what changed> — **Why:** <reason> — **Impact:** <what else this affects>
+
+### Assumptions made (small, reversible)
+- ASSUMPTION-1: <the gap in the spec> → <what I chose> — **Why:** <reason>
+
+### Things the Auditor should look at closely
+- <tricky spots, edge cases you're unsure about>
+
+### How to test
+<exact steps / commands / scene to run>
+
+---
+
+## 9. Code Review  ·  _Auditor_
+
+<Each completed round starts with its machine line (format in AGENTS.md), then
+`**Reviewed commit:** <hash>`, AC evidence and findings. Example finding:>
+
+### CR-1 🔴 <title>  ·  `path/to/file:line`
+<problem, why it matters, suggested fix>
+> **Builder reply:** <fixed in abc123 / disagree because …>
+
+---
+
+## 10. Open Questions  ·  _Anyone (append)_
+
+| # | Raised by | Question | Blocking? | Answer (Lucas/Planner) |
+|---|---|---|---|---|
+| Q1 | Combat | → Direction: this spec was written from the docs, not from the code on `main`. Check the real names and shapes: `EnemyData` / `EnemyAttackData` fields, where enemy data validation lives, how the snapshot identifies the running attack, how the debug reset and the F-006 debug scene are built, and whether a HUD bar already exists to reuse. Replace every guess in §2, §4 and §6 with what exists. | yes (before the Auditor) | **Direction:** done. §2 rewritten from `main` at `a799822`; C4, C7, C9, C13, C14, C16, C17, AC1, AC17, T1, T7 made concrete; scene renamed `f007_warden.tscn`; boss *phases* renamed **stages** (collision with attack phases in code and GLOSSARY). |
+| Q2 | Combat | → Direction: should the Warden's player death in `f007_warden.tscn` just use the existing debug reset? Assumed yes; D-006's town return is out of scope. | no | **Direction:** yes. Same as F-004–F-006 scenes: `refill_player_on_died` on, R resets. |
+| Q3 | Combat | → Art & Game Feel: look and sound of the boss bar, the stage shift cue, and gap vs punish window (design/combat.md CX8). Placeholders ship in this feature. | no | |
+| Q4 | Combat | → Lore: "Warden" is a working name (CX7). File names use it; renaming later is a data rename. | no | |
+| Q5 | Combat | → Lucas: Warden HP 400 means about 10 full chains. Confirm at Gate B by feel, not here. | no | |
+
+
+---
+
+## 11. Director Notes  ·  _Lucas_
+
+<Overrides, priorities, gut calls. Everyone obeys these.>
