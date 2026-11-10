@@ -2,7 +2,7 @@
 id: F-007
 title: Boss base + floor 1 boss (Warden)
 status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-09
 updated: 2026-11-10
 depends_on: [F-003, F-004, F-005, F-006, D-005, D-007, D-008]
@@ -411,6 +411,9 @@ rejection and snapshot continuation after an accepted edit.
 > running attack. C14 refuses a snapshot whose stage index doesn't resolve. New §3 Rejected
 > entry (fallback / keep old stage). New AC20 (a)–(g); §2 documents the reload path; T4/T5 updated.
 
+✔ resolved (round 2): C19 specifies group-wide preflight and the direct-call guard; C9 defines
+missing/replaced roots, and AC20 covers rejection, accepted edits and replay.
+
 ### PR-2 🔴 The shift's no-hitbox rule does not account for live projectiles
 
 **Location:** §4 C3–C4, C7, C13; §5 AC5; `studio/design/combat.md:242`;
@@ -441,6 +444,9 @@ that change with the shared design and projectile contract before implementation
 > shift. `design/combat.md` → *Stage shift* reworded to match. New §3 Rejected entry (shift
 > clears/pauses bolts). §2 documents the projectile lifecycle.
 
+✔ resolved (round 2): C7 and the shared combat design preserve bolts in flight; AC5 is melee-only
+and AC18 verifies continued projectile movement and damage during the shift.
+
 ### PR-3 🟡 Stage validation omits the existing scalar bounds and null entries
 
 **Location:** §4 C3/C13; §5 AC12; §6 T4.
@@ -462,6 +468,9 @@ reload, with errors identifying the stage resource or list position.
 > `move_speed >= 0` and `attack_cooldown >= 0` (0 passes), and fixes the error format
 > `stages[i] (<path>): <rule>`. AC12 extended with −1 speed, −0.1 cooldown, a null stage, an
 > all-zero stage that passes, at setup and on reload. T4 updated.
+
+✔ resolved (round 2): C13(g)–(h), AC12 and T4 cover null stages, both scalar lower bounds,
+zero passing and identifiable errors at setup and reload.
 
 ### PR-4 🟡 Reusing the existing recovery cue labels every gap as an opening
 
@@ -487,6 +496,9 @@ including reset/restore. Final art can remain with Art & Game Feel.
 > debug text; enemies without follow-ups are unchanged. New AC21 (both recoveries, reset,
 > restore, chaser unchanged); C17, T2, T7 and manual step 2 updated. Final look stays Q3.
 
+✔ resolved (round 2): C20 defines a state-derived gap cue using current data, with reset,
+restore and unchanged-chaser coverage in AC21 and implementation work in T2/T7.
+
 ### PR-5 🟡 AC2 needs a positive shift duration in its fixture
 
 **Location:** §5 AC2 versus §4 C7.
@@ -510,6 +522,58 @@ necessarily the next step start after that hit. Make AC2's timing agree with tha
 > and a target in band, and says the stage is entered at the first step start after the hit's
 > hitstop ends (index stays 0 during it; `h` = 0 → next step start). New AC19 covers
 > `shift_duration` 0: same-step entry and a stage 1 attack decision.
+
+✔ resolved (round 2): AC2 explicitly uses a positive shift and accounts for hitstop;
+AC19 separately covers a zero-duration shift and same-step stage-1 attack selection.
+
+<!-- review-round: 2 verdict: APPROVE_WITH_NOTES -->
+
+**Round 2 — 2026-11-10 · Verdict: APPROVE_WITH_NOTES**
+
+All five previous findings are resolved as noted above. The isolated Warden fight serves
+pillar 2, keeps its exclusions explicit, considers concrete alternatives and matches the
+department's current boss design. No blocking conflict with PROJECT.md or accepted D-###
+decisions remains. The ACs cover the new state, follow-ups, reloads, presentation and tick-rate
+independence. Two nonblocking clarifications would make the task and fixture contracts exact.
+
+### PR-6 🟡 T5 understates the shared restore work needed for atomic rejection
+
+**Location:** §4 C14; §5 AC20(g); §6 T5;
+`src/core/combat/combat_sim.gd:101`, `src/core/enemies/enemy_logic.gd:276`,
+`src/world/combat_runner.gd:120`.
+
+**Problem:** C14 names `from_snapshot`, but the enemy's restore entry point is
+`EnemyLogic.from_dict() -> void`. `CombatSim.from_dict()` sets its time, restores combatants in
+order and returns `true` without receiving a per-enemy result. T5 lists only enemy code and
+tests, although refusing an unresolvable stage through the public restore path also needs a
+check in the shared sim before any restore mutation.
+
+**Why it matters:** An enemy-local refusal can leave earlier players/dummies and sim time
+restored, while the enemy keeps its old state and `CombatRunner.restore_snapshot()` reports
+success. That fails AC20(g)'s explicit all-or-nothing outcome.
+
+**Suggested fix:** Name the real restore entry point and include the shared sim/preflight work
+in T5. Check every enemy's candidate stage before changing sim time or any combatant. Exercise
+AC20(g) through `CombatRunner.restore_snapshot()` with the incompatible enemy registered after
+a player and dummy; assert `false` and an unchanged whole-scene snapshot and body positions.
+The required behavior is already clear; this note makes its implementation boundary explicit.
+
+### PR-7 🟡 AC2's first-post-hitstop timing needs a no-knockback fixture
+
+**Location:** §5 AC2 versus §4 C6;
+`src/core/enemies/enemy_logic.gd:188`, `:367`.
+
+**Problem:** AC2 specifies a generic enemy hit while free, then requires stage entry at the
+first step start after hitstop. It does not set `knockback_scale` or the hit's knockback to
+zero. A normal hit on a free enemy with positive knockback puts it in `KNOCKBACK`, which runs
+after hitstop; C6 correctly forbids stage entry until that state ends.
+
+**Why it matters:** A valid generic fixture can fail AC2 while obeying the stage-entry rule.
+The Warden's zero scale supplies the intended behavior, but AC2 does not say to use it.
+
+**Suggested fix:** Give AC2's enemy `knockback_scale = 0` (or use the Warden explicitly), or
+state that entry occurs at the first free step start after both hitstop and knockback end.
+Keep C6's prohibition on entry during knockback.
 
 ---
 
