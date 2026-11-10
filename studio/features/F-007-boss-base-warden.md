@@ -1,8 +1,8 @@
 ---
 id: F-007
 title: Boss base + floor 1 boss (Warden)
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-09
 updated: 2026-11-09
 depends_on: [F-003, F-004, F-005, F-006, D-005, D-007, D-008]
@@ -306,6 +306,119 @@ Severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion. Example finding:>
 ### PR-1 🔴 <title>
 <What's wrong, where, why it matters, what you'd suggest.>
 > **Planner reply:** <accepted / rejected + reason / changed §X>
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Round 1 — 2026-11-10 · Verdict: CHANGES_REQUESTED**
+
+The goal is one clear, isolated fight serving pillar 2. Scope boundaries and rejection reasons
+are specific, and the Warden's values and patterns match `studio/design/combat.md`. The ordered
+tasks cover the main implementation and verification work. The remaining blockers concern
+the generic boss base's reload and projectile contracts.
+
+### PR-1 🔴 Removing an entered stage on reload has no legal state transition
+
+**Location:** §4 C3–C5, C9, C13–C14; §5 AC12–AC13; §6 T3–T5.
+
+**Problem:** C13 validates candidate resources in isolation, but does not define compatibility
+with a live stage index. For example, after the Warden enters stage index 1, changing its
+`stages` to `[]` passes the stated data rules. The effective-value getters can no longer resolve
+index 1, while falling back to stage 0 would violate C5's rule that only reset can decrease
+the index. This also occurs if a stage is removed during its shift or pattern. The existing
+`EnemyLogic.apply_data()` simply replaces `_data` (`src/core/enemies/enemy_logic.gd:99`), and
+`CombatRunner` validates the candidate group before applying it without checking stage state
+(`src/world/combat_runner.gd:131`, `:247`). C9 defines shortened follow-up chains, but does not
+resolve removal of the stage containing the root.
+
+**Why it matters:** A valid F5 edit can leave the running boss with an invalid index. The
+Builder must invent either a stage regression, retained old stage data, or a new reload
+rejection rule; those choices affect combat state and atomic reload behavior.
+
+**Suggested fix:** Define structural reload compatibility explicitly. A small policy is to
+reject the whole candidate group before any mutation if an enemy's entered stage index no
+longer exists; keep the current index, remaining shift time and latched attack on accepted
+reloads. Specify what happens when the current pattern's root position disappears from a
+retained stage's attack list. Add valid mid-pattern follow-up edits/shortening and incompatible
+stage removal to the reload ACs/tasks, including unchanged state across the whole group on
+rejection and snapshot continuation after an accepted edit.
+
+### PR-2 🔴 The shift's no-hitbox rule does not account for live projectiles
+
+**Location:** §4 C3–C4, C7, C13; §5 AC5; `studio/design/combat.md:242`;
+D-008 and F-005's projectile lifecycle.
+
+**Problem:** Stages are available to every brain, including the caster, but C7 says a shifting
+enemy has no hitbox and AC5 requires no live hitbox. A caster can finish recovery and become
+free with its last bolt still flying: the shipped bolt travels for up to 10 / 6 seconds, while
+active plus recovery uses only 0.90 seconds after launch. It can therefore enter a stage shift
+while owning a live projectile. Existing `Combatant.get_live_hitboxes()` includes owned
+projectiles (`src/core/combat/combatant.gd:49`), and those advance on the sim clock independently
+of the owner's attack state (`src/core/enemies/enemy_logic.gd:142`). The plan does not say
+whether a shift removes, pauses, suppresses, or preserves them.
+
+**Why it matters:** The literal no-live-hitbox requirement conflicts with preserving the
+inherited projectile behavior. It also makes the promised free punish ambiguous for the
+caster-based boss that will reuse this base in F-008.
+
+**Suggested fix:** Define the rule for already launched projectiles. If they keep F-005/D-008
+behavior, narrow C7 and the shared design wording to no *own attack sector*, scope AC5's empty
+hitbox assertion to a melee fixture, and add a caster-stage test showing a bolt continues
+moving and hitting during the shift. If another outcome is intended, explicitly reconcile
+that change with the shared design and projectile contract before implementation.
+
+### PR-3 🟡 Stage validation omits the existing scalar bounds and null entries
+
+**Location:** §4 C3/C13; §5 AC12; §6 T4.
+
+**Problem:** C13 requires a stage's speed to be below the class's, but never requires
+`move_speed >= 0` or `attack_cooldown >= 0`, and does not reject null entries in `stages`.
+Those scalar lower bounds already apply to the corresponding stage-0 values
+(`src/core/enemies/enemy_data.gd:39`, `:47`). A stage speed of -1 passes the stated upper bound;
+a null stage has no percent to validate.
+
+**Why it matters:** The new resource can accept values that the enemy base rejects, producing
+backwards movement or an immediately ready cooldown, or failing while traversing a null stage.
+
+**Suggested fix:** Require non-null stages and the same nonnegative speed/cooldown checks as
+stage 0. Extend AC12 with negative values, exact zero passing, and a null stage at setup and
+reload, with errors identifying the stage resource or list position.
+
+### PR-4 🟡 Reusing the existing recovery cue labels every gap as an opening
+
+**Location:** §4 C17; §5 manual steps 1–2/6–8; §6 T7; §10 Q3.
+
+**Problem:** T7 reuses the existing enemy telegraph presentation, which returns `open_color`
+for every `RECOVERY` (`src/entities/enemies/enemy.gd:141`). Pattern gaps are also recoveries,
+so an unchanged view advertises the 0.25-second gap with the same opening cue as the final
+punish. Q3 acknowledges gap-versus-punish presentation, but C17/T7 require only the boss bar
+and stage shift cue and do not assign a placeholder distinction.
+
+**Why it matters:** The existing cue gives misleading feedback at precisely the distinction
+this feature is meant to teach: when another attack is still coming.
+
+**Suggested fix:** Require a minimal state-derived distinction between a gap and the final
+punish, such as a debug label or separate tint. Define how presentation reads whether a
+follow-up remains under C9's reload rules, and add scene coverage for both recoveries,
+including reset/restore. Final art can remain with Art & Game Feel.
+
+### PR-5 🟡 AC2 needs a positive shift duration in its fixture
+
+**Location:** §5 AC2 versus §4 C7.
+
+**Problem:** AC2 gives the stage threshold and HP but no `shift_duration`, then requires no
+attack decision in the entry step. C7 explicitly permits a same-step decision when that
+duration is zero, which is not excluded by AC2's setup.
+
+**Why it matters:** The Builder must supply an unstated fixture assumption to make the AC
+agree with the zero-duration contract.
+
+**Suggested fix:** Set AC2's shift duration explicitly to a positive value (for example,
+1.2 seconds), and retain separate zero-duration coverage with a ready cooldown and a target
+inside a trigger band to verify C7's same-step decision.
+
+The HP-change fixture also needs to state whether hitstop is zero or already over. Ordinary
+damage starts hitstop, so C6 enters the stage at the next *free* step start rather than
+necessarily the next step start after that hit. Make AC2's timing agree with that condition.
 
 ---
 
