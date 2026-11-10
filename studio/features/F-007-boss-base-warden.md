@@ -1,10 +1,10 @@
 ---
 id: F-007
 title: Boss base + floor 1 boss (Warden)
-status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-09
-updated: 2026-11-09
+updated: 2026-11-10
 depends_on: [F-003, F-004, F-005, F-006, D-005, D-007, D-008]
 pillars: [2]
 department: Combat
@@ -74,6 +74,19 @@ What the Builder needs to know that isn't obvious from the code:
     `src/ui/debug/` (`combat_debug_draw`, `damage_numbers`, `motor_debug_overlay`).
   - Debug scenes are `scenes/debug/f00N_<name>.tscn` (F-004–F-006: walled room, `CombatRunner`
     last with `refill_player_on_died` on, R = reset, F5 = reload).
+  - **Reload path (`src/world/combat_runner.gd`):** `reload_data()` loads the whole group, runs
+    `_validation_errors()` (each candidate `EnemyData.validate()` + `validate_against_class()`),
+    then a **live-state check** (`_sim.rate_change_errors(rate)`, which refuses a rate change a
+    running hit would break), and only if every list is empty calls `_apply_reload()`, which ends
+    in `Enemy.apply_reloaded_data()` → `EnemyLogic.apply_data()` (replaces `_data`). C19 adds a
+    second live-state check in the same place. `restore_snapshot()` returns `false` when
+    `_sim.from_dict()` refuses a snapshot.
+  - **Projectiles (F-005, D-008):** an enemy owns its bolts in `_projectiles` (`ProjectileSet`).
+    They advance on the sim clock in `step()` whatever the owner's state or hitstop, and
+    `Combatant.get_live_hitboxes()` includes them. A bolt can outlive the attack that launched it
+    (up to 10 / 6 s of flight vs 0.90 s of active + recovery after launch).
+  - **Telegraph view:** `Enemy.get_body_color()` returns `open_color` for every `RECOVERY`
+    (`enemy.gd` ~141); `get_debug_text()` shows the state name.
 - A boss is **not a new system**. It is an `EnemyData` whose data uses two new, optional
   features. With both left empty, an enemy behaves exactly as before this feature.
 - Terms used below (see `GLOSSARY.md`): free, planted, step start, contact instant, trigger
@@ -141,6 +154,20 @@ What the Builder needs to know that isn't obvious from the code:
   player's opening away at the moment they earned it.
 - **Tempting because:** Every boss in the genre does it, and it protects the animation.
 
+### ❌ Rejected: A reload that removes an entered stage falls back or keeps the old stage
+- **How it would work:** After F5 drops the stage the boss is in, it either returns to stage 0
+  (or the deepest stage still listed), or keeps reading the pre-reload stage resource.
+- **Why rejected:** Falling back breaks "stages only go forward" (C5) through a side door, and
+  keeping old data means two versions of the boss live at once, which a snapshot can't name.
+  C19 refuses such a reload instead, like a rate change a running hit would break.
+- **Tempting because:** The reload "just works" and nothing is refused.
+
+### ❌ Rejected: A stage shift removes or pauses the boss's projectiles in flight
+- **How it would work:** Entering a stage clears (or freezes) bolts already launched.
+- **Why rejected:** It changes F-005/D-008's projectile lifecycle (only death removes bolts) for
+  one state, and a bolt the player is already dodging would vanish or hang, which is unreadable.
+- **Tempting because:** It makes "no hitbox during the shift" literally true.
+
 ### ❌ Rejected: Calling boss stages "phases" in code and data
 - **How it would work:** `EnemyPhaseData`, `phase_index`, `phase_changed`.
 - **Why rejected:** `EnemyLogic` and `GLOSSARY.md` already use *phase* for windup / active /
@@ -166,18 +193,20 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 | C4 | **Effective values.** `EnemyLogic` exposes `get_current_attacks()`, `get_current_move_speed()` and `get_current_attack_cooldown()` (stage 0 = the `EnemyData` fields). `_start_attack()`, `_advance_move()` and `_finish_attack()` read them. Add `EnemyBrain.pick_attack_in(attacks: Array[EnemyAttackData], distance)`; the three brains call it with `enemy.get_current_attacks()`. `pick_attack(data, distance)` stays and delegates with `data.attacks` (its existing callers and tests are unchanged). | One place decides the stage |
 | C5 | **Stage condition.** Stage `i` holds when `hp * 100 <= max_hp * enter_at_hp_percent` (integers). The stage index never decreases, except on the debug reset (back to 0). | Exact, serializable |
 | C6 | **When a stage is entered.** At a step start, after the view is sensed and before the brain decides: if the enemy is free and a deeper stage holds, it enters the **deepest** stage that holds (skipping any in between). Never mid-attack, mid-pattern, in knockback, in hitstop, or when dead. | No interrupt (CQ10) |
-| C7 | **Stage shift.** On entering: the stage index changes, `stage_changed(stage_index: int)` (a new `EnemyLogic` signal) is emitted once, and the enemy is in *stage shift* (a new `State.STAGE_SHIFT`, **appended** after `DEAD` so saved state ints keep their meaning) for that stage's `shift_duration`. During it the enemy is not free, doesn't move, has no hitbox, is planted (no knockback), and takes damage and hitstop normally; hitstop pauses the shift timer. `shift_duration` 0 = no shift state: the enemy stays free and decides in that same step with the new values. | Free punish, not a pause |
+| C7 | **Stage shift.** On entering: the stage index changes, `stage_changed(stage_index: int)` (a new `EnemyLogic` signal) is emitted once, and the enemy is in *stage shift* (a new `State.STAGE_SHIFT`, **appended** after `DEAD` so saved state ints keep their meaning) for that stage's `shift_duration`. During it the enemy is not free, doesn't move, starts no attack (so it has **no attack sector** and **launches no projectile**), is planted (no knockback), and takes damage and hitstop normally; hitstop pauses the shift timer. **Projectiles already in flight are untouched** (F-005/D-008): they keep flying on the sim clock and can hit during the shift; only death removes them, as before. `shift_duration` 0 = no shift state: the enemy stays free and decides in that same step with the new values. | Free punish, not a pause |
 | C8 | The attack cooldown is **not** reset, cleared or paused by a stage shift (hitstop still pauses it, as always). If it is still running after the change, it keeps its remaining time; the new `attack_cooldown` applies from the next time a cooldown starts. | Never erase a punish window |
-| C9 | **Follow-up.** `EnemyAttackData.follow_up: EnemyAttackData` (null = none). When the recovery of an attack with a follow-up ends, the follow-up's windup starts at that exact instant (no time lost or added, as active follows windup). No free moment, no brain decision, no cooldown, and the follow-up's trigger band is not read. The enemy stays planted through the whole pattern. **Which follow-up:** read from the **current data by position**, never from the latched copy's `follow_up` reference: the pattern root is the attack index the brain chose in the current stage's list, and the n-th follow-up is reached by following `follow_up` n times from that root. Each follow-up latches at its own windup start, like any attack. A reload mid-pattern therefore applies from the next follow-up; if the new chain is shorter, the pattern ends there. | Patterns, F-004/C12 |
+| C9 | **Follow-up.** `EnemyAttackData.follow_up: EnemyAttackData` (null = none). When the recovery of an attack with a follow-up ends, the follow-up's windup starts at that exact instant (no time lost or added, as active follows windup). No free moment, no brain decision, no cooldown, and the follow-up's trigger band is not read. The enemy stays planted through the whole pattern. **Which follow-up:** read from the **current data by position**, never from the latched copy's `follow_up` reference: the pattern root is the attack index the brain chose in the current stage's list, and the n-th follow-up is reached by following `follow_up` n times from that root. Each follow-up latches at its own windup start, like any attack. A reload mid-pattern therefore applies from the next follow-up; if the new chain is shorter, the pattern ends there. If the root index no longer exists in the current stage's list (the list got shorter), there is no chain: the running attack finishes from its latched copy and the pattern ends with it. A root index that still exists but now holds a different attack is followed as it is now (position, not identity). | Patterns, F-004/C12 |
 | C10 | **Follow-up target and aim.** At a follow-up's start the target is re-picked by the normal rule (nearest living player, ties by registration order) from the combat view sensed at the start of the current step. Aim then tracks and locks by the follow-up's own `aim_track_time`. If that view has no living player, the pattern ends there as if that recovery were the last one. | Co-op ready (D-002) |
 | C11 | Each attack of a pattern is its own attack instance (may hit each hurtbox once). The attack cooldown starts when the pattern's last recovery (or wall stun) ends. | F-003 |
 | C12 | A wall-stopped attack (F-006) drops its follow-up: its wall stun runs and the pattern ends. | Design: Bosses |
-| C13 | **Validation**, at scene setup and on every data reload; bad data is rejected, never clamped. (a) Every attack reachable through `follow_up` passes all existing attack checks: `validate_enemy()` (telegraph floors, step rules, trigger band, wall stun rule) **and** the brain kind rule (`_attack_kind_errors()`). (b) A follow-up chain has no cycle. (c) `enter_at_hp_percent` is 1–99 and strictly decreasing along `stages`. (d) `shift_duration >= 0`. (e) Each stage's `attacks` passes the same checks as `EnemyData.attacks`. (f) Each stage's `move_speed` is below the class's: `validate_against_class()` checks every stage too, so `CombatRunner`'s setup and reload paths cover it unchanged. | Principle 1, G2 |
-| C14 | **Serializable.** Snapshot/restore round-trips the stage index, the shift time left, and which attack of the pattern is running, identified by position (C9): new `SNAPSHOT_KEYS` `stage_index`, `stage_shift_left`, `pattern_root_index`, `pattern_depth`, appended. The running attack itself stays snapshotted by value (`attack`). A restore mid-pattern or mid-shift continues identically. | G7 |
+| C13 | **Validation**, at scene setup and on every data reload; bad data is rejected, never clamped. (a) Every attack reachable through `follow_up` passes all existing attack checks: `validate_enemy()` (telegraph floors, step rules, trigger band, wall stun rule) **and** the brain kind rule (`_attack_kind_errors()`). (b) A follow-up chain has no cycle. (c) `enter_at_hp_percent` is 1–99 and strictly decreasing along `stages`. (d) `shift_duration >= 0`. (e) Each stage's `attacks` passes the same checks as `EnemyData.attacks`. (f) Each stage's `move_speed` is below the class's: `validate_against_class()` checks every stage too, so `CombatRunner`'s setup and reload paths cover it unchanged. (g) No `stages` entry is null (`stages[i] must not be null`, the same form as `_attacks_errors()`). (h) Each stage's `move_speed >= 0` and `attack_cooldown >= 0`, the same bounds `EnemyData.validate()` sets on stage 0; exactly 0 passes. Every stage error names the list position and the stage resource (`stages[i] (<resource_path>): <rule>`); every follow-up error names the attack `id` and the rule. | Principle 1, G2 |
+| C14 | **Serializable.** Snapshot/restore round-trips the stage index, the shift time left, and which attack of the pattern is running, identified by position (C9): new `SNAPSHOT_KEYS` `stage_index`, `stage_shift_left`, `pattern_root_index`, `pattern_depth`, appended. The running attack itself stays snapshotted by value (`attack`). A restore mid-pattern or mid-shift continues identically. A snapshot whose `stage_index` is greater than the current data's `stages.size()` is refused: `from_snapshot` changes nothing and the restore returns `false` (same rule as C19). `pattern_root_index` / `pattern_depth` that no longer resolve are not an error: they end the pattern as C9 says. | G7 |
 | C15 | Same results at 30, 60 and 120 physics ticks/s for the stage entry step, the shift end and every follow-up start. | G1, D-007 |
 | C16 | The Warden is data only: `data/enemies/warden.tres`, `data/enemies/warden_stage_2.tres`, eight files in `data/attacks/`, path constants in `src/autoload/tunables.gd` (G5). Brain = the chaser's. No Warden-specific code anywhere. | G9 |
-| C17 | The boss bar (new, screen-space, placeholder: `src/ui/debug/boss_bar.gd`) and the stage shift cue are presentation: they read getters and signals, and nothing in core reads them. Placeholder look. | G6 |
+| C17 | The boss bar (new, screen-space, placeholder: `src/ui/debug/boss_bar.gd`), the stage shift cue and the gap cue (C20) are presentation: they read getters and signals, and nothing in core reads them. Placeholder look. | G6 |
 | C18 | No new input action, autoload or third-party dependency. | G4 |
+| C19 | **Reload vs live stage.** New `EnemyLogic.reload_errors(candidate: EnemyData) -> PackedStringArray`: one error when the enemy's current stage index is greater than `candidate.stages.size()` (`"<id>: in stage <i>, but <path> lists only <n> stages"`). `CombatRunner.reload_data()` collects it for every enemy, next to `_sim.rate_change_errors()`, **before** `_apply_reload()`: any error refuses the whole group and nothing changes anywhere (player, dummies, every enemy, rate). `apply_data()` also returns `false` and changes nothing on that error, as a guard. An accepted reload keeps the stage index, the shift time left (a new `shift_duration` applies from the next shift), the latched running attack, the pattern position (resolved as C9 says) and the cooldown left (C8). A deeper stage that now holds after the reload is entered by the normal rule (C6). The debug reset (`setup()`) is not a reload: it goes to stage 0 with any data. | No regression (C5), atomic reload (F-003/C18) |
+| C20 | **Gap vs punish cue.** New `EnemyLogic.has_pending_follow_up() -> bool`: true only in `RECOVERY` when the next attack of the pattern resolves by C9 from the current data (root index exists, chain long enough) and the attack was not wall-stopped. It reads only logic state and data, so it is right after a reload, a reset or a restore. `Enemy.get_body_color()` returns a new placeholder `gap_color` export when it is true, `open_color` otherwise; `get_debug_text()` appends ` (gap)` to the state. Unchanged for every enemy without follow-ups. Look → Art & Game Feel (§10 Q3). | Teach gap ≠ opening; G6 |
 
 **Must not break:** all F-001–F-006 behavior and tests; the existing enemy debug scenes; the
 debug reset; the speed check and data reload refusing bad data.
@@ -214,18 +243,22 @@ Testable, observable. The Auditor checks each one.
 
 - [ ] AC1: Given the existing chaser, caster and brute data (no stages, no follow-ups), when
   the full test suite runs, then every pre-existing test passes **unedited**.
-- [ ] AC2: Given an enemy with one stage at 50% and `max_hp` 400, when its HP goes from 201 to
-  200 while it is free, then at the next step start its stage index is 1, `stage_changed(1)`
-  was emitted exactly once, and it did not decide an attack in that step.
+- [ ] AC2: Given an enemy with one stage at 50% with `shift_duration` 1.2 s, `max_hp` 400, a
+  ready cooldown and a target inside a trigger band, when a player hit takes its HP from 201
+  (or more) to 200 (or less) while it is free (the hit gives it hitstop `h` > 0), then at every step start inside
+  that hitstop its stage index is still 0 and no signal fired; at the first step start after
+  the hitstop ends its stage index is 1, `stage_changed(1)` was emitted exactly once, it is in
+  `STAGE_SHIFT`, and it did not start an attack in that step. (Same with `h` = 0: entry at the
+  next step start.)
 - [ ] AC3: Given the same enemy in the windup of the first attack of a two-attack pattern,
   when a hit takes it to 200 HP or less, then both attacks run to the end unchanged and the
   stage is entered at the first step start after the last recovery ends.
 - [ ] AC4: Given an enemy with stages at 60% and 30%, when one hit takes it from above 60% to
   below 30% while it is free, then it enters stage 2 directly, with one `stage_changed(2)` and
   one shift of stage 2's `shift_duration`.
-- [ ] AC5: Given an enemy in a stage shift, when a player hit lands, then it takes the damage
-  and the hitstop, is not knocked back, has no live hitbox, doesn't move, and the shift ends
-  later by exactly the hitstop time.
+- [ ] AC5: Given a **melee** enemy (no projectiles in flight) in a stage shift, when a player
+  hit lands, then it takes the damage and the hitstop, is not knocked back, has no live hitbox,
+  doesn't move, and the shift ends later by exactly the hitstop time.
 - [ ] AC6: Given an enemy that entered a stage with 0.4 s of cooldown left and a 1.2 s shift,
   when the shift ends with a target inside a trigger band, then it starts that attack at the
   first step start after the shift. Given `shift_duration` 0 and 0.4 s of cooldown left, then it
@@ -248,7 +281,10 @@ Testable, observable. The Auditor checks each one.
 - [ ] AC12: Data with any of these is rejected at setup and on reload, with a message naming
   the file and the rule: a follow-up cycle (A → B → A); a follow-up whose locked telegraph is
   under `min_locked_telegraph`; stage percents not strictly decreasing; a percent of 0 or 100;
-  a negative `shift_duration`; a stage `move_speed` at or above the Warrior's.
+  a negative `shift_duration`; a stage `move_speed` at or above the Warrior's; a stage
+  `move_speed` of −1; a stage `attack_cooldown` of −0.1; a null entry in `stages` (the message
+  names its position). A stage with `move_speed` 0, `attack_cooldown` 0 and `shift_duration` 0
+  passes. Each case is checked both at setup and on reload.
 - [ ] AC13: Given a snapshot taken (a) mid-gap of a pattern and (b) mid-shift, when it is
   restored and the same inputs are replayed, then the following states match the original run
   step by step (stage index, shift time left, running attack, target, aim).
@@ -263,11 +299,36 @@ Testable, observable. The Auditor checks each one.
 - [ ] AC17: `scenes/debug/f007_warden.tscn` runs on its own: a walled room of 20 × 12 tiles, one
   Warrior, one Warden, a boss bar showing HP with a mark at 50%, and a visible cue during the
   stage shift. No door, gate or floor logic.
+- [ ] AC18: Given a **caster**-brain enemy with one stage and a bolt in flight when it enters
+  the stage shift, then the bolt keeps moving at its speed during the shift and hits a player
+  in its path (normal damage, knockback along its flight); the enemy launches no new bolt
+  during the shift; the shift itself still has no sector hitbox.
+- [ ] AC19: Given `shift_duration` 0, a ready cooldown and a target inside a band of stage 1's
+  list, when the enemy becomes free with HP past the line, then in that same step start it
+  emits `stage_changed(1)` once and starts the **stage 1** attack (not the stage 0 one).
+- [ ] AC20: Reload vs live stage (C19), in a scene with the enemy plus a dummy:
+  (a) the enemy is in stage 1 and the candidate data has `stages` = [] → `reload_data()`
+  returns an error naming the enemy, the file and the stage; the player, dummy, every enemy's
+  data, stage index, shift time left, running attack and the step rate are unchanged.
+  (b) Same, mid-shift: refused, shift continues unchanged.
+  (c) Mid-pattern, a reload that shortens the chain after the running attack → the running
+  attack finishes as latched, no follow-up starts, the cooldown starts at its recovery end.
+  (d) Mid-pattern, a reload that changes the follow-up's `windup` → the follow-up starts with
+  the new windup. (e) Mid-pattern, a reload that removes the root index from the stage list →
+  pattern ends after the running attack. (f) After (c) and (d), a snapshot taken right after
+  the reload and restored replays identically. (g) A snapshot with `stage_index` 1 restored
+  onto data with no stages returns `false` and changes nothing.
+- [ ] AC21: Gap vs punish cue (C20): in `f007_warden.tscn`, in swipe A's recovery
+  `has_pending_follow_up()` is true and the body shows `gap_color` with ` (gap)` in the debug
+  text; in swipe B's recovery (stage 1) it is false and the body shows `open_color`. After a
+  debug reset and after a snapshot restored mid-gap, the cue matches the restored state. A
+  chaser's recovery still shows `open_color`.
 
 **How to verify manually (Lucas, in `f007_warden.tscn`):**
 1. Stand close: two swipes, then it's open. Dodge each swipe with its own dash; punish with a
    full chain after the second.
 2. Hit it during the gap between the swipes: you land one hit, but the second swipe is coming.
+   The body shows the gap colour there, and the "open" colour only after the last swipe.
 3. Stand at 4–5 tiles: it winds up and cuts across the room. Walk sideways early or dash late;
    it's open after.
 4. Stand at 2.5 tiles: it only walks toward you.
@@ -289,12 +350,12 @@ Small, ordered, each independently committable.
 | # | Task | Files likely touched | Notes |
 |---|---|---|---|
 | T1 | Effective-value getters on `EnemyLogic` (attacks, move speed, cooldown) and `EnemyBrain.pick_attack_in()`; brains, `_start_attack()`, `_advance_move()` and `_finish_attack()` use them. No behavior change. | `src/core/enemies/` | C4. All existing tests stay green (AC1). |
-| T2 | `follow_up` on `EnemyAttackData`; pattern logic in `EnemyLogic` (start, target re-pick, end without a living player, wall stop drops it, cooldown at pattern end). | `src/core/enemies/`, `tests/core/enemies/` | C9–C12. AC7–AC11. |
-| T3 | `EnemyStageData`, `EnemyData.stages`, stage index, entry rule, stage shift state, `stage_changed`, debug reset. | `src/core/enemies/`, `tests/core/enemies/` | C3, C5–C8. AC2–AC6, AC16. |
-| T4 | Validation for follow-up chains and stages, at setup and reload. | where enemy data is validated today, tests | C13. AC12. |
-| T5 | Snapshot/restore of stage index, shift time left and pattern position. | `src/core/enemies/`, tests | C14. AC13. |
+| T2 | `follow_up` on `EnemyAttackData`; pattern logic in `EnemyLogic` (start, target re-pick, end without a living player, wall stop drops it, cooldown at pattern end, missing root ends it); `has_pending_follow_up()`. | `src/core/enemies/`, `tests/core/enemies/` | C9–C12, C20 (getter). AC7–AC11. |
+| T3 | `EnemyStageData`, `EnemyData.stages`, stage index, entry rule, stage shift state (no attack, projectiles in flight untouched), `stage_changed`, debug reset. | `src/core/enemies/`, `tests/core/enemies/` | C3, C5–C8. AC2–AC6, AC16, AC18, AC19. |
+| T4 | Validation for follow-up chains and stages (incl. null stages, speed/cooldown ≥ 0), at setup and reload; `reload_errors()` and its call in `CombatRunner.reload_data()` before `_apply_reload()`. | `src/core/enemies/`, `src/world/combat_runner.gd`, tests | C13, C19. AC12, AC20 (a)–(e). |
+| T5 | Snapshot/restore of stage index, shift time left and pattern position; refuse an unresolvable stage index. | `src/core/enemies/`, tests | C14. AC13, AC20 (f)–(g). |
 | T6 | Warden data: enemy, stage 2, eight attacks. Data test + tick-rate test. | `data/enemies/`, `data/attacks/`, tests | C16. AC14, AC15. |
-| T7 | `f007_warden.tscn` (built like `f006_brute.tscn`): room, Warrior, Warden, `boss_bar.gd` with a 50% mark, stage shift cue. Telegraphs use the existing enemy telegraph presentation. Scene tests `tests/scenes/test_f007_*.gd`. Glossary terms from the design doc. | `scenes/debug/`, `src/ui/debug/`, `src/entities/enemies/`, `tests/scenes/`, `studio/GLOSSARY.md` | C17. AC17. |
+| T7 | `f007_warden.tscn` (built like `f006_brute.tscn`): room, Warrior, Warden, `boss_bar.gd` with a 50% mark, stage shift cue, gap cue (`gap_color`, ` (gap)` label). Telegraphs otherwise use the existing enemy telegraph presentation. Scene tests `tests/scenes/test_f007_*.gd`. Glossary terms from the design doc. | `scenes/debug/`, `src/ui/debug/`, `src/entities/enemies/`, `tests/scenes/`, `studio/GLOSSARY.md` | C17, C20. AC17, AC21. |
 
 ---
 
@@ -342,6 +403,14 @@ retained stage's attack list. Add valid mid-pattern follow-up edits/shortening a
 stage removal to the reload ACs/tasks, including unchanged state across the whole group on
 rejection and snapshot continuation after an accepted edit.
 
+> **Planner reply (Combat):** accepted, your policy. New C19: `EnemyLogic.reload_errors()`
+> refuses a candidate whose `stages` no longer reach the live stage index; `CombatRunner`
+> collects it next to `rate_change_errors()` before `_apply_reload()`, so the whole group is
+> refused with nothing changed. Accepted reloads keep index, shift time left, latched attack,
+> pattern position and cooldown. C9 now says a missing root index ends the pattern after the
+> running attack. C14 refuses a snapshot whose stage index doesn't resolve. New §3 Rejected
+> entry (fallback / keep old stage). New AC20 (a)–(g); §2 documents the reload path; T4/T5 updated.
+
 ### PR-2 🔴 The shift's no-hitbox rule does not account for live projectiles
 
 **Location:** §4 C3–C4, C7, C13; §5 AC5; `studio/design/combat.md:242`;
@@ -366,6 +435,12 @@ hitbox assertion to a melee fixture, and add a caster-stage test showing a bolt 
 moving and hitting during the shift. If another outcome is intended, explicitly reconcile
 that change with the shared design and projectile contract before implementation.
 
+> **Planner reply (Combat):** accepted, first option. C7 now says the shift starts no attack
+> (no attack sector, no new launch) and leaves projectiles in flight untouched (F-005/D-008).
+> AC5 is scoped to a melee enemy; new AC18 covers a caster bolt flying and hitting during the
+> shift. `design/combat.md` → *Stage shift* reworded to match. New §3 Rejected entry (shift
+> clears/pauses bolts). §2 documents the projectile lifecycle.
+
 ### PR-3 🟡 Stage validation omits the existing scalar bounds and null entries
 
 **Location:** §4 C3/C13; §5 AC12; §6 T4.
@@ -382,6 +457,11 @@ backwards movement or an immediately ready cooldown, or failing while traversing
 **Suggested fix:** Require non-null stages and the same nonnegative speed/cooldown checks as
 stage 0. Extend AC12 with negative values, exact zero passing, and a null stage at setup and
 reload, with errors identifying the stage resource or list position.
+
+> **Planner reply (Combat):** accepted. C13 (g) rejects null stages; (h) requires stage
+> `move_speed >= 0` and `attack_cooldown >= 0` (0 passes), and fixes the error format
+> `stages[i] (<path>): <rule>`. AC12 extended with −1 speed, −0.1 cooldown, a null stage, an
+> all-zero stage that passes, at setup and on reload. T4 updated.
 
 ### PR-4 🟡 Reusing the existing recovery cue labels every gap as an opening
 
@@ -401,6 +481,12 @@ punish, such as a debug label or separate tint. Define how presentation reads wh
 follow-up remains under C9's reload rules, and add scene coverage for both recoveries,
 including reset/restore. Final art can remain with Art & Game Feel.
 
+> **Planner reply (Combat):** accepted. New C20: `EnemyLogic.has_pending_follow_up()` (true in
+> `RECOVERY` only when C9 resolves a next attack from the current data and no wall stop), so it
+> follows reload, reset and restore. `Enemy` shows a placeholder `gap_color` and ` (gap)` in the
+> debug text; enemies without follow-ups are unchanged. New AC21 (both recoveries, reset,
+> restore, chaser unchanged); C17, T2, T7 and manual step 2 updated. Final look stays Q3.
+
 ### PR-5 🟡 AC2 needs a positive shift duration in its fixture
 
 **Location:** §5 AC2 versus §4 C7.
@@ -419,6 +505,11 @@ inside a trigger band to verify C7's same-step decision.
 The HP-change fixture also needs to state whether hitstop is zero or already over. Ordinary
 damage starts hitstop, so C6 enters the stage at the next *free* step start rather than
 necessarily the next step start after that hit. Make AC2's timing agree with that condition.
+
+> **Planner reply (Combat):** accepted. AC2 now sets `shift_duration` 1.2 s, a ready cooldown
+> and a target in band, and says the stage is entered at the first step start after the hit's
+> hitstop ends (index stays 0 during it; `h` = 0 → next step start). New AC19 covers
+> `shift_duration` 0: same-step entry and a stage 1 attack decision.
 
 ---
 

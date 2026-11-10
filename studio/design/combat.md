@@ -241,16 +241,20 @@ windup / active / recovery (GLOSSARY).
   the attack list, `move_speed` and `attack_cooldown`. Stages only go forward.
 - **Stage shift.** A stage is entered at the first step start at which the boss is **free**
   after its HP crossed the line, so a running attack or pattern always finishes. The boss
-  then stands planted for `shift_duration`: no hitbox, no movement, **takes damage normally**.
-  The shift is a free punish, never an invulnerable pause. The attack cooldown keeps counting
-  through it.
+  then stands planted for `shift_duration`: starts no attack (no sector, no new projectile), no
+  movement, **takes damage normally**. Projectiles already in flight keep flying and can hit,
+  as always (D-008). The shift is a free punish, never an invulnerable pause. The attack
+  cooldown keeps counting through it.
+- **Reloading a boss (F-007/C19).** A data reload that removes the stage the boss is in is
+  refused as a whole. Otherwise the boss keeps its stage, shift and running pattern.
 - **Patterns (F-007).** An attack may name a **follow-up**: when its recovery ends, the
   follow-up's windup starts at that instant, with no cooldown, no trigger band and no free
   moment. The target is re-picked at each follow-up (co-op), and aim tracks then locks again.
   Each attack of a pattern is its own attack instance and obeys the telegraph floor.
 - **Gap vs punish window.** The recovery before a follow-up is a **gap**: short, hittable, but
   not safe. The **punish window** (principle 2) is the recovery of the pattern's last attack.
-  It must fit at least hits 1 and 2.
+  It must fit at least hits 1 and 2. The two must read differently (placeholder: a gap colour,
+  F-007/C20; final look → CX8).
 - **A wall-stopped attack drops its follow-up.** The stun ends the pattern.
 - **Never pushed.** Every boss has `knockback_scale` 0.
 - **Damage stays in the floor's band** (floor 1–3: 18–25). Bosses are harder by pattern, not
