@@ -31,6 +31,10 @@ const SNAPSHOT_KEYS: Array[String] = [
 	"projectiles",
 	"next_projectile_serial",
 	"wall_stopped",
+	"stage_index",  # F-007/C14: appended.
+	"stage_shift_left",
+	"pattern_root_index",
+	"pattern_depth",
 ]
 
 var _data: EnemyData = null
@@ -353,6 +357,10 @@ func to_dict() -> Dictionary:
 		"ai_enabled": _ai_enabled,
 		"combat": _combat.to_dict(),
 		"wall_stopped": _wall_stopped,
+		"stage_index": _stage_index,
+		"stage_shift_left": _stage_shift_left,
+		"pattern_root_index": _pattern_root_index,
+		"pattern_depth": _pattern_depth,
 	}
 	snapshot.merge(_projectiles.to_dict())  # F-005/C10.
 	return snapshot
@@ -361,6 +369,10 @@ func to_dict() -> Dictionary:
 func from_dict(snapshot: Dictionary) -> void:
 	if not snapshot.has_all(SNAPSHOT_KEYS):
 		push_error("EnemyLogic snapshot rejected: missing keys")
+		return
+	var errors: PackedStringArray = restore_errors(snapshot)
+	if not errors.is_empty():
+		push_error("EnemyLogic snapshot rejected: %s" % ", ".join(errors))
 		return
 	_position = snapshot["position"]
 	_state = snapshot["state"]
@@ -376,11 +388,33 @@ func from_dict(snapshot: Dictionary) -> void:
 	_target_id = snapshot["target_id"]
 	_ai_enabled = snapshot["ai_enabled"]
 	_wall_stopped = snapshot["wall_stopped"]
+	_stage_index = snapshot["stage_index"]
+	_stage_shift_left = snapshot["stage_shift_left"]
+	# F-007/C14: a position that no longer resolves just ends the pattern (C9).
+	_pattern_root_index = snapshot["pattern_root_index"]
+	_pattern_depth = snapshot["pattern_depth"]
 	_combat.from_dict(snapshot["combat"])
 	_projectiles.from_dict(snapshot)
 	_clear_intent()
 	_clear_charge_report()
 	state_restored.emit()
+
+
+## F-007/C14: a stage the current data doesn't list can't be restored (as C19 for a reload).
+## CombatSim asks every combatant before it restores any.
+func restore_errors(snapshot: Dictionary) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	if not snapshot.has("stage_index"):
+		return errors  # from_dict() refuses missing keys itself.
+	var listed: int = _data.stages.size() if _data != null else 0
+	if snapshot["stage_index"] > listed:
+		errors.append(
+			(
+				"%s: snapshot in stage %d, but the data lists only %d stages"
+				% [_combat_id, snapshot["stage_index"], listed]
+			)
+		)
+	return errors
 
 
 func _accepts(data: EnemyData, enemy_tunables: EnemyCombatTunables, step_rate: int) -> bool:
