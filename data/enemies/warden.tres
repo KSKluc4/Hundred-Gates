@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_data.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="2"]
+[ext_resource type="Resource" path="res://data/attacks/warden_swipe_a.tres" id="3"]
+[ext_resource type="Resource" path="res://data/attacks/warden_dashing_cut.tres" id="4"]
+[ext_resource type="Script" path="res://src/core/enemies/enemy_stage_data.gd" id="5"]
+[ext_resource type="Resource" path="res://data/enemies/warden_stage_2.tres" id="6"]
+
+[resource]
+script = ExtResource("1")
+id = &"warden"
+brain = 0
+max_hp = 400
+hurtbox_radius_tiles = 0.7
+knockback_scale = 0.0
+move_speed = 3.0
+aggro_radius_tiles = 10.0
+stop_distance_tiles = 1.2
+retreat_distance_tiles = 0.0
+attack_cooldown = 1.0
+attacks = Array[ExtResource("2")]([ExtResource("3"), ExtResource("4")])
+stages = Array[ExtResource("5")]([ExtResource("6")])

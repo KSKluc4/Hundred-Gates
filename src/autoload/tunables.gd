@@ -14,6 +14,17 @@ const CASTER_BOLT_PATH: String = "res://data/attacks/caster_bolt.tres"  # G5
 const BRUTE_PATH: String = "res://data/enemies/brute.tres"  # G5
 const BRUTE_STOMP_PATH: String = "res://data/attacks/brute_stomp.tres"  # G5
 const BRUTE_CHARGE_PATH: String = "res://data/attacks/brute_charge.tres"  # G5
+# F-007/C16: the Warden is data only.
+const WARDEN_PATH: String = "res://data/enemies/warden.tres"  # G5
+const WARDEN_STAGE_2_PATH: String = "res://data/enemies/warden_stage_2.tres"  # G5
+const WARDEN_SWIPE_A_PATH: String = "res://data/attacks/warden_swipe_a.tres"  # G5
+const WARDEN_SWIPE_B_PATH: String = "res://data/attacks/warden_swipe_b.tres"  # G5
+const WARDEN_DASHING_CUT_PATH: String = "res://data/attacks/warden_dashing_cut.tres"  # G5
+const WARDEN_P2_SWIPE_A_PATH: String = "res://data/attacks/warden_p2_swipe_a.tres"  # G5
+const WARDEN_P2_SWIPE_B_PATH: String = "res://data/attacks/warden_p2_swipe_b.tres"  # G5
+const WARDEN_OVERHEAD_PATH: String = "res://data/attacks/warden_overhead.tres"  # G5
+const WARDEN_P2_DASHING_CUT_PATH: String = "res://data/attacks/warden_p2_dashing_cut.tres"  # G5
+const WARDEN_SPIN_PATH: String = "res://data/attacks/warden_spin.tres"  # G5
 
 var game: GameTunables = preload(GAME_TUNABLES_PATH)
 var player_combat: PlayerCombatTunables = preload(PLAYER_COMBAT_PATH)

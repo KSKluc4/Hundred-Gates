@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyAttackData" format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="1"]
+[ext_resource type="Resource" path="res://data/attacks/warden_swipe_b.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+aim_track_time = 0.3
+lunge_tiles = 0.6
+trigger_min_tiles = 0.0
+trigger_max_tiles = 2.0
+follow_up = ExtResource("2")
+id = &"warden_swipe_a"
+windup = 0.5
+active = 0.1
+recovery = 0.25
+damage = 20
+arc_angle_deg = 110.0
+range_tiles = 1.6
+knockback_tiles = 0.8
+is_finisher = false
