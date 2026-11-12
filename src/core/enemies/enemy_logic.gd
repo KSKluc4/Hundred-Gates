@@ -7,8 +7,11 @@ extends Combatant
 ## Moves one step at a time on the shared grid (D-007), and time inside a step is exact (C5).
 
 signal state_restored
+## F-007/C7: once per stage entered, after the state changed.
+signal stage_changed(stage_index: int)
 
-enum State { IDLE, CHASE, WINDUP, ACTIVE, RECOVERY, KNOCKBACK, DEAD }
+## F-007/C7: STAGE_SHIFT appended, so saved state ints keep their meaning.
+enum State { IDLE, CHASE, WINDUP, ACTIVE, RECOVERY, KNOCKBACK, DEAD, STAGE_SHIFT }
 
 const TIME_EPSILON: float = CombatTiming.TIME_EPSILON
 const INITIAL_AIM: Vector2 = Vector2.DOWN
@@ -65,6 +68,11 @@ var _pattern_depth: int = 0
 # F-007/C10: per-step only, never in a snapshot. The view sensed at this step start, for a
 # follow-up that starts inside the step.
 var _step_view: CombatView = null
+# F-007/C5: 0 is EnemyData itself, n is EnemyData.stages[n - 1]. Only goes forward, except on
+# the debug reset.
+var _stage_index: int = 0
+# F-007/C7: the stage shift's time left, on this enemy's clock (hitstop pauses it).
+var _stage_shift_left: float = 0.0
 
 
 func _init() -> void:
@@ -94,6 +102,8 @@ func setup(
 	_target_id = &""
 	_aim = INITIAL_AIM
 	_cooldown_remaining = 0.0
+	_stage_index = 0  # F-007/C5: the debug reset is the only way back.
+	_stage_shift_left = 0.0
 	_clear_attack()
 	_clear_intent()
 	_clear_charge_report()
@@ -132,6 +142,8 @@ func sense(view: CombatView) -> void:
 	_step_view = view
 	if _data == null:
 		return
+	if _is_free():
+		_enter_deepest_stage()  # F-007/C6: after the view is sensed, before the brain decides.
 	if _is_free():
 		if _ai_enabled:
 			_decide(view)
@@ -195,14 +207,14 @@ func end_step() -> void:
 ## already made a committed enemy's distance 0, so this only has to leave its state alone.
 func apply_hit(event: HitEvent, tunables: PlayerCombatTunables) -> void:
 	_aggroed = true  # From the next step start (C5).
-	if not _is_committed():
+	if not _is_planted():
 		_state = State.KNOCKBACK if event.knockback_tiles > 0.0 else State.IDLE
 	_combat.apply_hit(event, tunables)
 
 
 ## F-004/C7: planted while committed. HitEvent reads this at the moment the hit is applied.
 func get_knockback_scale() -> float:
-	return 0.0 if _is_committed() else _data.knockback_scale
+	return 0.0 if _is_planted() else _data.knockback_scale
 
 
 ## F-004/C4.
@@ -220,17 +232,30 @@ func get_data() -> EnemyData:
 
 ## F-007/C4: the attack list of the current stage. Stage 0 is EnemyData's own.
 func get_current_attacks() -> Array[EnemyAttackData]:
-	return _data.attacks
+	var stage: EnemyStageData = _current_stage()
+	return stage.attacks if stage != null else _data.attacks
 
 
 ## F-007/C4: walking speed in the current stage.
 func get_current_move_speed() -> float:
-	return _data.move_speed
+	var stage: EnemyStageData = _current_stage()
+	return stage.move_speed if stage != null else _data.move_speed
 
 
 ## F-007/C4, C8: the cooldown the next finished attack (or pattern) starts.
 func get_current_attack_cooldown() -> float:
-	return _data.attack_cooldown
+	var stage: EnemyStageData = _current_stage()
+	return stage.attack_cooldown if stage != null else _data.attack_cooldown
+
+
+## F-007/C5: 0 until the first stage is entered.
+func get_stage_index() -> int:
+	return _stage_index
+
+
+## F-007/C7: 0 outside a stage shift.
+func get_stage_shift_left() -> float:
+	return _stage_shift_left
 
 
 func is_aggroed() -> bool:
@@ -413,6 +438,36 @@ func _is_committed() -> bool:
 	return _state == State.WINDUP or _state == State.ACTIVE or _state == State.RECOVERY
 
 
+## F-004/C7, F-007/C7: never pushed, and a hit doesn't change the state.
+func _is_planted() -> bool:
+	return _is_committed() or _state == State.STAGE_SHIFT
+
+
+## F-007/C3: null in stage 0.
+func _current_stage() -> EnemyStageData:
+	if _data == null or _stage_index == 0:
+		return null
+	return _data.stages[_stage_index - 1]
+
+
+## F-007/C5, C6, C7: the deepest stage that holds, skipping any in between. A shift of 0 leaves
+## the enemy free, so it decides in this same step with the new values.
+func _enter_deepest_stage() -> void:
+	var deepest: int = _stage_index
+	for index: int in range(_stage_index, _data.stages.size()):
+		if _data.stages[index].holds(_combat.get_hp(), _combat.get_max_hp()):
+			deepest = index + 1
+	if deepest == _stage_index:
+		return
+	_stage_index = deepest
+	var shift: float = _current_stage().shift_duration
+	if shift > TIME_EPSILON:
+		_state = State.STAGE_SHIFT
+		_stage_shift_left = shift
+		_clear_intent()
+	stage_changed.emit(_stage_index)
+
+
 func _decide(view: CombatView) -> void:
 	var intent: EnemyIntent = _brain.decide(self, view)
 	_target_id = intent.target_id
@@ -459,6 +514,8 @@ func _time_to_next_event() -> float:
 			return _phase_time_left()
 		State.KNOCKBACK:
 			return _combat.get_knockback_time_left()
+		State.STAGE_SHIFT:
+			return _stage_shift_left
 	return INF
 
 
@@ -482,6 +539,8 @@ func _advance(segment: float) -> void:
 			_advance_move(segment)
 		State.KNOCKBACK:
 			_advance_knockback(segment)
+		State.STAGE_SHIFT:
+			_advance_stage_shift(segment)
 		State.ACTIVE:
 			_tick_displacement += _aim * (_attack.lunge_tiles / _attack.active) * segment
 			_advance_phase(segment)
@@ -502,6 +561,14 @@ func _advance_knockback(segment: float) -> void:
 	_tick_displacement += _combat.get_knockback_velocity() * segment
 	_combat.advance_knockback(segment)
 	if not _combat.has_knockback():
+		_state = State.IDLE
+
+
+## F-007/C7: planted, no attack, no move. The cooldown keeps counting in _advance() (C8).
+func _advance_stage_shift(segment: float) -> void:
+	_stage_shift_left -= segment
+	if _stage_shift_left <= TIME_EPSILON:
+		_stage_shift_left = 0.0
 		_state = State.IDLE
 
 
@@ -651,6 +718,7 @@ func _clear_intent() -> void:
 func _enter_dead() -> void:
 	_state = State.DEAD
 	_target_id = &""
+	_stage_shift_left = 0.0
 	_clear_attack()
 	_combat.stop_knockback()
 	_projectiles.clear()  # F-005/C4: candidates found at this contact still land (F-003/C16).

@@ -21,6 +21,8 @@ enum Brain { CHASER, CASTER, BRUTE }  # F-006/C13: BRUTE appended.
 ## F-006/C4: in priority order. A brain uses the first one whose trigger band holds the target
 ## distance (EnemyBrain.pick_attack()).
 @export var attacks: Array[EnemyAttackData] = []
+## F-007/C3: stages 1..n in order, each entered at its HP percent. Empty for a plain enemy.
+@export var stages: Array[EnemyStageData] = []
 
 
 ## F-004/C12. Empty result means valid. The speed rule isn't here: see validate_against_class().
