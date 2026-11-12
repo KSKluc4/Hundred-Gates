@@ -58,6 +58,13 @@ var _wall_stopped: bool = false
 # boundary. The charge's [start, planned_end] for the glue, and a short report not applied yet.
 var _charge_segment: PackedVector2Array = PackedVector2Array()
 var _stop_pending: bool = false
+# F-007/C9: the running pattern, by position in the current data: the index the brain picked
+# in the current stage's list, and how many follow-ups from it the running attack is. -1 = none.
+var _pattern_root_index: int = -1
+var _pattern_depth: int = 0
+# F-007/C10: per-step only, never in a snapshot. The view sensed at this step start, for a
+# follow-up that starts inside the step.
+var _step_view: CombatView = null
 
 
 func _init() -> void:
@@ -122,6 +129,7 @@ func sense(view: CombatView) -> void:
 	# F-005/C4, C5: the step start. Spent and landed projectiles go before this step advances.
 	_projectiles.begin_step()
 	_tick_displacement = Vector2.ZERO  # A windup of 0 launches here, from where it stands.
+	_step_view = view
 	if _data == null:
 		return
 	if _is_free():
@@ -259,6 +267,24 @@ func is_wall_stopped() -> bool:
 ## The latched attack, for the telegraph view. Null outside an attack.
 func get_running_attack() -> EnemyAttackData:
 	return _attack
+
+
+## F-007/C9: the list index the running pattern started from, or -1 outside an attack.
+func get_pattern_root_index() -> int:
+	return _pattern_root_index
+
+
+## F-007/C9: 0 for the pattern's first attack, n for its n-th follow-up.
+func get_pattern_depth() -> int:
+	return _pattern_depth
+
+
+## F-007/C20: this recovery is a gap, not the punish window. Reads only logic state and the
+## current data (C9), so it is right after a reload, a reset or a restore.
+func has_pending_follow_up() -> bool:
+	if _data == null or _state != State.RECOVERY or _wall_stopped:
+		return false
+	return _pattern_attack(_pattern_depth + 1) != null
 
 
 ## F-005/C5, C12: the glue reports walls to it, and the views draw it. Nothing else changes it.
@@ -405,11 +431,9 @@ func _decide(view: CombatView) -> void:
 ## F-004/C5: WINDUP begins at this step start, so it aims from this view. With an
 ## aim_track_time of 0 that's also where it locks. F-006/C4: the brain picked which attack.
 func _start_attack(view: CombatView, attack_index: int) -> void:
-	_attack = get_current_attacks()[attack_index].duplicate()
-	_hit_ids = []
-	_phase_elapsed = 0.0
-	_aim_locked = false
-	_state = State.WINDUP
+	_pattern_root_index = attack_index  # F-007/C9: the pattern root.
+	_pattern_depth = 0
+	_latch(get_current_attacks()[attack_index])
 	_aim_at_target(view)
 	_update_aim_lock()
 	_cross_finished_phases()
@@ -502,7 +526,7 @@ func _cross_finished_phases() -> void:
 			State.ACTIVE:
 				_state = State.RECOVERY
 			State.RECOVERY:
-				_finish_attack()
+				_end_recovery()
 
 
 ## F-005/C4, C8: at the exact instant the windup ends, from where the enemy is, along the
@@ -556,7 +580,51 @@ func _clear_charge_report() -> void:
 	_stop_pending = false
 
 
-## F-004/C5: the punish window is over, and the cooldown starts.
+## F-004/C5: one attack instance (F-007/C11), latched at its windup start. F-007/C9: the copy
+## keeps no follow-up, so nothing can read a pattern from a pre-reload resource.
+func _latch(attack: EnemyAttackData) -> void:
+	_attack = attack.duplicate()
+	_attack.follow_up = null
+	_hit_ids = []
+	_phase_elapsed = 0.0
+	_aim_locked = false
+	_state = State.WINDUP
+
+
+## F-007/C9-C12: at the exact instant a recovery ends. If the pattern goes on, the follow-up's
+## windup starts now: no free moment, no brain, no cooldown, no trigger band. Its target is
+## re-picked from this step's view (C10). A wall stop (C12) or no living player ends it.
+func _end_recovery() -> void:
+	var next: EnemyAttackData = null if _wall_stopped else _pattern_attack(_pattern_depth + 1)
+	var target: CombatView.Entry = null
+	if next != null and _step_view != null:
+		target = EnemyBrain.nearest_player(_step_view, _position)
+	if target == null:
+		_finish_attack()
+		return
+	_pattern_depth += 1
+	_target_id = target.combat_id
+	_latch(next)
+	_aim_at_target(_step_view)
+	_update_aim_lock()
+
+
+## F-007/C9: the pattern's attack at `depth`, from the current data by position: the root
+## index in the current list, then `depth` follow-ups. Null when it no longer resolves.
+func _pattern_attack(depth: int) -> EnemyAttackData:
+	var attacks: Array[EnemyAttackData] = get_current_attacks()
+	if _pattern_root_index < 0 or _pattern_root_index >= attacks.size():
+		return null
+	var attack: EnemyAttackData = attacks[_pattern_root_index]
+	for _i: int in depth:
+		if attack == null:
+			return null
+		attack = attack.follow_up
+	return attack
+
+
+## F-004/C5: the punish window is over, and the cooldown starts. F-007/C11: at a pattern's
+## last recovery (or wall stun) end.
 func _finish_attack() -> void:
 	_clear_attack()
 	_cooldown_remaining = get_current_attack_cooldown()
@@ -569,6 +637,8 @@ func _clear_attack() -> void:
 	_aim_locked = false
 	_hit_ids = []
 	_wall_stopped = false  # F-006/C7: when the attack ends, on reset and on death.
+	_pattern_root_index = -1
+	_pattern_depth = 0
 
 
 func _clear_intent() -> void:

@@ -29,6 +29,9 @@ const FULL_CIRCLE_DEG: float = 360.0
 @export var trigger_max_tiles: float = 0.0
 ## F-006/C7: above 0, a charge stopped by a wall recovers this long instead of `recovery`.
 @export var wall_stun_duration: float = 0.0
+## F-007/C9: null = none. Its windup starts the instant this attack's recovery ends. Never
+## snapshotted: EnemyLogic reads a pattern from the current data by position, never from here.
+@export var follow_up: EnemyAttackData = null
 
 
 ## F-004/C6: a latched attack lives in snapshots, so it can be rebuilt without its file.
