@@ -28,3 +28,30 @@ func load_fresh(path: String) -> Resource:
 	if not FileAccess.file_exists(path):
 		return null
 	return ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE_DEEP)
+
+
+## F-007/C13 (b): the file chain from `path` back to a file it already passed through, or empty.
+## Godot's loader never returns from a cycle of external resources (a follow_up chain across
+## files), so a reload must find one before load_fresh(). Reads only the dependency lists.
+func find_dependency_cycle(path: String) -> PackedStringArray:
+	return _cycle_from(path, PackedStringArray())
+
+
+func _cycle_from(path: String, trail: PackedStringArray) -> PackedStringArray:
+	if trail.has(path):
+		var cycle: PackedStringArray = trail.slice(trail.find(path))
+		cycle.append(path)
+		return cycle
+	if not (path.ends_with(".tres") or path.ends_with(".res")) or not FileAccess.file_exists(path):
+		return PackedStringArray()
+	var deeper: PackedStringArray = trail.duplicate()
+	deeper.append(path)
+	for dependency: String in ResourceLoader.get_dependencies(path):
+		# "uid://…::Type::path" or a plain path: the path is the last part.
+		var dependency_path: String = dependency.get_slice(
+			"::", dependency.get_slice_count("::") - 1
+		)
+		var cycle: PackedStringArray = _cycle_from(dependency_path, deeper)
+		if not cycle.is_empty():
+			return cycle
+	return PackedStringArray()

@@ -201,7 +201,7 @@ func test_ac18_a_bolt_in_flight_keeps_flying_and_hits_during_the_shift() -> void
 	var arena: CasterArena = CasterArena.new()
 	var data: EnemyData = arena.caster_data
 	data.attacks[0].trigger_max_tiles = 10.0
-	data.stages.append(_stage(50, 5.0, data.attacks[0].duplicate(), 2.5, 1.2))
+	data.stages.append(BossValues.stage(50, 5.0, data.attacks[0].duplicate(), 2.5, 1.2))
 	arena.add_player(Vector2(0, 9.5))
 	var caster: EnemyLogic = arena.add_caster(Vector2.ZERO)
 	arena.restore_value(caster, "aggroed", true)
@@ -210,7 +210,7 @@ func test_ac18_a_bolt_in_flight_keeps_flying_and_hits_during_the_shift() -> void
 	var sector: Array[bool] = [false]
 	for step: int in 400:
 		if step == 100:  # In the bolt's recovery: the line is crossed while committed.
-			_set_hp(caster, 15)
+			BossValues.set_hp(caster, 15)
 		arena.tick()
 		var flying: Array[ProjectileSet.Projectile] = caster.get_projectiles().get_projectiles()
 		if caster.get_state() == EnemyLogic.State.STAGE_SHIFT:
@@ -234,20 +234,6 @@ func test_ac18_a_bolt_in_flight_keeps_flying_and_hits_during_the_shift() -> void
 	assert_false(sector[0], "no sector hitbox in the shift")
 
 
-## A stage with one attack, at a percent.
-func _stage(
-	percent: int, shift: float, attack: EnemyAttackData, speed: float, cooldown: float
-) -> EnemyStageData:
-	var stage: EnemyStageData = EnemyStageData.new()
-	stage.enter_at_hp_percent = percent
-	stage.shift_duration = shift
-	var attacks: Array[EnemyAttackData] = [attack]
-	stage.attacks = attacks
-	stage.move_speed = speed
-	stage.attack_cooldown = cooldown
-	return stage
-
-
 ## A CasterArena only for its restore_value().
 func _stage_arena(shift: float) -> CasterArena:
 	var arena: CasterArena = CasterArena.new()
@@ -263,7 +249,7 @@ func _stage_arena(shift: float) -> CasterArena:
 	stage_swipe.trigger_max_tiles = 2.0
 	stage_swipe.lunge_tiles = 0.0
 	stage_swipe.range_tiles = NOT_A_RANGE
-	var stages: Array[EnemyStageData] = [_stage(50, shift, stage_swipe, 3.0, 0.8)]
+	var stages: Array[EnemyStageData] = [BossValues.stage(50, shift, stage_swipe, 3.0, 0.8)]
 	data.stages = stages
 	return arena
 
@@ -271,7 +257,7 @@ func _stage_arena(shift: float) -> CasterArena:
 func _setup(arena: EnemyArena, hp: int, at: Vector2 = CHASING_START) -> EnemyLogic:
 	arena.add_player(Vector2.ZERO)
 	var enemy: EnemyLogic = arena.add_chaser(at)
-	_set_hp(enemy, hp)
+	BossValues.set_hp(enemy, hp)
 	return enemy
 
 
@@ -290,15 +276,6 @@ func _hit_once(
 	arena.tick(120, Vector2.ZERO, false, true)
 	arena.ticks(ticks)
 	return {"enemy": enemy, "watch": watch}
-
-
-## F-004/C6's restore path, for HP only.
-func _set_hp(enemy: EnemyLogic, hp: int) -> void:
-	var snapshot: Dictionary = enemy.to_dict()
-	var combat: Dictionary = snapshot["combat"].duplicate()
-	combat["hp"] = hp
-	snapshot["combat"] = combat
-	enemy.from_dict(snapshot)
 
 
 func _bolt_position(projectile: ProjectileSet.Projectile) -> Vector2:

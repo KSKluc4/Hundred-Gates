@@ -116,10 +116,29 @@ func setup(
 func apply_data(data: EnemyData, enemy_tunables: EnemyCombatTunables, step_rate: int) -> bool:
 	if not _accepts(data, enemy_tunables, step_rate):
 		return false
+	var stage_errors: PackedStringArray = reload_errors(data)
+	if not stage_errors.is_empty():  # F-007/C19: a guard. CombatRunner refuses it first.
+		push_error("EnemyLogic data rejected: %s" % ", ".join(stage_errors))
+		return false
 	_data = data
 	_brain = EnemyBrain.for_data(data)
 	_combat.set_max_hp(data.max_hp)
 	return true
+
+
+## F-007/C19: why `candidate` can't replace the data now, empty when it can. A candidate that
+## no longer lists the stage this enemy is in is refused: stages never go back (C5), and two
+## versions of a boss can't live at once.
+func reload_errors(candidate: EnemyData) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	if candidate != null and _stage_index > candidate.stages.size():
+		errors.append(
+			(
+				"%s: in stage %d, but %s lists only %d stages"
+				% [_combat_id, _stage_index, candidate.resource_path, candidate.stages.size()]
+			)
+		)
+	return errors
 
 
 ## F-004/C4. Debug keys act between ticks. A running attack and knockback still finish.

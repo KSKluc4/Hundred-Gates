@@ -16,6 +16,8 @@ class ReloadGroup:
 	var enemy_rules: EnemyCombatTunables
 	## Path to EnemyData: each distinct file once, however many enemies use it.
 	var enemies: Dictionary = {}
+	## F-007/C13 (b): path to the file cycle that kept it from loading.
+	var cycles: Dictionary = {}
 
 
 ## F-003/C19: the order here is the registration order.
@@ -137,6 +139,8 @@ func reload_data() -> PackedStringArray:
 		errors = _validation_errors(group)
 		if errors.is_empty() and rate != _sim.get_step_rate():
 			errors = _sim.rate_change_errors(rate)
+		if errors.is_empty():
+			errors = _live_stage_errors(group)
 	if errors.is_empty():
 		_apply_reload(player, group)
 	return errors
@@ -219,8 +223,14 @@ func _load_group(player: Player) -> ReloadGroup:
 	group.enemy_rules = Tunables.load_fresh(enemy_combat_path) as EnemyCombatTunables
 	for enemy: Enemy in _enemies():
 		var path: String = enemy.get_data_path()
-		if not group.enemies.has(path):
-			group.enemies[path] = Tunables.load_fresh(path) as EnemyData
+		if group.enemies.has(path):
+			continue
+		var cycle: PackedStringArray = Tunables.find_dependency_cycle(path)
+		if not cycle.is_empty():
+			group.cycles[path] = cycle  # F-007/C13 (b): loading it would never return.
+			group.enemies[path] = null
+			continue
+		group.enemies[path] = Tunables.load_fresh(path) as EnemyData
 	return group
 
 
@@ -237,7 +247,10 @@ func _load_errors(player: Player, group: ReloadGroup) -> PackedStringArray:
 	if group.enemy_rules == null:
 		errors.append("could not load %s" % enemy_combat_path)
 	for path: String in group.enemies:
-		if group.enemies[path] == null:
+		if group.cycles.has(path):
+			var chain: String = " -> ".join(group.cycles[path])
+			errors.append("%s: follow_up files form a cycle: %s" % [path, chain])
+		elif group.enemies[path] == null:
 			errors.append("could not load %s" % path)
 	return errors
 
@@ -258,6 +271,15 @@ func _validation_errors(group: ReloadGroup) -> PackedStringArray:
 		for error: String in data.validate(rate, group.enemy_rules):
 			errors.append("%s: %s" % [path, error])
 		errors.append_array(data.validate_against_class(group.class_data))
+	return errors
+
+
+## F-007/C19: like a rate change a running hit would break, a stage an enemy is in must still
+## exist. Checked before anything changes, for every enemy.
+func _live_stage_errors(group: ReloadGroup) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	for enemy: Enemy in _enemies():
+		errors.append_array(enemy.logic.reload_errors(group.enemies[enemy.get_data_path()]))
 	return errors
 
 
