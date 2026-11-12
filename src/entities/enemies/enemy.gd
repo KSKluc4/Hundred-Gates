@@ -15,6 +15,10 @@ const WALL_LAYER_MASK: int = 1
 @export var body_color: Color = Color(0.45, 0.6, 0.35)
 ## AC23: the punish window.
 @export var open_color: Color = Color(0.95, 0.85, 0.3)
+## F-007/C20: a gap, the recovery before a follow-up. Placeholder: the look → Art & Game Feel.
+@export var gap_color: Color = Color(0.55, 0.6, 0.85)
+## F-007/C17: the stage shift cue. Placeholder: the look → Art & Game Feel.
+@export var shift_color: Color = Color(0.75, 0.4, 0.95)
 @export var dead_color: Color = Color(0.25, 0.25, 0.25)
 @export var tracking_color: Color = Color(1.0, 0.55, 0.2, 0.5)
 @export var locked_color: Color = Color(1.0, 0.3, 0.15, 0.95)
@@ -127,6 +131,8 @@ func get_debug_text() -> String:
 	var state: String = EnemyLogic.State.find_key(logic.get_state())
 	if logic.is_wall_stopped():
 		state += " (stun)"  # F-006/C12: the stun is the recovery, lengthened.
+	if logic.has_pending_follow_up():
+		state += " (gap)"  # F-007/C20: another attack is coming.
 	return (
 		"%s\ncd %.2f\n> %s"
 		% [state, logic.get_cooldown_remaining(), target if target != &"" else &"-"]
@@ -143,7 +149,10 @@ func get_body_color() -> Color:
 		EnemyLogic.State.DEAD:
 			return dead_color
 		EnemyLogic.State.RECOVERY:
-			return open_color
+			# F-007/C20: only the pattern's last recovery is the punish window.
+			return gap_color if logic.has_pending_follow_up() else open_color
+		EnemyLogic.State.STAGE_SHIFT:
+			return shift_color
 	return body_color
 
 

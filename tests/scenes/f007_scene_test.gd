@@ -36,6 +36,7 @@ var _player: Player
 var _dummy: TrainingDummy
 var _boss: Enemy
 var _runner: CombatRunner
+var _bar: BossBar
 var _t0: float = 0.0
 var _ticks_per_second_before: int
 
@@ -112,6 +113,31 @@ func build(boss_data: EnemyData = null, boss_at: Vector2 = Vector2.ZERO) -> void
 	await get_tree().physics_frame
 	_runner.reset()
 	_t0 = _runner.get_sim().get_time()
+
+
+## The real debug scene, f007_warden.tscn: the Warrior and the Warden. Ends right after the
+## debug reset, like build().
+func spawn_debug_scene() -> void:
+	_scene = (load(DEBUG_SCENE_PATH) as PackedScene).instantiate()
+	_player = _scene.get_node("Player")
+	_boss = _scene.get_node("Warden")
+	_runner = _scene.get_node("CombatRunner")
+	_bar = _scene.get_node("BossBarLayer/BossBar")
+	_player.input_enabled = false
+	add_child_autofree(_scene)
+	await get_tree().physics_frame
+	_runner.reset()
+	_t0 = _runner.get_sim().get_time()
+
+
+## Between ticks: the logic first, then the body from it (F-001/C18's restore path).
+func put_player_at(tiles: Vector2) -> void:
+	_player.motor.sync_position(Units.vector_tiles_to_px(tiles))
+	_player.sync_body_from_logic()
+
+
+func boss_tiles() -> Vector2:
+	return _boss.logic.get_position_tiles()
 
 
 func load_boss() -> EnemyData:
