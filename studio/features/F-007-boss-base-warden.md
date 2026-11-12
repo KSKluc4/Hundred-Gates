@@ -1,8 +1,8 @@
 ---
 id: F-007
 title: Boss base + floor 1 boss (Warden)
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-09
 updated: 2026-11-12
 depends_on: [F-003, F-004, F-005, F-006, D-005, D-007, D-008]
@@ -582,26 +582,77 @@ Keep C6's prohibition on entry during knockback.
 **Started:** 2026-11-12  ·  **Branch:** `feature/F-007-boss-base-warden`
 
 ### Progress
-- [ ] T1 — <commit hash when done>
-- [ ] T2
-- [ ] T3
-- [ ] T4
-- [ ] T5
-- [ ] T6
-- [ ] T7
+- [x] T1 — 49b8097 (effective-value getters, `pick_attack_in()`, brains use them)
+- [x] T2 — 8ac45aa (`follow_up`, pattern logic, `has_pending_follow_up()`)
+- [x] T3 — ba45113 (`EnemyStageData`, `stages`, entry rule, `STAGE_SHIFT`, `stage_changed`)
+- [x] T4 — b326acd (stage/follow-up validation, `reload_errors()`, runner preflight)
+- [x] T5 — fc11656 (snapshot keys, refusal of an unlisted stage before any restore)
+- [x] T6 — 1b84be3 (Warden data: 2 enemy files + 8 attacks, data and tick-rate tests)
+- [x] T7 — 424ca2f (`f007_warden.tscn`, `boss_bar.gd`, gap and shift cues, glossary)
 
 ### Deviations from plan
-<Every place the code differs from §3–§6, with reason. "None" if none.>
-- DEV-1: <what changed> — **Why:** <reason> — **Impact:** <what else this affects>
+- DEV-1: **File cycles are caught before loading.** A `follow_up` cycle across `.tres` files
+  never reaches validation: Godot 4.7.2's loader recurses forever and the process segfaults
+  (checked headless). So `CombatRunner._load_group()` now walks each enemy file's
+  dependencies first, with the new `Tunables.find_dependency_cycle()`
+  (`ResourceLoader.get_dependencies()`, no load), and refuses the group with
+  `<enemy path>: follow_up files form a cycle: a -> b -> a`. — **Why:** otherwise F5 after
+  such an edit crashes the game instead of being refused (C13 b, AC12). — **Impact:** one more
+  method on the `Tunables` autoload (not a new autoload, C18) and one more reload message. The
+  in-memory cycle check in `EnemyData.validate()` is still the C13 rule (setup + reload). A
+  scene whose *saved* data already has a file cycle still can't load at all; nothing in our
+  code runs before Godot loads the scene.
+- DEV-2: **Restore preflight in the shared sim (PR-6).** New virtual
+  `Combatant.restore_errors(snapshot)`; `CombatSim.from_dict()` asks every combatant before it
+  changes its time or any combatant, and returns `false` on any error. `EnemyLogic.from_dict()`
+  (the real entry point; C14 says `from_snapshot`) also refuses and changes nothing on its own.
+  — **Why:** T5 listed only enemy code, but an all-or-nothing restore (AC20 g) needs the sim.
+  — **Impact:** `combatant.gd`, `combat_sim.gd`; no other combatant overrides it.
 
 ### Assumptions made (small, reversible)
-- ASSUMPTION-1: <the gap in the spec> → <what I chose> — **Why:** <reason>
+- ASSUMPTION-1: Stage entry with the AI toggle off → still happens (and the shift runs). It is
+  driven by HP, not a decision. — **Why:** C6 only names "free".
+- ASSUMPTION-2: Target during a stage shift → kept as it was. — **Why:** C7 is silent; the
+  next decision re-picks anyway.
+- ASSUMPTION-3: `<id>` in C19's message → the enemy's combat id (`warden: in stage 1, but
+  <path> lists only 0 stages`). — **Why:** names the live enemy; the path names the data.
+- ASSUMPTION-4: A follow-up re-picks its target by distance from the enemy's step-start
+  position, the same one the view was sensed with (C10), not from mid-step lunge progress.
+- ASSUMPTION-5: `shift_duration` at or below `TIME_EPSILON` counts as 0 (no shift state).
+- ASSUMPTION-6: AC14's scripted fight starts the real Warden at 205 HP (set through the
+  snapshot path) so one sword hit crosses 50 % inside swipe A. The script then runs 6 s.
+- ASSUMPTION-7: AC18 crosses the caster's line by setting HP mid-recovery (snapshot path), not
+  with a player hit, so the bolt is still flying when the shift starts.
+- ASSUMPTION-8: The boss bar numbers stages from 1 ("stage 1" = index 0), as the design doc does.
+- ASSUMPTION-9: Follow-up errors are `<enemy path>: <attack id>: <rule>`; a stage error on an
+  in-memory stage prints `stages[i] (built-in)` (empty `resource_path`).
+- ASSUMPTION-10: Placeholder colours: `gap_color` pale blue, `shift_color` purple (Enemy and
+  BossBar exports). Final look stays §10 Q3.
 
 ### Things the Auditor should look at closely
-- <tricky spots, edge cases you're unsure about>
+- `EnemyLogic._end_recovery()`: the follow-up starts inside `_cross_finished_phases()`'s loop,
+  using `_step_view` (per-step only, set in every `sense()`, never snapshotted).
+- `has_pending_follow_up()` reads data only (C20), so it is true in a gap even if no living
+  player will be there for the follow-up (C10 then ends the pattern).
+- `_is_planted()` (committed or `STAGE_SHIFT`) replaces `_is_committed()` in `apply_hit()` and
+  `get_knockback_scale()`; `_is_committed()` still drives the phase loop.
+- The latched copy's `follow_up` is set to `null` in `_latch()`, so nothing can follow a
+  pre-reload chain (C9).
+- DEV-1's dependency walk takes the last `::` part of each dependency string (plain path or
+  `uid://…::Type::path`).
+- AC2 uses `knockback_scale` 0 (PR-7). AC12 setup cases are in
+  `tests/core/enemies/test_stage_validation.gd`, reload cases in
+  `tests/scenes/test_f007_reload.gd`.
+- `.claude/worktrees/agent-…` (an F-008 worktree of another session) is untracked in this
+  checkout and was left alone.
 
 ### How to test
-<exact steps / commands / scene to run>
+- `tools/test` (826 tests, all pass), `tools/lint`, `tools/check_core_purity`.
+- F-007 tests: `tests/core/enemies/test_stage_getters.gd`, `test_patterns.gd`,
+  `test_stages.gd`, `test_stage_validation.gd`, `test_boss_snapshot.gd`, `test_warden.gd`;
+  `tests/scenes/test_f007_reload.gd`, `test_f007_restore.gd`, `test_f007_scene.gd`.
+- Scene: open `scenes/debug/f007_warden.tscn` and run it (F6). R = reset, F5 = reload. Then
+  §5 "How to verify manually".
 
 ---
 
