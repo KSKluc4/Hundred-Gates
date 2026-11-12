@@ -1,10 +1,10 @@
 ---
 id: F-007
 title: Boss base + floor 1 boss (Warden)
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
+status: APPROVED         # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-09
-updated: 2026-11-10
+updated: 2026-11-12
 depends_on: [F-003, F-004, F-005, F-006, D-005, D-007, D-008]
 pillars: [2]
 department: Combat
