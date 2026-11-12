@@ -15,7 +15,8 @@ func decide(enemy: EnemyLogic, view: CombatView) -> EnemyIntent:
 	if not enemy.is_aggroed() and distance > data.aggro_radius_tiles + epsilon:
 		return EnemyIntent.idle()
 	if enemy.is_attack_ready():
-		var attack_index: int = EnemyBrain.pick_attack(data, distance)
+		var attacks: Array[EnemyAttackData] = enemy.get_current_attacks()  # F-007/C4.
+		var attack_index: int = EnemyBrain.pick_attack_in(attacks, distance)
 		if attack_index >= 0:
 			return EnemyIntent.attack(target.combat_id, attack_index)
 	var direction: Vector2 = own_position.direction_to(target.position)

@@ -210,6 +210,21 @@ func get_data() -> EnemyData:
 	return _data
 
 
+## F-007/C4: the attack list of the current stage. Stage 0 is EnemyData's own.
+func get_current_attacks() -> Array[EnemyAttackData]:
+	return _data.attacks
+
+
+## F-007/C4: walking speed in the current stage.
+func get_current_move_speed() -> float:
+	return _data.move_speed
+
+
+## F-007/C4, C8: the cooldown the next finished attack (or pattern) starts.
+func get_current_attack_cooldown() -> float:
+	return _data.attack_cooldown
+
+
 func is_aggroed() -> bool:
 	return _aggroed
 
@@ -390,7 +405,7 @@ func _decide(view: CombatView) -> void:
 ## F-004/C5: WINDUP begins at this step start, so it aims from this view. With an
 ## aim_track_time of 0 that's also where it locks. F-006/C4: the brain picked which attack.
 func _start_attack(view: CombatView, attack_index: int) -> void:
-	_attack = _data.attacks[attack_index].duplicate()
+	_attack = get_current_attacks()[attack_index].duplicate()
 	_hit_ids = []
 	_phase_elapsed = 0.0
 	_aim_locked = false
@@ -453,7 +468,7 @@ func _advance(segment: float) -> void:
 ## F-004/C5: never closer than the intent allows. An enemy that became free mid-step has no
 ## intent, so it holds still for the rest of that step (C4).
 func _advance_move(segment: float) -> void:
-	var distance: float = minf(_data.move_speed * segment, _move_left)
+	var distance: float = minf(get_current_move_speed() * segment, _move_left)
 	_tick_displacement += _move_direction * distance
 	_move_left -= distance
 
@@ -544,7 +559,7 @@ func _clear_charge_report() -> void:
 ## F-004/C5: the punish window is over, and the cooldown starts.
 func _finish_attack() -> void:
 	_clear_attack()
-	_cooldown_remaining = _data.attack_cooldown
+	_cooldown_remaining = get_current_attack_cooldown()
 	_state = State.IDLE
 
 

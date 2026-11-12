@@ -1,7 +1,7 @@
 ---
 id: F-007
 title: Boss base + floor 1 boss (Warden)
-status: APPROVED         # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-09
 updated: 2026-11-12
@@ -579,7 +579,7 @@ Keep C6's prohibition on entry during knockback.
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** YYYY-MM-DD  ·  **Branch:** `feature/F-007-boss-base-warden`
+**Started:** 2026-11-12  ·  **Branch:** `feature/F-007-boss-base-warden`
 
 ### Progress
 - [ ] T1 — <commit hash when done>

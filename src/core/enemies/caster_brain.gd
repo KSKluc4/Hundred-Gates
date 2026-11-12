@@ -16,7 +16,8 @@ func decide(enemy: EnemyLogic, view: CombatView) -> EnemyIntent:
 		return EnemyIntent.idle()
 	# C7: shooting beats retreating, at any distance, so a cornered caster still shoots.
 	if enemy.is_attack_ready():
-		var attack_index: int = EnemyBrain.pick_attack(data, distance)  # F-006/C4.
+		var attacks: Array[EnemyAttackData] = enemy.get_current_attacks()  # F-007/C4.
+		var attack_index: int = EnemyBrain.pick_attack_in(attacks, distance)
 		if attack_index >= 0:
 			return EnemyIntent.attack(target.combat_id, attack_index)
 	var direction: Vector2 = own_position.direction_to(target.position)
