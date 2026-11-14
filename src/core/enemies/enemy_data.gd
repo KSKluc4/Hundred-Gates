@@ -21,6 +21,8 @@ enum Brain { CHASER, CASTER, BRUTE }  # F-006/C13: BRUTE appended.
 ## F-006/C4: in priority order. A brain uses the first one whose trigger band holds the target
 ## distance (EnemyBrain.pick_attack()).
 @export var attacks: Array[EnemyAttackData] = []
+## F-007/C3: stages 1..n in order, each entered at its HP percent. Empty for a plain enemy.
+@export var stages: Array[EnemyStageData] = []
 
 
 ## F-004/C12. Empty result means valid. The speed rule isn't here: see validate_against_class().
@@ -46,7 +48,8 @@ func validate(step_rate: int, tunables: EnemyCombatTunables) -> PackedStringArra
 		errors.append("retreat_distance_tiles must be >= 0 and <= stop_distance_tiles")
 	if not attack_cooldown >= 0.0:
 		errors.append("attack_cooldown must be >= 0")
-	errors.append_array(_attacks_errors(step_rate, tunables))
+	errors.append_array(_attack_list_errors(attacks, step_rate, tunables))
+	errors.append_array(_stages_errors(step_rate, tunables))
 	return errors
 
 
@@ -61,23 +64,91 @@ func validate_against_class(class_data: ClassData) -> PackedStringArray:
 				% [id, move_speed, class_data.id, class_data.move_speed]
 			)
 		)
+	# F-007/C13 (f): every stage walks too, so CombatRunner's setup and reload cover it.
+	for index: int in stages.size():
+		var stage: EnemyStageData = stages[index]
+		if stage != null and not stage.move_speed < class_data.move_speed:
+			errors.append(
+				(
+					"enemy %s %s move_speed %s must be below class %s move_speed %s"
+					% [
+						id,
+						_stage_name(index),
+						stage.move_speed,
+						class_data.id,
+						class_data.move_speed
+					]
+				)
+			)
 	return errors
 
 
 ## F-006/C9: at least one attack, no null entry, each valid on its own and of the brain's kind.
-func _attacks_errors(step_rate: int, tunables: EnemyCombatTunables) -> PackedStringArray:
+## F-007/C13 (a), (e): the same for every stage's list, and for every follow-up.
+func _attack_list_errors(
+	list: Array[EnemyAttackData], step_rate: int, tunables: EnemyCombatTunables
+) -> PackedStringArray:
 	var errors: PackedStringArray = []
-	if attacks.is_empty():
+	if list.is_empty():
 		errors.append("attacks must not be empty")
-	for index: int in attacks.size():
-		var attack: EnemyAttackData = attacks[index]
+	for index: int in list.size():
+		var attack: EnemyAttackData = list[index]
 		if attack == null:
 			errors.append("attacks[%d] must not be null" % index)
 			continue
+		errors.append_array(_chain_errors(attack, step_rate, tunables))
+	return errors
+
+
+## F-007/C13 (a), (b): the attack, then every follow-up reachable from it, each with every
+## attack check. A chain that comes back to an attack it already passed is a cycle.
+func _chain_errors(
+	root: EnemyAttackData, step_rate: int, tunables: EnemyCombatTunables
+) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	var seen: Array[EnemyAttackData] = []
+	var attack: EnemyAttackData = root
+	while attack != null:
+		seen.append(attack)
 		for error: String in attack.validate_enemy(step_rate, tunables):
 			errors.append("%s: %s" % [attack.id, error])
 		errors.append_array(_attack_kind_errors(attack))
+		if seen.has(attack.follow_up):
+			errors.append("%s: follow_up %s closes a cycle" % [attack.id, attack.follow_up.id])
+			break
+		attack = attack.follow_up
 	return errors
+
+
+## F-007/C13 (c)-(e), (g), (h). Every error names the list position and the stage file.
+func _stages_errors(step_rate: int, tunables: EnemyCombatTunables) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	var previous: EnemyStageData = null
+	for index: int in stages.size():
+		var stage: EnemyStageData = stages[index]
+		if stage == null:
+			errors.append("stages[%d] must not be null" % index)
+			continue
+		var stage_errors: PackedStringArray = stage.validate()
+		if previous != null and not stage.enter_at_hp_percent < previous.enter_at_hp_percent:
+			stage_errors.append(
+				(
+					"enter_at_hp_percent must be below the previous stage's (%d)"
+					% previous.enter_at_hp_percent
+				)
+			)
+		stage_errors.append_array(_attack_list_errors(stage.attacks, step_rate, tunables))
+		for error: String in stage_errors:
+			errors.append("%s: %s" % [_stage_name(index), error])
+		previous = stage
+	return errors
+
+
+## F-007/C13: `stages[i] (<resource_path>)`.
+func _stage_name(index: int) -> String:
+	var stage: EnemyStageData = stages[index]
+	var path: String = stage.resource_path if stage != null else ""
+	return "stages[%d] (%s)" % [index, path if not path.is_empty() else "built-in"]
 
 
 ## F-005/C9, F-006/C9: a brain may only use the attack kind it supports.

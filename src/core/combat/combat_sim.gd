@@ -97,6 +97,7 @@ func to_dict() -> Dictionary:
 
 
 ## F-003/C19: refuses other ids, another order or another rate, and then changes nothing.
+## F-007/C14: also a state any combatant refuses (restore_errors()), checked for all first.
 ## The glue then sets each body from its logic position, and views re-sync.
 func from_dict(snapshot: Dictionary) -> bool:
 	if not snapshot.has_all(SNAPSHOT_KEYS):
@@ -107,6 +108,13 @@ func from_dict(snapshot: Dictionary) -> bool:
 		return false
 	if snapshot["order"] != _ids():
 		push_error("CombatSim snapshot rejected: combatants differ")
+		return false
+	var errors: PackedStringArray = []
+	for combatant: Combatant in _combatants:
+		var entry: Dictionary = snapshot["combatants"][combatant.get_combat_id()]
+		errors.append_array(combatant.restore_errors(entry))
+	if not errors.is_empty():  # F-007/C14: before anything changes.
+		push_error("CombatSim snapshot rejected: %s" % ", ".join(errors))
 		return false
 	_time = snapshot["time"]
 	for combatant: Combatant in _combatants:

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="EnemyStageData" format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_stage_data.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="2"]
+[ext_resource type="Resource" path="res://data/attacks/warden_p2_swipe_a.tres" id="3"]
+[ext_resource type="Resource" path="res://data/attacks/warden_p2_dashing_cut.tres" id="4"]
+
+[resource]
+script = ExtResource("1")
+enter_at_hp_percent = 50
+shift_duration = 1.2
+attacks = Array[ExtResource("2")]([ExtResource("3"), ExtResource("4")])
+move_speed = 3.5
+attack_cooldown = 0.7

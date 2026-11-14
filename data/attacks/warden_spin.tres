@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnemyAttackData" format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+aim_track_time = 0.0
+lunge_tiles = 0.0
+trigger_min_tiles = 0.0
+trigger_max_tiles = 2.0
+id = &"warden_spin"
+windup = 0.45
+active = 0.1
+recovery = 0.9
+damage = 20
+arc_angle_deg = 360.0
+range_tiles = 1.8
+knockback_tiles = 1.2
+is_finisher = false

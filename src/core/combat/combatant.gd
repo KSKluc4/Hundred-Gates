@@ -140,6 +140,12 @@ func from_dict(_snapshot: Dictionary) -> void:
 	pass
 
 
+## F-007/C14: why this combatant can't take `snapshot` now, empty when it can. CombatSim asks
+## every combatant first, so a refused restore changes nothing anywhere.
+func restore_errors(_snapshot: Dictionary) -> PackedStringArray:
+	return PackedStringArray()
+
+
 func _fire_due_actions() -> void:
 	pass
 
