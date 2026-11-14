@@ -2,7 +2,7 @@
 id: F-007
 title: Boss base + floor 1 boss (Warden)
 status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-09
 updated: 2026-11-12
 depends_on: [F-003, F-004, F-005, F-006, D-005, D-007, D-008]
@@ -664,6 +664,96 @@ Keep C6's prohibition on entry during knockback.
 ### CR-1 🔴 <title>  ·  `path/to/file:line`
 <problem, why it matters, suggested fix>
 > **Builder reply:** <fixed in abc123 / disagree because …>
+
+<!-- review-round: 1 verdict: APPROVE_WITH_NOTES -->
+
+**Round 1 — 2026-11-14 · Verdict: APPROVE_WITH_NOTES**
+
+**Reviewed commit:** 123509ff642d8677c26fd66a0011a9411a8e1550
+
+Reviewed the complete feature and `main...HEAD`, including the new resources, shared combat
+changes, presentation and tests. No blocking finding. One reproducible, nonblocking edge case
+in the reusable pattern base is recorded below; the supplied Warden data does not trigger it.
+
+**Validation:** Mode B's `tools/test`, `tools/lint` and `tools/check_core_purity` passed on this
+HEAD before review, as guaranteed by the automated handoff. I inspected the test assertions
+and ran an additional headless Godot 4.7.2 probe for CR-1. I did not repeat the full checks or
+perform Lucas's manual feel test.
+
+**AC evidence**
+
+| AC | Result | Implementation and evidence |
+|---|---|---|
+| AC1 | ✅ | Existing enemy/dummy data and pre-existing tests are untouched in the diff. The three brains use `EnemyBrain.pick_attack_in()`; stage-0 getters in `src/core/enemies/enemy_logic.gd:257` return the original values. Automated suite passed; `tests/core/enemies/test_stage_getters.gd:24` also checks all three archetypes. |
+| AC2 | ✅ | `EnemyLogic.sense()` checks `_is_free()` before `_enter_deepest_stage()`; hitstop prevents entry, the positive shift prevents a decision, and entry emits once (`enemy_logic.gd:159`, `:508`). `tests/core/enemies/test_stages.gd:17` and `:38` cover positive/zero hitstop with the PR-7 no-knockback fixture. |
+| AC3 | ✅ | WINDUP/ACTIVE/RECOVERY stay committed through `_end_recovery()`; stage entry waits for the next free step start (`enemy_logic.gd:486`, `:637`, `:717`). `test_stages.gd:56` crosses the line during the first windup and checks completion of both attacks before entry. |
+| AC4 | ✅ | `EnemyStageData.holds()` uses integer products; `_enter_deepest_stage()` selects the deepest eligible index and emits once. `test_stages.gd:80` checks skipping from stage 0 directly to stage 2 and using its shift duration. |
+| AC5 | ✅ | `_is_planted()` includes STAGE_SHIFT; `apply_hit()` preserves that state, `get_knockback_scale()` returns zero, and `step()` consumes hitstop before advancing the shift (`enemy_logic.gd:180`, `:231`, `:495`, `:621`). `test_stages.gd:99` verifies damage, no movement/sector/knockback and the exact delay. |
+| AC6 | ✅ | `_advance()` decrements cooldown during the shift; shift completion returns to IDLE without deciding mid-step (`enemy_logic.gd:588`, `:621`). `test_stages.gd:127` and `:141` cover expired cooldown after a positive shift and retained cooldown with zero shift. |
+| AC7 | ✅ | `_cross_finished_phases()` starts `_end_recovery()` at the boundary; it latches the positional follow-up directly, without reading its trigger band or starting cooldown (`enemy_logic.gd:637`, `:717`). `tests/core/enemies/test_patterns.gd:14` and `:38` check exact times, no free interval and an out-of-band follow-up. |
+| AC8 | ✅ | `_end_recovery()` reuses `EnemyBrain.nearest_player()` on `_step_view`; `_aim_at_target()` and `_update_aim_lock()` apply to the new latch (`enemy_logic.gd:717`). `test_patterns.gd:50` moves B nearest, then checks tracking and lock. Existing nearest-player logic preserves registration-order ties. |
+| AC9 | ✅ | A missing living target makes `_end_recovery()` call `_finish_attack()`, which starts cooldown. `test_patterns.gd:77` kills the only player with the root and verifies no follow-up windup. |
+| AC10 | ✅ | `_latch()` replaces `_hit_ids` for each attack; normal player hurt i-frames remain in the shared resolver/combat state (`enemy_logic.gd:705`). `test_patterns.gd:94` and `:108` check both a second hit after i-frames and protection while they remain. |
+| AC11 | ✅ | `_end_recovery()` discards the follow-up when `_wall_stopped`, leaving the inherited stun recovery and final cooldown intact (`enemy_logic.gd:575`, `:679`, `:717`). `test_patterns.gd:121` and `:143` cover stopped and uninterrupted charges. CR-1 concerns movement misattributed before a follow-up charge becomes active, outside these fixtures. |
+| AC12 | ✅ | `EnemyData._chain_errors()`, `_stages_errors()` and `validate_against_class()` validate reachable attacks, cycles, stage order and scalar bounds; `EnemyStageData.validate()` supplies local checks. `CombatRunner` validates the candidate group before applying it, with external-cycle preflight in `Tunables.find_dependency_cycle()`. `tests/core/enemies/test_stage_validation.gd` covers setup; `tests/scenes/test_f007_reload.gd:7`, `:33`, `:46`, `:55`, `:66` cover reload, file cycles, zero values and scene setup. DEV-1's startup-loader limitation is disclosed below. |
+| AC13 | ✅ | `EnemyLogic.to_dict()` / `from_dict()` round-trip all four new fields and the running attack by value (`enemy_logic.gd:345`, `:369`). `tests/core/enemies/test_boss_snapshot.gd:10` and `:19` compare 240 replayed steps after mid-gap and mid-shift restores, including stage, timer, attack, target and aim. |
+| AC14 | ✅ | Stage and pattern transitions run inside the existing shared combat steps. `tests/core/enemies/test_warden.gd:111` runs the same command script at 30/60/120 ticks/s, asserts a mid-pattern threshold crossing and follow-ups in both stages, and compares stage entries, windups, hits and final HP. |
+| AC15 | ✅ | `data/enemies/warden.tres`, `warden_stage_2.tres` and the eight attack resources match §4 and use the chaser brain. `test_warden.gd:39`, `:67`, `:82`, `:89`, `:101` check values, validation, both stage patterns and walking between trigger bands. |
+| AC16 | ✅ | `EnemyLogic.setup()` restores stage 0, zero shift, full HP and no attack (`enemy_logic.gd:88`); the existing scene reset calls it. `test_stages.gd:186` and `tests/scenes/test_f007_scene.gd:115` check core and real Warden reset. |
+| AC17 | ✅ | `scenes/debug/f007_warden.tscn` contains the 20 × 12 room, Warrior, Warden, boss bar and existing debug runner. `src/ui/debug/boss_bar.gd` draws HP/threshold marks and the shift cue; `Enemy.get_body_color()` also exposes the shift. `test_f007_scene.gd:8`, `:20`, `:51`, `:63` check isolated startup, geometry, HP/mark and cue state. |
+| AC18 | ✅ | `EnemyLogic.step()` advances owned projectiles before consuming owner hitstop; STAGE_SHIFT advances no attack or movement (`enemy_logic.gd:180`, `:588`). `test_stages.gd:202` checks a surviving bolt's speed, hit/damage/knockback during the shift, no new bolt and no sector. |
+| AC19 | ✅ | Zero shift leaves the enemy free; the second `_is_free()` check in `sense()` decides using the new stage values (`enemy_logic.gd:168`, `:508`). `test_stages.gd:153` checks the same-step signal and stage-1 windup. |
+| AC20 | ✅ | `CombatRunner._live_stage_errors()` runs before `_apply_reload()`; `EnemyLogic.apply_data()` also guards direct calls and keeps live timers/latches. `_pattern_attack()` resolves against current data by position. `CombatSim.from_dict()` asks every combatant's `restore_errors()` before mutation. `test_f007_reload.gd:74` onward covers (a)–(e) and accepted mid-shift reload; `tests/scenes/test_f007_restore.gd:8`, `:16`, `:28` cover (f)–(g), including unchanged earlier player/dummy state and body positions on rejection. |
+| AC21 | ✅ | `EnemyLogic.has_pending_follow_up()` derives the cue from current state/data and wall-stop status; `Enemy.get_body_color()` / `get_debug_text()` read it (`enemy_logic.gd:332`; `src/entities/enemies/enemy.gd:129`, `:147`). `test_f007_scene.gd:72`, `:85`, `:102` check gap/final recovery, reset/restore and unchanged chaser recovery. |
+
+**Rejected options and constraints:** No rejected option was reintroduced: no boss logic
+class, fixed/random rotation, pattern wrapper, attack interruption, invulnerable shift,
+stage-removal fallback, projectile pause/clear on shift or phase/stage naming collision.
+The Warden remains data only; shared logic is independent of presentation, new state is
+serialized, asset paths have constants and no dependency, autoload or input action was added.
+No blocking conflict with C1–C20, G1–G9, D-005/D-007/D-008 or the combat design was found.
+
+**Deviation audit:** DEV-1 is justified: the reload dependency walk rejects external file
+cycles before Godot recursively loads them, while resource validation still rejects in-memory
+cycles at setup. Its explicit limitation remains: a scene saved with a cyclic external
+resource graph can fail in Godot's loader before application setup runs. DEV-2 is justified
+and implements PR-6's required atomic stage-compatibility refusal in the shared sim. No
+additional intentional, undocumented deviation was found.
+
+**Assumption audit:** ASSUMPTION-1/2 preserve HP-driven entry and target state during the
+shift; ASSUMPTION-3/9 only select diagnostic wording; ASSUMPTION-4 consistently uses the
+step-start view and position; ASSUMPTION-5 uses the existing 1e-9 timing tolerance;
+ASSUMPTION-6/7 are isolated, replayable test fixtures; ASSUMPTION-8/10 affect presentation
+only. All ten are reasonable and reversible. PR-7's fixture clarification is implemented
+without changing the approved plan. Fight duration/HP budget and final cue design remain
+Lucas's manual review and the existing Q3/Q5, respectively.
+
+### CR-1 🟡 A follow-up charge can inherit the preceding lunge's wall report
+
+**Location:** `src/core/enemies/enemy_logic.gd:727` (`_end_recovery()` replaces `_attack`),
+`:195` / `:669` (`_plan_charge_segment()` uses the resulting attack and total step movement).
+
+**Problem:** A valid non-wall-stun lunge with zero recovery can finish and latch a wall-stun
+follow-up in the same step. `_plan_charge_segment()` then sees the follow-up's wall-stun flag
+and describes the preceding attack's movement as its charge segment, although the charge is
+still in WINDUP. A short wall report reaches `_apply_wall_stop()` in that unsupported state.
+
+**Evidence:** An additional headless probe used a copied chaser swipe with windup 0.5,
+active 0.1, recovery 0, lunge 0.6, range 0.01 and trigger maximum 6, followed by an unchanged
+copy of `brute_charge`; a player stood at (5, 0). Data validation returned no errors. At
+0.600 s the enemy exposed segment [(0.55, 0), (0.60, 0)] while its running attack was
+`brute_charge` in WINDUP. Reporting a wall at the segment start produced
+`EnemyLogic chaser_1: wall stop pending in state WINDUP` from line 690; the report was discarded.
+
+**Why it matters:** Legal pattern data causes an engine error and attributes wall contact to
+an attack that has not moved yet. This is nonblocking for the Warden because its attacks have
+positive recoveries and no wall-stun follow-ups.
+
+**Suggested fix:** Build the wall-report segment from movement actually produced by a
+wall-stun attack in this step, preserving its identity across follow-up latching, rather than
+inferring it from the final `_attack`. Add coverage for a non-stunning lunge with zero or
+sub-step recovery followed by a charge: the first attack's last movement must not report a
+charge, while the follow-up's own active movement must still report and stun normally.
 
 ---
 
