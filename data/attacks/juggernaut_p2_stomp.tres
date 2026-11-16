@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="EnemyAttackData" format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="1"]
+[ext_resource type="Resource" path="res://data/attacks/juggernaut_debris.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+aim_track_time = 0.0
+lunge_tiles = 0.0
+projectile_speed_tiles = 0.0
+projectile_max_distance_tiles = 0.0
+trigger_min_tiles = 0.0
+trigger_max_tiles = 1.8
+wall_stun_duration = 0.0
+follow_up = ExtResource("2")
+volley_angles_deg = PackedFloat64Array()
+id = &"juggernaut_p2_stomp"
+windup = 0.6
+active = 0.1
+recovery = 0.3
+damage = 22
+arc_angle_deg = 360.0
+range_tiles = 2.0
+knockback_tiles = 1.5
+is_finisher = false

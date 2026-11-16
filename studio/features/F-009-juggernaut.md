@@ -1,8 +1,8 @@
 ---
 id: F-009
 title: Floor 3 boss (Juggernaut)
-status: APPROVED         # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: DONE             # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-006, F-007, F-008]
@@ -365,22 +365,38 @@ ambiguity requires a plan change. Ready for Lucas's Gate A decision.
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** YYYY-MM-DD  ·  **Branch:** `feature/F-009-juggernaut`
+**Started:** 2026-11-16  ·  **Branch:** `feature/F-009-juggernaut`
 
 ### Progress
-- [ ] T1
-- [ ] T2
-- [ ] T3
-- [ ] T4
+- [x] T1 — `bb38988` Juggernaut data: `juggernaut.tres`, `juggernaut_stage_2.tres`, the eight attack files (values from the §4 tables), path constants in `src/autoload/tunables.gd`.
+- [x] T2 — `7225106` `tests/core/enemies/test_juggernaut.gd` (18 tests): C4/C5 data tables, AC2 validation (both stages, every attack, speeds below the Warrior's), AC3 bands, AC4 double charge (+ C10 re-pick of the nearest player), AC5 wall stop on each of the five charges, AC6 stomp → Debris, AC7 triple charge, AC8 50 % in Charge A's gap, AC8b Debris through owner hitstop, AC9 two bolts → one hit, C10 two players each hit by their own bolt.
+- [x] T3 — `66e5111` `tests/core/enemies/test_juggernaut_rates.gd` (AC10 at 30/60/120, AC11 a–d) and the test helper `tests/core/enemies/room_wall_stub.gd`.
+- [x] T4 — `6fec7ce` `scenes/debug/f009_juggernaut.tscn` and `tests/scenes/f009_scene_test.gd` + `test_f009_scene.gd` (7 tests, AC12/C11).
+- [x] CR-1 — `ed364db` `test_juggernaut_rates.gd`: new `test_ac10_crossing_50_percent_in_charge_a_gap_is_the_same_at_every_tick_rate`.
 
 ### Deviations from plan
 None.
 
 ### Assumptions made (small, reversible)
+- **ASSUMPTION-1 (AC1 diff check):** checked with a command instead of a GUT test, because a test can't rely on git refs being there. `git diff --name-only 0aebafe..HEAD -- src/` lists only `src/autoload/tunables.gd`. No existing test file was edited: every changed test file is new.
+- **ASSUMPTION-2 (room walls in core):** `BruteWallStub` only stops +x charges, so the AC10/AC11 scripted fight uses a new test-only helper, `RoomWallStub`. It is the four outer walls of the 20 × 12 room in any direction, with the centre inset by the hurtbox radius. It works like `BruteWallStub`: it moves the body to where it got to and reports once per step, and bolts pass through it. Bolts against real walls are already covered by F-008's scene tests. The real-wall stun is tested in the scene (AC12).
+- **ASSUMPTION-3 (AC10 50 % crossing):** in the scripted fight, sword hits 1 and 2 cross 50 % during the stage-1 stomp's 0.70 s recovery, so the crossing happens inside a running attack and the shift waits for it. The crossing during Charge A's gap is AC8's own test, which uses the F-004/C6 restore path (`BossValues.set_hp`), like `test_warden`/`test_stages`. A real sword hit is then checked to land during the shift.
+  **Superseded after review (CR-1):** AC10's mid-pattern crossing is now covered by its own three-rate test (Auditor's alternative fix: keep the broad fight, add the charge-gap scenario). The Juggernaut starts at 255 HP; a real sword hit 1 (10 damage) lands in stage-1 Charge A's 0.35 s gap. At 30, 60 and 120 ticks/s it asserts, at the damage event: running attack `juggernaut_charge_a`, state RECOVERY, `has_pending_follow_up()` true; then Charge B runs (it wall-stops on the bottom wall), the stage shift starts after B's last step, and stage 2 goes stomp → Debris. Attacks, wall stops, crossing time, B's end, stage entries, windups, every hit and damage, and final HP are compared across rates. The broad fight is unchanged.
+- **ASSUMPTION-4 (AC4/AC7 at 5 tiles):** at 5 tiles the charges hit the player, so each active phase lasts 0.50 s plus 0.05 s of attacker hitstop per landed hit. The tests add that from the recorded hits. Windups, track times, gaps, recoveries and cooldowns are checked exactly. The AC5 wall-stop tests keep the player out of every charge's reach, so their timing has no hitstop.
+- **ASSUMPTION-5 (placeholder look):** the Juggernaut's `body_color` in the scene is `Color(0.6, 0.42, 0.3)`, a placeholder (Q4). The rest of the scene copies `f008_hexer.tscn`/`f007_warden.tscn` exactly: same room, walls, bar, overlay and runner.
 
 ### Things the Auditor should look at closely
+- `test_juggernaut.gd` `_assert_wall_stop`: the charges all go +x, because `BruteWallStub` only stops +x. Between charges the player is moved 7 tiles further, so no charge reaches it, and the stub's `limit` is set 4 tiles ahead of the charge that should stop. The stun is checked as the recovery (1.5 s), shown as open, with no later charge and the cooldown starting at its end.
+- AC9 places the player at the midpoint of where bolts 0 and 1 will be at the next contact, 1 tile out. Both overlap it there at 0.38 tiles, and every other bolt is over 1 tile away. I chose this because with a static placement, float noise picks which bolt overlaps first.
+- AC8b compares every live bolt's snapshot by step, from launch until none is left, between a run with a sword hit 1 and a run without. The hit lands in Debris's recovery, while the bolts fly.
+- `test_juggernaut_rates.gd`'s script (thirtieths 45–65, 75–120, 279–294, 395–405) is timed to the current §4 values. Retuning the Juggernaut (Q2, Q3) can change the attack sequence the test asserts, and the script would need re-timing. Rate parity and the snapshot comparisons don't depend on the values.
+- Every test loads the real `juggernaut.tres` (the cached resource) and never changes it.
 
 ### How to test
+- `tools/test` — full suite: 916 tests, all pass (885 before this feature, plus 31 new).
+- `tools/test -gselect=test_juggernaut` (core, rates) · `tools/test -gselect=test_f009` (scene).
+- `tools/lint` and `tools/check_core_purity` — both clean.
+- Manual (Lucas, §5): open `scenes/debug/f009_juggernaut.tscn` and run it (F6).
 
 ---
 
@@ -388,6 +404,146 @@ None.
 
 <Each completed round starts with its machine line (format in AGENTS.md), then
 `**Reviewed commit:** <hash>`, AC evidence and findings.>
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 749458100e7ae85db36ff5750aa687e0f159e23a
+
+**Date:** 2026-11-16 · **Verdict:** CHANGES_REQUESTED
+
+One blocking acceptance-coverage finding. No production data or scene defect found.
+Reviewed the complete feature and branch diff against `main`, including the existing
+logic and presentation that consume the new resources. Per the Mode B handoff,
+`tools/test`, `tools/lint` and `tools/check_core_purity` passed on this exact HEAD;
+those prerequisite checks were not rerun. `git diff --check` is clean.
+
+### AC evidence
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC1 | ✅ | The prerequisite suite passed. The diff adds only new test files and data; its only `src/` change is the ten path constants in `src/autoload/tunables.gd:40`. |
+| AC2 | ✅ | `test_juggernaut.gd:185` validates the real enemy, stage, all eight attacks and both speeds against the Warrior at 120 steps/s. Resource values match §4. |
+| AC3 | ✅ | `test_juggernaut.gd:201` covers all six specified distances and checks CHASE when no band holds; the lists feed the unchanged `BruteBrain`. |
+| AC4 | ✅ | `test_juggernaut.gd:210` checks the double charge, seven-tile lunge, timings, pending follow-up, fresh aim lock and cooldown, accounting for landed-hit hitstop. The test at line 245 verifies target re-selection with two players. |
+| AC5 | ✅ | The five tests at `test_juggernaut.gd:262` use `_assert_wall_stop` (line 510) to stop every charge position, check the 1.5 s stun, cancellation, open read and cooldown at stun end. All five charge resources set `wall_stun_duration = 1.5`. |
+| AC6 | ✅ | `test_juggernaut.gd:282` checks stomp/gap/Debris timings, one simultaneous eight-bolt launch, serials, angles relative to locked aim, bolt values, final recovery and cooldown. `juggernaut_p2_stomp.tres` links to `juggernaut_debris.tres`. |
+| AC7 | ✅ | `test_juggernaut.gd:329` checks A → B → C, all windups and tracking times, both gaps, re-aiming, final recovery and stage-2 cooldown. The three resources form that chain. |
+| AC8 | ✅ | `test_juggernaut.gd:371` crosses the threshold in Charge A's gap, checks B completes before the shift, then checks planted damage reception, shift duration including hitstop, 2.5 tiles/s movement and the next stage-2 attack. |
+| AC8b | ✅ | `test_juggernaut.gd:416` compares live bolts by serial at every flight step between runs with and without a sword hit, requires owner hitstop during flight and checks simultaneous flight completion. |
+| AC9 | ✅ | `test_juggernaut.gd:438` verifies two simultaneous overlaps, one 18-damage hit, one marked bolt and continued flight of the other. |
+| AC10 | ❌ | `test_juggernaut_rates.gd:23` compares attack/wall/launch/hit times, serials, damage, final HP and bolt positions at shared contacts across 30/60/120. However, its threshold crossing occurs during the standalone stomp, so the required mid-pattern crossing is absent (CR-1). |
+| AC11 | ✅ | The four tests at `test_juggernaut_rates.gd:65` verify the requested snapshot preconditions. `_assert_resumes` (line 166) restores into a fresh sim and compares complete snapshots after replay, subsequent hits and wall stops. |
+| AC12 | ✅ | `f009_juggernaut.tscn` reuses the F-007 room and existing components. The seven tests in `test_f009_scene.gd:10` cover standalone setup, four outer walls, Warrior/Juggernaut, bar mark, debug keys, real-wall stun, reset and unchanged-data F5 continuation. |
+
+### CR-1 — 🔴 blocking — AC10 substitutes a standalone attack for the required mid-pattern threshold crossing
+
+- **Location:** `tests/core/enemies/test_juggernaut_rates.gd:47`, lines 104–115 and
+  140–142; §8 ASSUMPTION-3.
+- **Problem:** The scripted fight crosses 50% during `juggernaut_stomp`'s recovery,
+  as ASSUMPTION-3 explicitly records. That attack has no follow-up. The
+  `crossed_mid_attack` flag accepts any non-null running attack, so it does not
+  require a charge pattern or an outstanding follow-up. AC10 explicitly requires
+  crossing 50% mid-pattern. AC8 covers the charge-gap case only at 120 ticks/s.
+- **Why it matters:** The parity test never exercises preserving the old stage's
+  pending Charge B after the threshold crossing at 30 and 60 ticks/s. It would
+  remain green if that interaction behaved differently at those rates. The
+  passing suite therefore does not establish the complete approved AC10 scenario.
+- **Suggested fix:** Retune the scripted fight so the threshold crosses while the
+  stage-1 double charge still has a follow-up pending, while retaining AC10's other
+  required events. Assert the crossing's attack id and pending follow-up, and that
+  B finishes before the shift, in every rate run. Alternatively, preserve this
+  broad fight and add the missing charge-gap threshold scenario at all three
+  rates with the same event/state comparisons. Update §8 to describe the final
+  coverage; do not change shipping data to manufacture the scenario.
+
+> **Builder reply:** fixed in `ed364db`. Took the alternative: the broad fight stays, and a new test, `test_ac10_crossing_50_percent_in_charge_a_gap_is_the_same_at_every_tick_rate`, crosses 50 % with a real sword hit in stage-1 Charge A's gap at 30, 60 and 120 ticks/s. In every run it asserts the crossing's attack id (`juggernaut_charge_a`), RECOVERY state and pending follow-up at the damage event, that Charge B runs and its last step comes before the shift, then stage 2's stomp → Debris. Events, times, damage and final HP are compared across rates. No shipping data changed. §8 ASSUMPTION-3 updated.
+
+✔ resolved — CR-1 (round 2, 2026-11-16): verified `ed364db` in the reviewed HEAD.
+`test_juggernaut_rates.gd:71` runs the added charge-gap scenario at 30/60/120 ticks/s.
+Its damage callback (line 233) records the real sword hit crossing 50% during Charge A's
+RECOVERY with Charge B pending. Every run checks A → B → stage-2 stomp → Debris and
+that B precedes the shift; comparisons cover attack starts, wall stops, crossing and
+shift times, hits, damage and final HP. The original broad fight retains launch,
+serial and per-contact bolt comparisons. §8 supersedes ASSUMPTION-3 accordingly;
+shipping data is unchanged. This implements the alternative fix from round 1.
+
+### Rejected options, constraints, deviations and assumptions
+
+- **Rejected-option check:** None reintroduced. The boss uses BRUTE with ordinary
+  follow-ups; Debris is a separate projectile attack with a bolt on the aim;
+  wall stops cancel patterns; the room has only four outer walls.
+- **Constraints:** Production changes satisfy C1–C7 and C10–C12. Snapshot evidence
+  supports C9. C8's rate comparisons cover the exercised fight, with the AC10
+  scenario gap identified above; no actual frame-rate divergence was observed.
+  G1–G9 remain supported by the existing step grid, resources, isolated scene,
+  path constants, presentation separation, snapshots and command layer. No new
+  dependency or public state/API was added, and existing content is untouched.
+- **Deviation audit:** No DEV-n entries or unlogged production departures found.
+  ASSUMPTION-3 documents a test-scenario substitution, but an explicit AC is not
+  an ambiguity to resolve by assumption; CR-1 requires the missing coverage.
+- **Assumptions:** ASSUMPTION-1 (git-based scope check), ASSUMPTION-2 (test-only
+  four-wall reporter), ASSUMPTION-4 (attacker hitstop in elapsed timing) and
+  ASSUMPTION-5 (placeholder colour) are justified and reversible. The new wall
+  geometry lives only in tests, consistent with D-008. ASSUMPTION-3 is reversible
+  but insufficient for AC10 as written.
+
+The manual feel checks in §5 remain for Lucas at Gate B.
+
+<!-- review-round: 2 verdict: APPROVE -->
+
+**Reviewed commit:** 127d412d270971399e4c0e446daa73290d38dc09
+
+**Date:** 2026-11-16 · **Verdict:** APPROVE
+
+**Findings:** None. CR-1 is resolved above; no new findings.
+
+Read the complete feature and reviewed the branch diff against `main`, including the
+new test and Builder reply since round 1. Production data still matches §4 and
+`studio/design/combat.md`. Per the Mode B handoff, `tools/test`, `tools/lint` and
+`tools/check_core_purity` passed on this exact HEAD; those checks were not rerun.
+`git diff --check main...HEAD` is clean.
+
+### AC evidence
+
+Paths below are under `tests/core/enemies/` unless stated otherwise.
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC1 | ✅ | Prerequisite suite passed. The diff leaves pre-existing tests unchanged; its only `src/` change is ten new path constants in `src/autoload/tunables.gd:40`. |
+| AC2 | ✅ | `test_juggernaut.gd:185` validates the real enemy, stage and eight attacks at 120 steps/s, and both speeds against the Warrior. |
+| AC3 | ✅ | `test_juggernaut.gd:201` checks all six distances, including the exact band endpoints; `_first_pick` checks CHASE when no attack starts. |
+| AC4 | ✅ | `test_juggernaut.gd:210` checks double-charge timing, seven-tile lunge, gap, renewed tracking, final recovery and cooldown. Line 245 checks the follow-up re-picks the nearer player. |
+| AC5 | ✅ | Five tests at `test_juggernaut.gd:262`, through `_assert_wall_stop` at line 510, check each charge's wall stop, 1.5 s stun, dropped follow-up, open read and cooldown at stun end. |
+| AC6 | ✅ | `test_juggernaut.gd:282` checks stomp → gap → Debris, tracking, simultaneous eight-bolt launch, consecutive serials, aim-relative angles and bolt values, open recovery and cooldown. |
+| AC7 | ✅ | `test_juggernaut.gd:329` checks the triple-charge sequence, all windups and aim locks, both gaps, final recovery and cooldown. |
+| AC8 | ✅ | `test_juggernaut.gd:371` checks crossing in Charge A's gap, B completing before the first free-step shift, damage reception while planted, shift duration, stage-2 speed and next attack. |
+| AC8b | ✅ | `test_juggernaut.gd:416` compares every live bolt's snapshot by serial through flight between hit/no-hit runs, requires owner hitstop during flight and checks both flights end together. |
+| AC9 | ✅ | `test_juggernaut.gd:438` checks two bolts overlap at one contact, only one 18-damage hit lands and the unmarked bolt continues. |
+| AC10 | ✅ | `test_juggernaut_rates.gd:24` retains the broad fight's attack/wall/launch/serial/hit/HP and per-contact bolt comparisons. The added test at line 71 supplies the missing real-hit charge-gap crossing at all three rates, with pending-follow-up, B-before-shift and event/timing comparisons (CR-1 resolution). |
+| AC11 | ✅ | Four tests at `test_juggernaut_rates.gd:116` check the required gap/stun/Debris-windup/flight snapshot preconditions. `_assert_resumes` at line 275 restores a fresh sim and compares complete snapshots, subsequent hits and wall stops after replay. |
+| AC12 | ✅ | `scenes/debug/f009_juggernaut.tscn` reuses the F-007 room and components. Seven tests in `tests/scenes/test_f009_scene.gd:10` cover setup, four outer walls, bar mark, debug keys, real-wall stun, reset and unchanged-data F5 continuation. |
+
+### Rejected options, constraints, deviations and assumptions
+
+- **Rejected-option check:** None reintroduced. BRUTE remains the only brain used;
+  charges use ordinary follow-ups, wall stops end patterns, Debris is a separate
+  projectile volley with a bolt on the aim, and the room has only outer walls.
+- **Constraints:** C1–C12 and G1–G9 are satisfied by the reviewed scope and evidence.
+  New resources contain all combat tunables; existing content and gameplay code
+  are unchanged. The isolated scene reuses presentation and command handling;
+  rate, snapshot and two-player tests exercise the existing shared logic. No new
+  dependency, input action, state, signal, layer, autoload or snapshot key appears.
+- **Deviation audit:** No DEV-n entries or unlogged departures found. The extra
+  test closes the previously documented AC10 substitution using round 1's
+  accepted alternative, without changing the approved data or behavior.
+- **Assumptions:** ASSUMPTION-1 (git scope check), ASSUMPTION-2 (test-only wall
+  reporter), ASSUMPTION-4 (elapsed hitstop accounting) and ASSUMPTION-5
+  (placeholder colour) remain reasonable and reversible. ASSUMPTION-3 is
+  explicitly superseded by the added real-hit scenario; it no longer leaves an
+  acceptance gap.
+
+Ready for Lucas's Gate B playtest and approval. The manual feel checks in §5,
+including wall-bait reliability and fight length, remain for that gate.
 
 ---
 
