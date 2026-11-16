@@ -1,8 +1,8 @@
 ---
 id: F-009
 title: Floor 3 boss (Juggernaut)
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-006, F-007, F-008]
@@ -368,19 +368,33 @@ ambiguity requires a plan change. Ready for Lucas's Gate A decision.
 **Started:** 2026-11-16  ·  **Branch:** `feature/F-009-juggernaut`
 
 ### Progress
-- [ ] T1
-- [ ] T2
-- [ ] T3
-- [ ] T4
+- [x] T1 — `bb38988` Juggernaut data: `juggernaut.tres`, `juggernaut_stage_2.tres`, the eight attack files (values from the §4 tables), path constants in `src/autoload/tunables.gd`.
+- [x] T2 — `7225106` `tests/core/enemies/test_juggernaut.gd` (18 tests): C4/C5 data tables, AC2 validation (both stages, every attack, speeds below the Warrior's), AC3 bands, AC4 double charge (+ C10 re-pick of the nearest player), AC5 wall stop on each of the five charges, AC6 stomp → Debris, AC7 triple charge, AC8 50 % in Charge A's gap, AC8b Debris through owner hitstop, AC9 two bolts → one hit, C10 two players each hit by their own bolt.
+- [x] T3 — `66e5111` `tests/core/enemies/test_juggernaut_rates.gd` (AC10 at 30/60/120, AC11 a–d) and the test helper `tests/core/enemies/room_wall_stub.gd`.
+- [x] T4 — `6fec7ce` `scenes/debug/f009_juggernaut.tscn` and `tests/scenes/f009_scene_test.gd` + `test_f009_scene.gd` (7 tests, AC12/C11).
 
 ### Deviations from plan
 None.
 
 ### Assumptions made (small, reversible)
+- **ASSUMPTION-1 (AC1 diff check):** checked with a command instead of a GUT test, because a test can't rely on git refs being there. `git diff --name-only 0aebafe..HEAD -- src/` lists only `src/autoload/tunables.gd`. No existing test file was edited: every changed test file is new.
+- **ASSUMPTION-2 (room walls in core):** `BruteWallStub` only stops +x charges, so the AC10/AC11 scripted fight uses a new test-only helper, `RoomWallStub`. It is the four outer walls of the 20 × 12 room in any direction, with the centre inset by the hurtbox radius. It works like `BruteWallStub`: it moves the body to where it got to and reports once per step, and bolts pass through it. Bolts against real walls are already covered by F-008's scene tests. The real-wall stun is tested in the scene (AC12).
+- **ASSUMPTION-3 (AC10 50 % crossing):** in the scripted fight, sword hits 1 and 2 cross 50 % during the stage-1 stomp's 0.70 s recovery, so the crossing happens inside a running attack and the shift waits for it. The crossing during Charge A's gap is AC8's own test, which uses the F-004/C6 restore path (`BossValues.set_hp`), like `test_warden`/`test_stages`. A real sword hit is then checked to land during the shift.
+- **ASSUMPTION-4 (AC4/AC7 at 5 tiles):** at 5 tiles the charges hit the player, so each active phase lasts 0.50 s plus 0.05 s of attacker hitstop per landed hit. The tests add that from the recorded hits. Windups, track times, gaps, recoveries and cooldowns are checked exactly. The AC5 wall-stop tests keep the player out of every charge's reach, so their timing has no hitstop.
+- **ASSUMPTION-5 (placeholder look):** the Juggernaut's `body_color` in the scene is `Color(0.6, 0.42, 0.3)`, a placeholder (Q4). The rest of the scene copies `f008_hexer.tscn`/`f007_warden.tscn` exactly: same room, walls, bar, overlay and runner.
 
 ### Things the Auditor should look at closely
+- `test_juggernaut.gd` `_assert_wall_stop`: the charges all go +x, because `BruteWallStub` only stops +x. Between charges the player is moved 7 tiles further, so no charge reaches it, and the stub's `limit` is set 4 tiles ahead of the charge that should stop. The stun is checked as the recovery (1.5 s), shown as open, with no later charge and the cooldown starting at its end.
+- AC9 places the player at the midpoint of where bolts 0 and 1 will be at the next contact, 1 tile out. Both overlap it there at 0.38 tiles, and every other bolt is over 1 tile away. I chose this because with a static placement, float noise picks which bolt overlaps first.
+- AC8b compares every live bolt's snapshot by step, from launch until none is left, between a run with a sword hit 1 and a run without. The hit lands in Debris's recovery, while the bolts fly.
+- `test_juggernaut_rates.gd`'s script (thirtieths 45–65, 75–120, 279–294, 395–405) is timed to the current §4 values. Retuning the Juggernaut (Q2, Q3) can change the attack sequence the test asserts, and the script would need re-timing. Rate parity and the snapshot comparisons don't depend on the values.
+- Every test loads the real `juggernaut.tres` (the cached resource) and never changes it.
 
 ### How to test
+- `tools/test` — full suite: 915 tests, all pass (885 before this feature, plus 30 new).
+- `tools/test -gselect=test_juggernaut` (core, rates) · `tools/test -gselect=test_f009` (scene).
+- `tools/lint` and `tools/check_core_purity` — both clean.
+- Manual (Lucas, §5): open `scenes/debug/f009_juggernaut.tscn` and run it (F6).
 
 ---
 
