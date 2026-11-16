@@ -321,8 +321,10 @@ windup / active / recovery (GLOSSARY).
   break line of sight, and that arriving in melee starts a new read.
 - **Volleys (F-008).** An attack lists its bolts as angles from the locked aim
   (`volley_angles_deg`); all launch at the same instant and are ordinary projectiles from
-  then on (D-008). At most `max_volley_size` (16). One hit gives hurt i-frames, so a volley
-  never hits one player twice. A boss room with cover is still open (CX9).
+  then on (D-008). At most `max_volley_size` (16). Bolts that reach a player together deal one
+  hit: its hurt i-frames stop the rest, which fly on unmarked. A bolt that is still touching
+  the player when those i-frames end can hit, like any projectile (leaving matters). A boss
+  room with cover is still open (CX9).
 
 ### Floor 3 — Juggernaut (F-009)
 - **Concept:** a brute that owns the room. The exam for not trading: its normal recovery is

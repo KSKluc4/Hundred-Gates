@@ -1,8 +1,8 @@
 ---
 id: F-008
 title: Volleys + floor 2 boss (Hexer)
-status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-005, F-007]
@@ -107,7 +107,10 @@ Written against `main` at `39acab8` (F-007 merged). Names below are the real one
   one bolt is marked for all.
 - **Why rejected:** It breaks D-008's identity (owner + serial per projectile), needs new
   rules for a part that hits a wall or lands, and solves nothing: a player's hurt i-frames
-  already stop a second bolt of the same volley.
+  already stop a second bolt of the same volley at the same contact. A bolt still touching
+  the player after those i-frames end may hit, as any F-005 bolt or melee hitbox may
+  (combat.md: a skipped hurtbox is not marked; leaving matters). The design doc's volley line
+  is scoped to that (PR-1).
 - **Tempting because:** It makes "a volley hits you once" true by construction.
 
 ### ❌ Rejected: A `HEXER` brain (or exempting enemies with stages from the kind rule)
@@ -141,12 +144,12 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 | C2 | An attack with an empty `volley_angles_deg` behaves exactly as before. No existing data file changes, except `data/tunables/enemy_combat.tres` gaining `max_volley_size`. Existing tests pass unedited, except the assertions of the brain kind rule (C6). | Must not break |
 | C3 | **Volley data.** New `EnemyAttackData.volley_angles_deg: PackedFloat64Array` (default empty): degrees from the locked aim, one projectile per entry, in list order. Empty = one projectile along the aim. Appended to `ENEMY_SNAPSHOT_KEYS`, so the latched attack carries it in snapshots and `from_snapshot()` restores it. The latched copy (`_latch()`) owns its own copy of the list: a reload never changes a running attack. | G9, F-004/C5 |
 | C4 | **Launch.** At the existing launch instant (windup end of a projectile attack), `EnemyLogic` calls `ProjectileSet.launch()` once per entry, in list order, all with the same origin, the same latched values and the same flight time as today's single launch. Direction of an entry = `_aim.rotated(deg_to_rad(angle))`. Serials are consecutive in list order. | D-008 |
-| C5 | **After launch nothing is shared.** Each bolt is an independent F-005 projectile: own hit set, single target, no attacker hitstop, knockback along its own flight direction, own wall report and blocked-launch report, own max distance, removed with its owner. No new hit rule: a player overlapped by several bolts at one contact takes exactly one hit, because the first hit's hurt i-frames stop the rest (F-003 recheck); the stopped bolts are not marked and fly on. | F-005/C4, F-003 |
+| C5 | **After launch nothing is shared.** Each bolt is an independent F-005 projectile: own hit set, single target, no attacker hitstop, knockback along its own flight direction, own wall report and blocked-launch report, own max distance, removed with its owner. No new hit rule: a player overlapped by several bolts at one contact takes exactly one hit, because the first hit's hurt i-frames stop the rest (F-003 recheck); the stopped bolts are not marked and fly on. There is **no lifetime immunity per volley**: an unmarked bolt that still overlaps the player when the hurt i-frames end hits normally. | F-005/C4, F-003 |
 | C6 | **The brain kind rule is removed.** Delete `EnemyData._attack_kind_errors()` and its call in `_chain_errors()`. Any brain may use melee and projectile attacks, and a pattern may mix them. Brain code does not change. This supersedes the last bullet of F-005/C9 and the kind part of F-007/C13 (a). The tests that assert the rule (in `test_attack_list.gd`, `test_brute_brain.gd`, `test_brute_data.gd`, `test_caster_data.gd`, `test_stage_validation.gd`) are replaced by tests that the mixed data is accepted. | §2 |
-| C7 | **Validation**, in `EnemyAttackData.validate_enemy()`, so it covers setup, reload, stage lists and follow-ups; rejected, never clamped; messages in the existing `<attack id>: <rule>` form. (a) A melee attack must have an empty `volley_angles_deg`. (b) Every angle is finite and within −180..180. (c) No two entries point the same way: differing by less than `VOLLEY_ANGLE_EPSILON_DEG` (a new const, 0.01) modulo 360, so −180 with 180 is rejected. (d) The list has at most `max_volley_size` entries. New `EnemyCombatTunables.max_volley_size: int` (16 in `enemy_combat.tres`); its own `validate()` requires ≥ 1. | Principle 1, G2, D-008 cost |
+| C7 | **Validation**, in `EnemyAttackData.validate_enemy()`, so it covers setup, reload, stage lists and follow-ups; rejected, never clamped; messages in the existing `<attack id>: <rule>` form. (a) A melee attack must have an empty `volley_angles_deg`. (b) Every angle is finite and within −180..180. (c) No two entries point the same way: differing by less than `VOLLEY_ANGLE_EPSILON_DEG` (a new const, 0.01) modulo 360, so −180 with 180 is rejected. (d) The list has at most `max_volley_size` entries. New `EnemyCombatTunables.max_volley_size: int`, script default **16** (so a resource built with `new()`, as existing tests do, stays valid) and 16 in `enemy_combat.tres`; its own `validate()` requires ≥ 1, so an explicitly set 0 is rejected. | Principle 1, G2, D-008 cost |
 | C8 | **Rate change and reload.** A volley pending in `WINDUP` keeps its latched angles, speed and radius through any reload. The existing rate-change check (`_extra_rate_errors()`) is unchanged: one speed and radius per attack covers every bolt. | F-005/C11 |
 | C9 | **Serializable.** No new `EnemyLogic` snapshot key. A snapshot taken mid-windup of a volley, or with a volley in flight, restores and continues identically (same serials, positions, hits). | G7 |
-| C10 | Same scripted fight at 30, 60 and 120 physics ticks/s gives the same launch instants, serials, bolt positions at each contact, hits and final HP. | G1, D-007 |
+| C10 | Same scripted fight at 30, 60 and 120 physics ticks/s gives the same launch instants, serials, bolt positions at each contact (within 1e-6 tiles), hits and final HP. | G1, D-007 |
 | C11 | **Presentation.** New `Enemy.get_aim_lines() -> Array[PackedVector2Array]`: during a projectile attack's windup, one line per bolt to be launched, in list order, each built as `get_aim_line()` builds its line today (from the enemy along that bolt's direction, max distance long, global px). `get_aim_line()` keeps its signature and returns the first of them (unchanged for one bolt and for charge lanes). `_draw_aim_line()` draws all of them. Derived from logic every frame; nothing in core reads it. | G6, F-005 AC24 |
 | C12 | **The Hexer is data only:** `data/enemies/hexer.tres`, `data/enemies/hexer_stage_2.tres`, eight files in `data/attacks/`, and their path constants in `src/autoload/tunables.gd`. Brain = `CASTER`. | G9, G5 |
 | C13 | No new input action, autoload, addon, collision layer, `EnemyLogic` state or signal. | G4 |
@@ -207,6 +210,10 @@ Testable, observable. The Auditor checks each one.
 - [ ] AC5: Given one player overlapped by all three bolts at the contact after launch, then
   the player takes exactly one hit (18 damage) from the lowest serial, the other two bolts are
   not marked, are not removed, and keep flying.
+- [ ] AC5b: Given a test volley whose unmarked bolt still overlaps the player when that
+  player's hurt i-frames from an earlier bolt of the same volley end (e.g. a slow bolt the
+  player stands in), then that bolt hits at the first contact after the i-frames end. There is
+  no per-volley immunity (C5).
 - [ ] AC6: Given two players, each overlapped by a different bolt of one volley at the same
   contact, then both are hit at that contact, each by its own bolt.
 - [ ] AC7: Given a volley where one bolt's path meets a wall and the others' don't, then only
@@ -232,7 +239,8 @@ Testable, observable. The Auditor checks each one.
 - [ ] AC13: Given the same scripted fight against the real Hexer (fixed player commands,
   crossing 50% HP mid-pattern, at least one nova, one fan pattern and one ring), when it runs
   at 30, 60 and 120 physics ticks/s, then launch instants, serials, every hit and the final HP
-  values are identical.
+  values are identical, and at every contact instant shared by the three runs the set of live
+  bolts (by serial) is the same and each bolt's position matches within 1e-6 tiles.
 - [ ] AC14: Given `hexer.tres` loaded with the real tunables, then validation passes (including
   the speed rule against the Warrior), and a test asserts: stage 1 at 2.0 tiles starts
   `hexer_nova`; at exactly 2.5 starts `hexer_nova`; at 5.0 runs fan A (3 bolts) → fan B
@@ -276,9 +284,9 @@ Small, ordered, each independently committable.
 | # | Task | Files likely touched | Notes |
 |---|---|---|---|
 | T1 | Remove the brain kind rule; replace its tests with acceptance tests for mixed kinds. | `src/core/enemies/enemy_data.gd`, the five test files in C6 | C6. AC1, AC10. No other behavior change. |
-| T2 | `volley_angles_deg` on `EnemyAttackData` (field, snapshot key, latch copy); `max_volley_size` on `EnemyCombatTunables` and in `enemy_combat.tres`; validation. | `src/core/enemies/enemy_attack_data.gd`, `src/core/tunables/enemy_combat_tunables.gd`, `data/tunables/enemy_combat.tres`, `tests/core/enemies/` | C3, C7. AC9, AC11. |
-| T3 | Volley launch in `EnemyLogic._launch_projectile()`; core tests for launch, hits, walls (through a test `move_bodies`), owner death, snapshots. | `src/core/enemies/enemy_logic.gd`, `tests/core/enemies/test_volleys.gd` | C4, C5, C8, C9. AC2–AC8, AC12. |
-| T4 | Hexer data: enemy, stage 2, eight attacks, path constants. Data test, brain-movement test, tick-rate test. | `data/enemies/`, `data/attacks/`, `src/autoload/tunables.gd`, `tests/core/enemies/test_hexer.gd` | C12. AC13–AC15. |
+| T2 | `volley_angles_deg` on `EnemyAttackData` (field, snapshot key, latch copy); `max_volley_size` on `EnemyCombatTunables` and in `enemy_combat.tres`; validation. | `src/core/enemies/enemy_attack_data.gd`, `src/core/tunables/enemy_combat_tunables.gd`, `data/tunables/enemy_combat.tres`, `tests/core/enemies/` | C3, C7 (script default 16). AC9, AC11. |
+| T3 | Volley launch in `EnemyLogic._launch_projectile()`; core tests for launch, hits, walls (through a test `move_bodies`), owner death, snapshots. | `src/core/enemies/enemy_logic.gd`, `tests/core/enemies/test_volleys.gd` | C4, C5, C8, C9. AC2–AC8 (incl. AC5b), AC12. |
+| T4 | Hexer data: enemy, stage 2, eight attacks, path constants. Data test, brain-movement test, tick-rate test. | `data/enemies/`, `data/attacks/`, `src/autoload/tunables.gd`, `tests/core/enemies/test_hexer.gd` | C12, C10. AC13–AC15. The tick-rate test records serial and position of every live bolt at each shared contact instant. |
 | T5 | `Enemy.get_aim_lines()` and drawing every line. | `src/entities/enemies/enemy.gd`, `tests/scenes/` | C11. AC16. |
 | T6 | `f008_hexer.tscn`, built like `f007_warden.tscn`; scene tests `tests/scenes/f008_scene_test.gd` and `test_f008_*.gd` (real walls: one bolt of a volley stopped, blocked launch, reset, reload, restore). | `scenes/debug/`, `tests/scenes/` | AC7 (physics), AC16, AC17. |
 
@@ -314,6 +322,11 @@ the shared boss behavior are otherwise preserved. Resolve the combat contract be
   AC confirming that a later bolt may hit after protection expires. If lifetime immunity is
   intended instead, revise §3 and the state/hit contracts explicitly before implementation.
 
+> **Planner reply (Combat):** accepted — scoped to the contact instant. Lifetime immunity would
+> need the rejected shared hit set, and the per-contact rule matches every other hitbox
+> ("a skipped hurtbox is not marked; leaving matters"). Changed: design/combat.md volley line,
+> §3 (shared-hit-set rejection), §4 C5 (no per-volley immunity), new §5 AC5b, §6 T3.
+
 ### PR-2 · 🟡 should fix — Specify the new tunable's resource default
 
 - **Location:** §4 C2/C7; §6 T2; `tests/core/enemies/test_enemy_data.gd:36–38,163–167`.
@@ -326,6 +339,9 @@ the shared boss behavior are otherwise preserved. Resolve the combat contract be
 - **Suggested fix:** Specify a valid script default (for example, 16), as well as the
   authored `.tres` value, while retaining rejection of an explicitly assigned 0.
 
+> **Planner reply (Combat):** accepted — changed §4 C7: script default 16, `.tres` 16,
+> explicit 0 still rejected; §6 T2 notes it.
+
 ### PR-3 · 🟡 should fix — Include projectile positions in the tick-rate acceptance test
 
 - **Location:** §4 C10; §5 AC13; §6 T4.
@@ -336,6 +352,9 @@ the shared boss behavior are otherwise preserved. Resolve the combat contract be
   AC13 assertions still pass.
 - **Suggested fix:** Extend AC13/T4 to record and compare each live bolt's serial and
   position at every shared contact instant, using a stated position tolerance.
+
+> **Planner reply (Combat):** accepted — changed §4 C10 (tolerance 1e-6 tiles), §5 AC13 (same
+> live-bolt set by serial and positions within 1e-6 tiles at every shared contact), §6 T4.
 
 ---
 
