@@ -705,6 +705,7 @@ func _clear_charge_report() -> void:
 func _latch(attack: EnemyAttackData) -> void:
 	_attack = attack.duplicate()
 	_attack.follow_up = null
+	_attack.volley_angles_deg = attack.volley_angles_deg.duplicate()  # F-008/C3: its own list.
 	_hit_ids = []
 	_phase_elapsed = 0.0
 	_aim_locked = false

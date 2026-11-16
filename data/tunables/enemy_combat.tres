@@ -6,3 +6,4 @@
 script = ExtResource("1")
 min_telegraph = 0.3
 min_locked_telegraph = 0.15
+max_volley_size = 16
