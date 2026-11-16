@@ -1,8 +1,8 @@
 ---
 id: F-008
 title: Volleys + floor 2 boss (Hexer)
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-005, F-007]
@@ -419,6 +419,76 @@ None.
 
 <Each completed round starts with its machine line (format in AGENTS.md), then
 `**Reviewed commit:** <hash>`, AC evidence and findings.>
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 82cb96799ddb7a513c2bf994299f996b70439610
+
+**Date:** 2026-11-16 · **Review basis:** `main...HEAD` on `feature/F-008-volleys-hexer`.
+
+### CR-1 · 🔴 blocking — The duplicate-angle cutoff rejects valid angles depending on list order
+
+- **Location:** `src/core/enemies/enemy_attack_data.gd:208–212` (`_same_direction()`);
+  `tests/core/enemies/test_volley_data.gd:44–48`; §4 C7 (c).
+- **Problem:** C7 rejects separations **less than** 0.01°, so exactly 0.01° must pass.
+  A headless Godot probe on the reviewed HEAD gives no errors for `[0.0, 0.01]`, but
+  `[0.01, 0.0]` returns `volley_angles_deg[0] and [1] point the same way`. The negative
+  difference wraps to 359.99, and subtracting it from 360 rounds the computed gap below
+  0.01. `[10.0, 10.01]` and `[-180.0, 179.99]` also fail at the intended boundary.
+  The existing boundary test checks only the ordering that passes.
+- **Why it matters:** A valid authored volley can fail setup or reload solely because its
+  angles were reordered. This violates the explicit C7 validation constraint, even though
+  the shipped Hexer angles are far from this cutoff.
+- **Suggested fix:** Compute a symmetric wrapped separation and handle floating-point
+  rounding at the cutoff with a numerical tolerance much smaller than 0.01°. Add boundary
+  regressions in both list orders, including translated angles and the −180/180 seam;
+  retain rejection of genuine sub-threshold pairs such as `[0, 0.005]`.
+
+### Acceptance-criteria evidence
+
+The listed AC cases are covered below; CR-1 is an additional C7 boundary failure.
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC1 | ✅ | The supplied Mode B checks pass this HEAD. The only pre-existing test edits replace brain-kind assertions in `test_attack_list.gd`, `test_brute_brain.gd`, `test_caster_data.gd` and `test_stage_validation.gd`; existing enemy/attack data is unchanged. |
+| AC2 | ✅ | `enemy_logic.gd:656` launches each direction in list order with one origin and identical latched values; `test_volleys.gd:16` checks all three bolts, their consecutive serials and every required field. |
+| AC3 | ✅ | `enemy_attack_data.gd:116` returns `[aim]` for an empty list. `test_volleys.gd:41,51` checks the single launch and compares the recorded run with `tests/fixtures/f008/caster_bolt_run.txt`. |
+| AC4 | ✅ | Every launch receives the same `_step_time_left` in `enemy_logic.gd:656`; `test_volleys.gd:65` checks flight distance and position after a windup ending inside a step. |
+| AC5 | ✅ | Unchanged `ProjectileSet.get_hitboxes()` supplies independent hit sets in serial order, and `CombatSim._apply_contact()` rechecks target protection. `test_volleys.gd:80` checks one 18-damage hit by serial 0 and continued flight of the unmarked bolts. |
+| AC5b | ✅ | No volley immunity state is added. `test_volleys.gd:108` checks the second hit at the first contact after hurt protection expires. |
+| AC6 | ✅ | Each bolt retains its own single-target hitbox; `test_volleys.gd:127` checks two players hit by different bolts at the same contact. |
+| AC7 | ✅ | Unchanged `Enemy._report_walls()` reports every bolt independently. `test_volleys.gd:148,169` covers individual wall stops, max distance, blocked launches and used serials; `test_f008_walls.gd:10,29` repeats the wall cases with real physics. |
+| AC8 | ✅ | `EnemyLogic._enter_dead()` clears the whole set immediately; `step()` advances projectiles before owner hitstop. `test_volleys.gd:187,199,213` covers death, hitstop and stage shift. |
+| AC9 | ✅ | `enemy_attack_data.gd:181` validates volley data through `EnemyData._chain_errors()` for roots, follow-ups and stages; `EnemyCombatTunables.validate()` rejects a zero cap. `test_volley_data.gd:26–117` covers the enumerated invalid cases, exact capacity, setup and reload. See CR-1 for the uncovered legal cutoff. |
+| AC10 | ✅ | The kind restriction and its call are removed from `enemy_data.gd`. `test_mixed_kinds.gd:11–60` checks validation and actual melee/projectile execution on the three brains and in a mixed pattern. |
+| AC11 | ✅ | `enemy_logic.gd:709` duplicates the latched angle list. `test_volley_data.gd:133` checks that a reload retains the running list and the next attack uses the new list; launch reads the latched `_attack`. |
+| AC12 | ✅ | `enemy_attack_data.gd:45,106` restores/copies the angle snapshot; existing projectile serialization is unchanged. `test_volleys.gd:230,237,326` compares every subsequent sim snapshot and hit time after restoring mid-windup and in flight. |
+| AC13 | ✅ | `test_hexer.gd:187,278,327` runs fixed commands against real Hexer data at 30/60/120 ticks/s, asserts the HP crossing and required attacks occurred, then compares launch serials/steps, hit times, HP, live serial sets and bolt positions at every contact within 1e-6 tiles. |
+| AC14 | ✅ | `hexer.tres`, `hexer_stage_2.tres` and the eight attack files match §4. `test_hexer.gd:96–178` checks authored values, real-tunable/class validation, distance selection, both stages' patterns, bolt counts, ring aim and cooldown. |
+| AC15 | ✅ | `CasterBrain` is unchanged; `test_hexer.gd:181,263` checks retreat at 3 tiles, approach at 8 and holding at 5 with cooldown running. |
+| AC16 | ✅ | `enemy.gd:176,184,350` derives and draws all lines from the running attack, retaining the first-line API. `test_f008_views.gd:6–58` checks fan/ring/single-bolt lines and their absence outside windup; `test_f008_scene.gd:71,89,107` checks reset, restore and reload views. |
+| AC17 | ✅ | `f008_hexer.tscn` preserves the F-007 room and shared nodes, substitutes Hexer data and enables player refill. `test_f008_scene.gd:8–85` checks standalone setup, room bounds, combatants, boss-bar mark, debug keys and complete reset. |
+
+### Rejected options, constraints, deviations and assumptions
+
+- **Rejected-option check:** No count/spread model, shared volley hit set, Hexer brain or
+  boss exception, inherited follow-up aim, or per-bolt delay is implemented.
+- **Constraint check:** C7 fails as described in CR-1. Otherwise C1–C14 and G1–G9 are
+  preserved: the core and glue remain separate, projectiles keep D-008 identity and wall
+  reports, snapshots keep their existing owner-level keys, and the Hexer is authored data.
+  No brain, existing combat value, dependency, input action, state or signal is added or changed.
+- **Deviation audit:** §8 records no DEV entries, and the diff contains no additional scope
+  changes requiring one. Leaving `test_brute_data.gd` untouched is justified: its projectile
+  test asserts the retained wall-stun restriction, not the removed brain-kind restriction.
+- **Assumptions:** ASSUMPTION-1 shares pure direction math between launch and presentation;
+  ASSUMPTION-2 copies mutable packed arrays at snapshot boundaries; ASSUMPTION-3 concerns
+  diagnostic ordering only. These are small, reversible choices and do not relax rejection.
+- **Verification:** Mode B supplies passing `tools/test`, `tools/lint` and
+  `tools/check_core_purity` on this exact HEAD. `git diff --check main...HEAD` is clean.
+  An additional temporary headless Godot probe reproduced CR-1; no source was edited.
+  Lucas's manual combat-feel checks remain for Gate B.
+
+**Handoff:** `CODE_CHANGES`, `owner_now: Builder` — resolve CR-1 and its boundary coverage.
 
 ---
 
