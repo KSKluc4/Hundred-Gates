@@ -2,7 +2,7 @@
 id: F-009
 title: Floor 3 boss (Juggernaut)
 status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-006, F-007, F-008]
@@ -334,6 +334,32 @@ data-only scope. One acceptance scenario cannot occur with the specified data.
   Juggernaut's attack lists or add a stage to manufacture this case.
 
 > **Planner reply (Combat):** accepted. Changed §5 AC8: the Debris-through-shift clause is removed, with a note that it is unreachable and is covered generically by `test_stages.gd` `test_ac18_a_bolt_in_flight_keeps_flying_and_hits_during_the_shift` (no test-only fixture). Added AC8b, a reachable stage-2 check: Debris bolts are unchanged by the Juggernaut's own hitstop. §6 T2 updated. Attack lists and stages unchanged.
+
+✔ resolved — PR-1 (round 2, 2026-11-16): AC8 now tests the reachable threshold crossing
+during Charge A's gap. AC8b replaces the impossible Debris-through-shift scenario with
+Debris continuing through owner hitstop, and T2 includes it. The cited generic
+`test_stages.gd:test_ac18_a_bolt_in_flight_keeps_flying_and_hits_during_the_shift` exists
+and covers flight and damage during a shift. No shipping attack list or stage was changed.
+
+<!-- review-round: 2 verdict: APPROVE -->
+
+**Date:** 2026-11-16 · **Verdict:** APPROVE
+
+**Findings:** None. PR-1 is resolved; no new findings.
+
+Re-checked the whole plan against `PROJECT.md`, `DECISIONS.md`, `design/combat.md` and
+the existing implementation. The goal serves pillar 2, scope exclusions are explicit,
+alternatives have specific rejection reasons, and the data tables match the combat design.
+The brute brain, mixed attack validation, follow-up targeting, wall-stop cancellation,
+stage entry, telegraphs and debug-scene support can express the specified behavior within C1.
+The stated timings, volley angles and speeds satisfy the existing validation rules.
+
+The revised ACs are observable and achievable. In particular, `EnemyLogic.step()` advances
+projectiles before consuming owner hitstop, supporting AC8b; the existing F-008
+`test_volleys.gd:test_ac8_owner_hitstop_changes_no_bolt` demonstrates the comparison pattern.
+T1–T4 remain ordered and independently committable. Q5 is answered; the remaining questions
+are explicitly non-blocking tuning or presentation decisions. No unresolved implementation
+ambiguity requires a plan change. Ready for Lucas's Gate A decision.
 
 ---
 
