@@ -651,17 +651,21 @@ func _cross_finished_phases() -> void:
 
 ## F-005/C4, C8: at the exact instant the windup ends, from where the enemy is, along the
 ## locked aim, with the latched values. It flies the rest of this step on the sim clock.
+## F-008/C4: one projectile per volley entry, in list order, so serials follow the list. After
+## this nothing is shared between them (C5).
 func _launch_projectile() -> void:
-	_projectiles.launch(
-		_position + _tick_displacement,
-		_aim,
-		_attack.projectile_speed_tiles,
-		_attack.projectile_max_distance_tiles,
-		_attack.range_tiles,
-		_attack.damage,
-		_attack.knockback_tiles,
-		_step_time_left
-	)
+	var origin: Vector2 = _position + _tick_displacement
+	for direction: Vector2 in _attack.volley_directions(_aim):
+		_projectiles.launch(
+			origin,
+			direction,
+			_attack.projectile_speed_tiles,
+			_attack.projectile_max_distance_tiles,
+			_attack.range_tiles,
+			_attack.damage,
+			_attack.knockback_tiles,
+			_step_time_left
+		)
 
 
 ## F-006/C7: only a latched wall-stun attack whose lunge moved this step has a segment. A
