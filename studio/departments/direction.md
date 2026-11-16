@@ -73,6 +73,15 @@ Direction; gameplay/feel → the department; gates → Lucas.
   never `git add -A`.
 - Quota: one long build can hit the 5-hour session limit. Prefer starting big builds right
   after a reset, `--max-steps 1` to stage them, and fresh chats/sessions over long ones.
+- No second session may commit, push or create a branch or worktree in this repo while
+  `tools/studio run` is active: the autopilot rejects the step (F-002 C3, C7, C21). This
+  blocked F-007 on 2026-11-12. Hand Lucas patches only when a run has stopped at a gate.
+- The `recovery` command in `.studio/blocked/F-XXX.json` assumes the agent misbehaved. It
+  can `reset --hard` the feature branch and force-push `main`. Read it before running it;
+  after a session-limit stop, resume with `git stash -u`, `tools/studio unblock F-XXX`,
+  `tools/studio run --resume F-XXX` instead.
+- A feature file that exists is not a spec: `studio/new-feature.sh` creates an empty
+  template. Read §1–§6 before saying a spec is written.
 
 **When Direction has repo access**
 - Commit only studio docs (specs, design docs, decisions, departments), never game code.

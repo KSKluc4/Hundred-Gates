@@ -15,14 +15,15 @@
 | F-006 | Brute — charge, stomp, wall stun | DONE | — | — |
 | F-007 | Boss base + floor 1 boss (Warden) | DONE | — | — |
 | F-008 | Volleys + floor 2 boss (Hexer) | DONE | — | — |
+| F-009 | Floor 3 boss (Juggernaut) | PLAN_REVIEW | Auditor | — |
+| F-010 | Studio queue — chained features, auto-drafted specs, opt-in automatic Gate A | PLAN_REVIEW | Auditor | — |
 
 ## Open questions waiting on Lucas
 - _none_
 
-## Next up (Direction, agreed with Lucas 2026-11-12)
-Trigger: F-007 reaches DONE. Then Direction starts both:
-1. **F-008 — floor 2 boss (Hexer).** Combat planner writes the spec on the F-007 boss base (design: `studio/design/combat.md`, Bosses). F-009 Juggernaut follows.
-2. **Floor / dungeon structure spec** (Direction). Biggest phase 1 gap: rooms, floor mix (CX6), boss room entry, death returns to town (D-006). Town hub and basic loot come after.
+## Next up
+See `studio/PHASE1.md`: the order, the target dates and what Lucas still has to decide.
+F-009 runs first; F-010 starts when F-009 is DONE.
 
 ## Parked
 - **Automated retrospective** — parked 2026-11-01 by Direction. Only F-003 has run the full autopilot; too little data to automate. Revisit after F-005 (3 features through the pipeline). Manual note meanwhile: F-003 took 3 plan rounds / 962 lines → keep enemy features to one archetype each.

@@ -38,6 +38,7 @@ studio/
   PROJECT.md              → vision, pillars, tech stack, global constraints (slow-changing)
   DECISIONS.md            → project-wide decision log (D-001, D-002…), incl. rejected options
   STATUS.md               → the board: what's in which stage right now
+  PHASE1.md               → the phase 1 plan: what is left, in order, with target dates
   GLOSSARY.md             → game terms with one meaning each (prevents drift between agents)
   features/
     _TEMPLATE.md          → feature spec template — the shared document

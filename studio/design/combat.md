@@ -5,7 +5,8 @@
 > them changes explicitly.
 > **Status:** core player decisions set (CQ1–CQ8, 2026-10-31). Phase 1 enemy archetypes set
 > (CQ10–CQ12, 2026-11-01; chaser → F-004 DONE, caster → F-005 DONE, brute → F-006 DONE).
-> Bosses for floors 1–3 designed (2026-11-09; Warden → F-007, Hexer → F-008, Juggernaut → F-009).
+> Bosses for floors 1–3 designed (2026-11-09; Warden → F-007 DONE, Hexer → F-008 DONE,
+> Juggernaut → F-009 spec 2026-11-16).
 
 ## Fixed so far (from PROJECT.md / Lucas)
 - Real-time action, top-down camera.
@@ -326,6 +327,7 @@ windup / active / recovery (GLOSSARY).
   the player when those i-frames end can hit, like any projectile (leaving matters). A boss
   room with cover is still open (CX9).
 
+### Floor 3 — Juggernaut (F-009)" section with: -->
 ### Floor 3 — Juggernaut (F-009)
 - **Concept:** a brute that owns the room. The exam for not trading: its normal recovery is
   too short to punish, so the wall is the only real opening.
@@ -337,12 +339,18 @@ windup / active / recovery (GLOSSARY).
   2. **Double charge** (3.0–9.0) — Charge A: 0.80 s windup (0.50 / 0.30) with a lane → 120°
      sector, 1.0 tile, during a 0.50 s active that lunges 7 tiles → 25 damage, 1.5 knockback
      → gap 0.35 s → Charge B: 0.60 s windup (0.35 / 0.25), re-aimed, same charge →
-     recovery 0.60 s. **A wall stop on either charge: stunned 1.5 s and the pattern ends** —
-     that's the punish.
+     recovery 0.60 s (too far away to punish). **A wall stop on either charge: stunned 1.5 s
+     and the pattern ends** — that's the punish.
+  - Between 1.8 and 3.0 tiles it walks in.
 - **Stage 2 (≤ 50%)** — shift 1.2 s. Chases at 2.5 tiles/s, cooldown 0.8 s.
-  1. **Stomp → Debris** (within 1.8) — after a 0.30 s gap: 0.50 s windup → 8 bolts, one every
-     45°, at 5 tiles/s, 18 damage → **punish: 0.80 s recovery** (needs F-008 volleys).
-  2. **Triple charge** (3.0–9.0) — a third charge with a 0.50 s windup (0.30 / 0.20).
+  1. **Stomp → Debris** (within 1.8) — the stomp, then a 0.30 s gap → Debris: 0.50 s windup
+     (0.30 / 0.20) → 8 bolts, one every 45°, **one of them on the aim** (walking straight back
+     in to punish the stomp gets hit: step aside or dash through) → bolts of 0.25 tiles at
+     5 tiles/s up to 8 tiles, 18 damage, 0.5 knockback → **punish: 0.80 s recovery** (F-008
+     volleys).
+  2. **Triple charge** (3.0–9.0) — Charge A → gap 0.35 s → Charge B → gap 0.35 s → Charge C:
+     0.50 s windup (0.30 / 0.20), same charge → recovery 0.60 s. A wall stop on any of the
+     three: stunned 1.5 s, pattern ends.
 - **What it teaches:** position before the attack, not during it; make the room do the
   damage window for you; a boss that looks open isn't always open.
 
@@ -435,6 +443,15 @@ boss rooms, doors and floor gates belong to Direction.
 | Hexer fans windup / `aim_track_time` / recovery | A 0.70 / 0.45 / 0.30 · B 0.45 / 0.25 / 0.90 (stage 2: 0.30) · C 0.45 / 0.25 / 0.90 s | `data/attacks/hexer_fan_*.tres`, `hexer_p2_fan_*.tres` |
 | Hexer fans `volley_angles_deg` / speed / max distance / band | A, C: −20, 0, 20 · B: −10, 10 / 6.0 tiles/s / 10.0 / 2.5–9.0 tiles | same |
 | Hexer ring windup / `aim_track_time` / recovery / speed / max distance / bolts | 0.60 / 0.35 / 1.00 s / 4.0 tiles/s / 8.0 tiles / 12, every 30° | `data/attacks/hexer_ring.tres` |
+| Juggernaut `max_hp` / `hurtbox_radius_tiles` / `knockback_scale` | 500 / 0.8 / 0 | `data/enemies/juggernaut.tres` |
+| Juggernaut `move_speed` / `aggro_radius_tiles` / `stop_distance_tiles` / `retreat_distance_tiles` | 2.0 tiles/s / 10.0 / 1.5 / 0 | same |
+| Juggernaut `attack_cooldown` / `attacks` (stage 1) | 1.0 s / [stomp, charge_a] | same |
+| Juggernaut stage 2 `enter_at_hp_percent` / `shift_duration` / `move_speed` / `attack_cooldown` / `attacks` | 50 / 1.2 s / 2.5 tiles/s / 0.8 s / [p2_stomp, p2_charge_a] | `data/enemies/juggernaut_stage_2.tres` |
+| Juggernaut stomp windup / active / recovery · damage / range / knockback / band | 0.60 / 0.10 / 0.70 s (stage 2: 0.30 s gap) · 22 / 2.0 / 1.5 / 0–1.8 tiles | `data/attacks/juggernaut_stomp.tres`, `juggernaut_p2_stomp.tres` |
+| Juggernaut charges windup / `aim_track_time` / recovery | A 0.80 / 0.50 / 0.35 · B 0.60 / 0.35 / 0.60 (stage 2: 0.35) · C 0.50 / 0.30 / 0.60 s | `data/attacks/juggernaut_charge_*.tres`, `juggernaut_p2_charge_*.tres` |
+| Juggernaut charges damage / arc / range / knockback / `lunge_tiles` / `wall_stun_duration` / band | 25 / 120° / 1.0 / 1.5 / 7.0 / 1.5 s / 3.0–9.0 tiles | same |
+| Juggernaut debris windup / `aim_track_time` / active / recovery | 0.50 / 0.30 / 0.10 / 0.80 s | `data/attacks/juggernaut_debris.tres` |
+| Juggernaut debris `volley_angles_deg` / radius / speed / max distance / damage / knockback | 0, ±45, ±90, ±135, 180 / 0.25 / 5.0 tiles/s / 8.0 / 18 / 0.5 | same |
 
 ## Open questions (cross-department)
 | # | To | Question | Blocking? |

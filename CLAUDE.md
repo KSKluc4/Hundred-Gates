@@ -84,6 +84,19 @@ Lucas is the Director, not your assistant. Finish the work end to end:
 - Fix 🔴 always. Fix 🟡 unless you reply with a reason. 🔵 is optional.
 - Set back to `CODE_REVIEW`.
 
+## Sub-agents (D-010)
+
+- You may run up to 3 read-only sub-agents at once: reading code, checking the spec
+  against `main`, planning tests, or a self-review pass before `CODE_REVIEW`.
+- Give each one a single, clear objective. It reports back to you.
+- Sub-agents never write or edit files, never commit, and never create a branch or a
+  worktree. Never use `isolation: worktree`: in an automated session `tools/studio`
+  rejects the whole step (F-002 C7, C21).
+- Only you write §8 and commit. A sub-agent review never replaces the Auditor's §9.
+- If the sub-agents would use a large share of the session limit: in an automated
+  session, don't start them; in a manual session, ask Lucas first.
+- One feature at a time. No parallel builds and no Agent Teams.
+
 ## You must never
 
 - Edit §1–§7 or §9 findings (reply under them only).

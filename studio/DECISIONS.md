@@ -20,6 +20,49 @@
 
 ---
 
+## D-010 — Sub-agents: read-only helpers allowed, parallel builds parked
+- **Status:** ACCEPTED
+- **Date:** 2026-11-16 · **Decided by:** Lucas (proposed by Lucas, reviewed by Direction)
+- **Context:** Lucas proposed parallel agents to speed up phase 1. F-007 was blocked on
+  2026-11-12 because a second session created a worktree branch and pushed to `main`
+  during the build (F-002 C3, C7, C21).
+- **Chosen:** The Builder may use up to 3 read-only sub-agents at once, in any session,
+  for reading code, checking a spec against `main`, test planning and a self-review pass.
+  Each has one objective and reports to the Builder. Sub-agents never write files, commit
+  or create branches or worktrees. Only the Builder writes §8 and commits. The Auditor's
+  review (§9) is still required.
+- **Rejected:**
+  - *Parallel builds of independent features in worktrees* — a moving branch blocks any
+    autopilot step; two manual builds skip the tool's containment; the session limit is
+    shared; the second merge needs a rebase and a new review. Build time (about 1 hour)
+    is not the bottleneck. Tempting because the machine is idle during gates.
+  - *Worktree-isolated sub-agents in automated sessions* — the worktree and its branch
+    make `tools/studio` reject the step. Tempting because isolation sounds safer.
+  - *Agent Teams* — experimental; no need shown yet. Tempting because it is the newest tool.
+- **Consequences:** One feature builds at a time. Speed comes from the queue (F-010),
+  specs written ahead in department chats, and art done in parallel by Lucas.
+- **Revisit if:** With the queue running, a feature regularly waits on build time rather
+  than on a gate; or phase 1 is done.
+
+## D-009 — Gate A may be automatic for features Lucas marks
+- **Status:** PROPOSED
+- **Date:** 2026-11-16 · **Decided by:** _pending Lucas_ (proposed by Direction, from F-010)
+- **Context:** F-007 waited 2 days for Gate A after the Auditor had approved its plan.
+  About 8 phase 1 features remain and waits between steps are the main schedule risk.
+- **Chosen:** A feature marked `auto` in `studio/QUEUE.md` passes Gate A without Lucas when
+  the Auditor's latest plan round approves and no blocking question is open. The tool sets
+  `APPROVED`, never an agent, and records it (commit subject and §11 note). Unmarked
+  features, and Gate B for every feature, stay manual.
+- **Rejected:**
+  - *Automatic Gate A for everything* — new systems (floors, loot, town) need Lucas to
+    read the plan; the Auditor checks consistency, not intent. Tempting because it is
+    simpler and stops least.
+  - *Always manual* — costs a stop per feature that is often not a real decision.
+    Tempting because it is the safest.
+- **Consequences:** "Only Lucas sets APPROVED" becomes "only Lucas or the queue rule he
+  set". A wrong auto-approved plan is caught at the playtest and costs one build.
+- **Revisit if:** An auto-approved feature fails its playtest because of the plan.
+
 ## D-008 — Projectiles belong to their launcher; walls are reported by the glue
 - **Status:** ACCEPTED
 - **Date:** 2026-11-08 · **Decided by:** Lucas (proposed by Combat, from F-005; accepted at Gate A)
