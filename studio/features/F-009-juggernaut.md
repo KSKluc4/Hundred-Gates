@@ -1,8 +1,8 @@
 ---
 id: F-009
 title: Floor 3 boss (Juggernaut)
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-006, F-007, F-008]
@@ -294,6 +294,37 @@ Small, ordered, each independently committable. F-008 is DONE and §2 is re-chec
 
 <Each completed round starts with its machine line (format in AGENTS.md), then its findings.
 Severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion.>
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Date:** 2026-11-16 · **Verdict:** CHANGES_REQUESTED
+
+The goal serves pillar 2, the exclusions and rejected alternatives are explicit, and T1–T4
+are ordered and independently committable. The specified values and mechanics match
+`studio/design/combat.md`. Inspection of the existing brute brain, mixed-attack validation,
+follow-up cancellation on wall stops, stage handling and debug-scene reload supports the
+data-only scope. One acceptance scenario cannot occur with the specified data.
+
+### PR-1 — 🔴 blocking — AC8 requires Debris to exist before it becomes available
+
+- **Location:** §5 AC8, final sentence (lines 241); §4 enemy/stage attack lists and stomp
+  follow-up (lines 174–187).
+- **Problem:** AC8 requires crossing 50% HP while Debris is in flight and having those bolts
+  continue through the resulting stage shift. Stage 1 contains only the plain stomp and
+  double charge. Debris is reachable only through `juggernaut_p2_stomp`, after the sole 50%
+  shift has already occurred. Stages only advance: `EnemyLogic._enter_deepest_stage()`
+  (`src/core/enemies/enemy_logic.gd:508`) cannot enter that stage again. No legal fight with
+  this data can produce the required precondition and subsequent shift.
+- **Why it matters:** The Builder cannot satisfy AC8 using the real Juggernaut. It would
+  have to change the specified attack lists/stages, or silently substitute an artificial
+  fixture for the acceptance scenario. That conflicts with C1/C4 or leaves the AC unmet.
+- **Suggested fix:** Keep the reachable threshold-crossing test during Charge A's gap.
+  Replace the Debris clause with a reachable stage-2 continuation check, such as Debris
+  continuing during its owner's hitstop. If projectile flight through a stage shift still
+  needs evidence, cite the existing generic coverage in
+  `tests/core/enemies/test_stages.gd:test_ac18_a_bolt_in_flight_keeps_flying_and_hits_during_the_shift`
+  and F-008, or explicitly request a separate test-only fixture. Do not change the shipping
+  Juggernaut's attack lists or add a stage to manufacture this case.
 
 ---
 
