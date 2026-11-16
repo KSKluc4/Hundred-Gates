@@ -14,7 +14,7 @@
 | F-005 | Ranged caster + minimal projectiles | DONE | — | — |
 | F-006 | Brute — charge, stomp, wall stun | DONE | — | — |
 | F-007 | Boss base + floor 1 boss (Warden) | DONE | — | — |
-| F-008 | Volleys + floor 2 boss (Hexer) | PLAN_REVIEW | Lucas | — |
+| F-008 | Volleys + floor 2 boss (Hexer) | APPROVED | Builder | — |
 
 ## Open questions waiting on Lucas
 - _none_
