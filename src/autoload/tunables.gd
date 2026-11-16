@@ -36,6 +36,17 @@ const HEXER_RING_PATH: String = "res://data/attacks/hexer_ring.tres"  # G5
 const HEXER_P2_FAN_A_PATH: String = "res://data/attacks/hexer_p2_fan_a.tres"  # G5
 const HEXER_P2_FAN_B_PATH: String = "res://data/attacks/hexer_p2_fan_b.tres"  # G5
 const HEXER_FAN_C_PATH: String = "res://data/attacks/hexer_fan_c.tres"  # G5
+# F-009/C1: the Juggernaut is data only.
+const JUGGERNAUT_PATH: String = "res://data/enemies/juggernaut.tres"  # G5
+const JUGGERNAUT_STAGE_2_PATH: String = "res://data/enemies/juggernaut_stage_2.tres"  # G5
+const JUGGERNAUT_STOMP_PATH: String = "res://data/attacks/juggernaut_stomp.tres"  # G5
+const JUGGERNAUT_CHARGE_A_PATH: String = "res://data/attacks/juggernaut_charge_a.tres"  # G5
+const JUGGERNAUT_CHARGE_B_PATH: String = "res://data/attacks/juggernaut_charge_b.tres"  # G5
+const JUGGERNAUT_P2_STOMP_PATH: String = "res://data/attacks/juggernaut_p2_stomp.tres"  # G5
+const JUGGERNAUT_DEBRIS_PATH: String = "res://data/attacks/juggernaut_debris.tres"  # G5
+const JUGGERNAUT_P2_CHARGE_A_PATH: String = "res://data/attacks/juggernaut_p2_charge_a.tres"  # G5
+const JUGGERNAUT_P2_CHARGE_B_PATH: String = "res://data/attacks/juggernaut_p2_charge_b.tres"  # G5
+const JUGGERNAUT_CHARGE_C_PATH: String = "res://data/attacks/juggernaut_charge_c.tres"  # G5
 
 var game: GameTunables = preload(GAME_TUNABLES_PATH)
 var player_combat: PlayerCombatTunables = preload(PLAYER_COMBAT_PATH)

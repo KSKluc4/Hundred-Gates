@@ -1,7 +1,7 @@
 ---
 id: F-009
 title: Floor 3 boss (Juggernaut)
-status: APPROVED         # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
@@ -365,7 +365,7 @@ ambiguity requires a plan change. Ready for Lucas's Gate A decision.
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** YYYY-MM-DD  ·  **Branch:** `feature/F-009-juggernaut`
+**Started:** 2026-11-16  ·  **Branch:** `feature/F-009-juggernaut`
 
 ### Progress
 - [ ] T1

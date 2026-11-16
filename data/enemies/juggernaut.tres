@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_data.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="2"]
+[ext_resource type="Resource" path="res://data/attacks/juggernaut_stomp.tres" id="3"]
+[ext_resource type="Resource" path="res://data/attacks/juggernaut_charge_a.tres" id="4"]
+[ext_resource type="Script" path="res://src/core/enemies/enemy_stage_data.gd" id="5"]
+[ext_resource type="Resource" path="res://data/enemies/juggernaut_stage_2.tres" id="6"]
+
+[resource]
+script = ExtResource("1")
+id = &"juggernaut"
+brain = 2
+max_hp = 500
+hurtbox_radius_tiles = 0.8
+knockback_scale = 0.0
+move_speed = 2.0
+aggro_radius_tiles = 10.0
+stop_distance_tiles = 1.5
+retreat_distance_tiles = 0.0
+attack_cooldown = 1.0
+attacks = Array[ExtResource("2")]([ExtResource("3"), ExtResource("4")])
+stages = Array[ExtResource("5")]([ExtResource("6")])
