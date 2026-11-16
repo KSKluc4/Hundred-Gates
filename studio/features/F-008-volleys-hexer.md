@@ -1,8 +1,8 @@
 ---
 id: F-008
 title: Volleys + floor 2 boss (Hexer)
-status: CODE_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-005, F-007]
@@ -402,6 +402,7 @@ None.
 - ASSUMPTION-1: the direction math lives in a new public helper `EnemyAttackData.volley_directions(aim)`, used by both `EnemyLogic._launch_projectile()` (C4) and `Enemy.get_aim_lines()` (C11), so the lines and the bolts can't disagree. An empty list returns `[aim]`.
 - ASSUMPTION-2: `to_dict()` and `from_snapshot()` copy `volley_angles_deg` explicitly, because Godot packed arrays are shared by reference through `get()`/`set()`. Without that, a snapshot and a running attack could share one list (C3).
 - ASSUMPTION-3: when an angle is non-finite or out of range, C7 (c) skips the duplicate check for it, so each bad entry reports exactly one error.
+- ASSUMPTION-4 (CR-1): C7 (c) "less than 0.01" is checked as gap < 0.01 − `VOLLEY_ANGLE_ROUNDING_DEG` (1e-9), with the gap taken from |a − b| so it is symmetric. The 1e-9 only absorbs float rounding at the cutoff (e.g. 10.01 − 10 = 0.0099999999999998); any authorable sub-threshold pair such as [0, 0.005] or [10, 10.009] is still rejected.
 
 ### Things the Auditor should look at closely
 - C6 names `test_brute_data.gd`, but on `main` it had no brain-kind assertion. Its only projectile test (`test_ac15_a_stun_on_a_projectile_is_rejected`) asserts the wall-stun error, which still applies. So it is unedited. The kind assertions changed were in `test_attack_list.gd`, `test_brute_brain.gd`, `test_caster_data.gd` and `test_stage_validation.gd`.
@@ -410,7 +411,7 @@ None.
 - The volley validation runs inside `validate_enemy()`, so it covers stages and follow-ups through the existing `_chain_errors()` path (AC9 tests the follow-up and stage cases).
 
 ### How to test
-- `tools/test`: 92 scripts, 884/884 tests pass (run 2026-11-16 at `6b7469c`). `tools/lint`: no problems. `tools/check_core_purity`: ok.
+- `tools/test`: 92 scripts, 885/885 tests pass (run 2026-11-16 at `93efdf5`, after CR-1). `tools/lint`: no problems. `tools/check_core_purity`: ok.
 - Manual (Lucas): open `scenes/debug/f008_hexer.tscn` and follow §5 "How to verify manually" steps 1–9.
 
 ---
@@ -443,6 +444,13 @@ None.
   rounding at the cutoff with a numerical tolerance much smaller than 0.01°. Add boundary
   regressions in both list orders, including translated angles and the −180/180 seam;
   retain rejection of genuine sub-threshold pairs such as `[0, 0.005]`.
+
+> **Builder reply:** fixed in `93efdf5`. `_same_direction()` now takes the gap from `|a − b|`
+> (symmetric, no signed wrap) and compares against 0.01 − 1e-9 (`VOLLEY_ANGLE_ROUNDING_DEG`,
+> ASSUMPTION-4). New `test_cr1_the_cutoff_does_not_depend_on_list_order` checks exactly-0.01
+> pairs in both orders (at 0, 10, −10, 123.45 and both sides of the −180/180 seam) pass, and
+> sub-threshold pairs ([0, 0.005], [10, 10.009], [−180, 179.995], [180, −179.995]) are
+> rejected in both orders. `tools/test` 885/885, `tools/lint` and `tools/check_core_purity` clean.
 
 ### Acceptance-criteria evidence
 
