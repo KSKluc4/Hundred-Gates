@@ -1,8 +1,8 @@
 ---
 id: F-009
 title: Floor 3 boss (Juggernaut)
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-006, F-007, F-008]
@@ -372,6 +372,7 @@ ambiguity requires a plan change. Ready for Lucas's Gate A decision.
 - [x] T2 — `7225106` `tests/core/enemies/test_juggernaut.gd` (18 tests): C4/C5 data tables, AC2 validation (both stages, every attack, speeds below the Warrior's), AC3 bands, AC4 double charge (+ C10 re-pick of the nearest player), AC5 wall stop on each of the five charges, AC6 stomp → Debris, AC7 triple charge, AC8 50 % in Charge A's gap, AC8b Debris through owner hitstop, AC9 two bolts → one hit, C10 two players each hit by their own bolt.
 - [x] T3 — `66e5111` `tests/core/enemies/test_juggernaut_rates.gd` (AC10 at 30/60/120, AC11 a–d) and the test helper `tests/core/enemies/room_wall_stub.gd`.
 - [x] T4 — `6fec7ce` `scenes/debug/f009_juggernaut.tscn` and `tests/scenes/f009_scene_test.gd` + `test_f009_scene.gd` (7 tests, AC12/C11).
+- [x] CR-1 — `ed364db` `test_juggernaut_rates.gd`: new `test_ac10_crossing_50_percent_in_charge_a_gap_is_the_same_at_every_tick_rate`.
 
 ### Deviations from plan
 None.
@@ -380,6 +381,7 @@ None.
 - **ASSUMPTION-1 (AC1 diff check):** checked with a command instead of a GUT test, because a test can't rely on git refs being there. `git diff --name-only 0aebafe..HEAD -- src/` lists only `src/autoload/tunables.gd`. No existing test file was edited: every changed test file is new.
 - **ASSUMPTION-2 (room walls in core):** `BruteWallStub` only stops +x charges, so the AC10/AC11 scripted fight uses a new test-only helper, `RoomWallStub`. It is the four outer walls of the 20 × 12 room in any direction, with the centre inset by the hurtbox radius. It works like `BruteWallStub`: it moves the body to where it got to and reports once per step, and bolts pass through it. Bolts against real walls are already covered by F-008's scene tests. The real-wall stun is tested in the scene (AC12).
 - **ASSUMPTION-3 (AC10 50 % crossing):** in the scripted fight, sword hits 1 and 2 cross 50 % during the stage-1 stomp's 0.70 s recovery, so the crossing happens inside a running attack and the shift waits for it. The crossing during Charge A's gap is AC8's own test, which uses the F-004/C6 restore path (`BossValues.set_hp`), like `test_warden`/`test_stages`. A real sword hit is then checked to land during the shift.
+  **Superseded after review (CR-1):** AC10's mid-pattern crossing is now covered by its own three-rate test (Auditor's alternative fix: keep the broad fight, add the charge-gap scenario). The Juggernaut starts at 255 HP; a real sword hit 1 (10 damage) lands in stage-1 Charge A's 0.35 s gap. At 30, 60 and 120 ticks/s it asserts, at the damage event: running attack `juggernaut_charge_a`, state RECOVERY, `has_pending_follow_up()` true; then Charge B runs (it wall-stops on the bottom wall), the stage shift starts after B's last step, and stage 2 goes stomp → Debris. Attacks, wall stops, crossing time, B's end, stage entries, windups, every hit and damage, and final HP are compared across rates. The broad fight is unchanged.
 - **ASSUMPTION-4 (AC4/AC7 at 5 tiles):** at 5 tiles the charges hit the player, so each active phase lasts 0.50 s plus 0.05 s of attacker hitstop per landed hit. The tests add that from the recorded hits. Windups, track times, gaps, recoveries and cooldowns are checked exactly. The AC5 wall-stop tests keep the player out of every charge's reach, so their timing has no hitstop.
 - **ASSUMPTION-5 (placeholder look):** the Juggernaut's `body_color` in the scene is `Color(0.6, 0.42, 0.3)`, a placeholder (Q4). The rest of the scene copies `f008_hexer.tscn`/`f007_warden.tscn` exactly: same room, walls, bar, overlay and runner.
 
@@ -391,7 +393,7 @@ None.
 - Every test loads the real `juggernaut.tres` (the cached resource) and never changes it.
 
 ### How to test
-- `tools/test` — full suite: 915 tests, all pass (885 before this feature, plus 30 new).
+- `tools/test` — full suite: 916 tests, all pass (885 before this feature, plus 31 new).
 - `tools/test -gselect=test_juggernaut` (core, rates) · `tools/test -gselect=test_f009` (scene).
 - `tools/lint` and `tools/check_core_purity` — both clean.
 - Manual (Lucas, §5): open `scenes/debug/f009_juggernaut.tscn` and run it (F6).
@@ -453,6 +455,8 @@ those prerequisite checks were not rerun. `git diff --check` is clean.
   broad fight and add the missing charge-gap threshold scenario at all three
   rates with the same event/state comparisons. Update §8 to describe the final
   coverage; do not change shipping data to manufacture the scenario.
+
+> **Builder reply:** fixed in `ed364db`. Took the alternative: the broad fight stays, and a new test, `test_ac10_crossing_50_percent_in_charge_a_gap_is_the_same_at_every_tick_rate`, crosses 50 % with a real sword hit in stage-1 Charge A's gap at 30, 60 and 120 ticks/s. In every run it asserts the crossing's attack id (`juggernaut_charge_a`), RECOVERY state and pending follow-up at the damage event, that Charge B runs and its last step comes before the shift, then stage 2's stomp → Debris. Events, times, damage and final HP are compared across rates. No shipping data changed. §8 ASSUMPTION-3 updated.
 
 ### Rejected options, constraints, deviations and assumptions
 
