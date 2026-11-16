@@ -46,10 +46,11 @@ func test_c13_a_follow_up_two_deep_is_checked_too() -> void:
 	_assert_one_error(data, "third: damage must be >= 1")
 
 
-func test_c13_a_follow_up_must_be_of_the_brain_kind() -> void:
+## F-008/C6 supersedes the kind part of C13 (a): a pattern may mix melee and projectile.
+func test_f008_c6_a_follow_up_may_be_of_the_other_kind() -> void:
 	var data: EnemyData = BossValues.chaser_boss()
 	data.attacks[0].follow_up = CasterArena.caster_values().attacks[0]
-	_assert_one_error(data, "CHASER needs a melee attack, caster_bolt is a projectile")
+	assert_eq(data.validate(RATE, Tunables.enemy_combat), PackedStringArray())
 
 
 func test_ac12_stage_percents_must_strictly_decrease() -> void:

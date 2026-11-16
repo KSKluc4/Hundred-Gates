@@ -102,20 +102,17 @@ func test_ac1_sampling_limit_at_240_with_the_exact_limit_passing() -> void:
 	assert_string_contains(errors[0], "more than its radius")
 
 
-func test_ac1_a_chaser_with_a_projectile_attack_is_rejected() -> void:
+## F-008/C6 supersedes F-005/C9's kind rule.
+func test_f008_c6_a_chaser_with_a_projectile_attack_is_accepted() -> void:
 	var data: EnemyData = EnemyArena.chaser_values()
 	data.attacks = [CasterArena.caster_values().attacks[0]]
-	var errors: PackedStringArray = data.validate(RATE, Tunables.enemy_combat)
-	assert_eq(errors.size(), 1)
-	assert_string_contains(errors[0], "CHASER needs a melee attack")
+	assert_eq(data.validate(RATE, Tunables.enemy_combat), PackedStringArray())
 
 
-func test_ac1_a_caster_with_a_melee_attack_is_rejected() -> void:
+func test_f008_c6_a_caster_with_a_melee_attack_is_accepted() -> void:
 	var data: EnemyData = CasterArena.caster_values()
 	data.attacks = [EnemyArena.chaser_values().attacks[0]]
-	var errors: PackedStringArray = data.validate(RATE, Tunables.enemy_combat)
-	assert_eq(errors.size(), 1)
-	assert_string_contains(errors[0], "CASTER needs a projectile attack")
+	assert_eq(data.validate(RATE, Tunables.enemy_combat), PackedStringArray())
 
 
 func test_ac1_attack_errors_name_the_bolt() -> void:

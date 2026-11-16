@@ -93,13 +93,14 @@ func test_ac15_band_bounds_on_both_sides() -> void:
 	_assert_band(1.001, 1.0, "trigger_min_tiles must be <= trigger_max_tiles")
 
 
-func test_ac15_kind_is_checked_for_every_attack_in_the_list() -> void:
+## F-008/C6 replaces F-006/C9's kind rule: a list may mix melee and projectile attacks.
+func test_f008_c6_a_list_may_mix_attack_kinds() -> void:
 	var chaser: EnemyData = EnemyArena.chaser_values()
 	chaser.attacks.append(CasterArena.caster_values().attacks[0])
-	_assert_one_error(chaser, "CHASER needs a melee attack, caster_bolt is a projectile")
+	assert_eq(chaser.validate(RATE, Tunables.enemy_combat), PackedStringArray())
 	var caster: EnemyData = CasterArena.caster_values()
 	caster.attacks.append(EnemyArena.chaser_values().attacks[0])
-	_assert_one_error(caster, "CASTER needs a projectile attack, chaser_swipe is melee")
+	assert_eq(caster.validate(RATE, Tunables.enemy_combat), PackedStringArray())
 
 
 func test_c10_the_latched_attack_snapshot_holds_the_band() -> void:

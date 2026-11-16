@@ -25,6 +25,17 @@ const WARDEN_P2_SWIPE_B_PATH: String = "res://data/attacks/warden_p2_swipe_b.tre
 const WARDEN_OVERHEAD_PATH: String = "res://data/attacks/warden_overhead.tres"  # G5
 const WARDEN_P2_DASHING_CUT_PATH: String = "res://data/attacks/warden_p2_dashing_cut.tres"  # G5
 const WARDEN_SPIN_PATH: String = "res://data/attacks/warden_spin.tres"  # G5
+# F-008/C12: the Hexer is data only.
+const HEXER_PATH: String = "res://data/enemies/hexer.tres"  # G5
+const HEXER_STAGE_2_PATH: String = "res://data/enemies/hexer_stage_2.tres"  # G5
+const HEXER_NOVA_PATH: String = "res://data/attacks/hexer_nova.tres"  # G5
+const HEXER_FAN_A_PATH: String = "res://data/attacks/hexer_fan_a.tres"  # G5
+const HEXER_FAN_B_PATH: String = "res://data/attacks/hexer_fan_b.tres"  # G5
+const HEXER_P2_NOVA_PATH: String = "res://data/attacks/hexer_p2_nova.tres"  # G5
+const HEXER_RING_PATH: String = "res://data/attacks/hexer_ring.tres"  # G5
+const HEXER_P2_FAN_A_PATH: String = "res://data/attacks/hexer_p2_fan_a.tres"  # G5
+const HEXER_P2_FAN_B_PATH: String = "res://data/attacks/hexer_p2_fan_b.tres"  # G5
+const HEXER_FAN_C_PATH: String = "res://data/attacks/hexer_fan_c.tres"  # G5
 
 var game: GameTunables = preload(GAME_TUNABLES_PATH)
 var player_combat: PlayerCombatTunables = preload(PLAYER_COMBAT_PATH)

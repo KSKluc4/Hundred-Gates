@@ -25,13 +25,12 @@ func test_c13_brute_is_appended_and_the_factory_maps_it() -> void:
 	assert_true(EnemyBrain.for_data(BruteArena.brute_values()) is BruteBrain)
 
 
-func test_c9_a_brute_needs_every_attack_melee() -> void:
+## F-008/C6 replaces F-006/C9's kind rule: a brute may use a projectile attack.
+func test_f008_c6_a_brute_may_use_a_projectile_attack() -> void:
 	var data: EnemyData = BruteArena.brute_values()
 	assert_eq(data.validate(120, Tunables.enemy_combat), PackedStringArray())
 	data.attacks.append(CasterArena.caster_values().attacks[0])
-	var errors: PackedStringArray = data.validate(120, Tunables.enemy_combat)
-	assert_eq(errors.size(), 1)
-	assert_string_contains(errors[0], "brain BRUTE needs a melee attack, caster_bolt")
+	assert_eq(data.validate(120, Tunables.enemy_combat), PackedStringArray())
 
 
 func test_c5_1_no_living_player_means_no_target() -> void:

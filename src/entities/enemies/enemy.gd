@@ -172,20 +172,40 @@ func get_damage_numbers() -> DamageNumbers:
 ## F-005 AC24: during a projectile attack's windup, the line its bolt will fly, from the enemy
 ## along its aim, as long as the bolt's max distance. F-006/C12: during the windup of a melee
 ## attack that lunges further than it reaches (a charge), its lane: lunge + range long. Global
-## px. Empty when there's none.
+## px. Empty when there's none. F-008/C11: the first of get_aim_lines().
 func get_aim_line() -> PackedVector2Array:
+	var lines: Array[PackedVector2Array] = get_aim_lines()
+	return lines[0] if not lines.is_empty() else PackedVector2Array()
+
+
+## F-008/C11: during a projectile attack's windup, one line per bolt it will launch, in list
+## order, each built as get_aim_line()'s: from the enemy along that bolt's direction, max
+## distance long. A charge's lane is one line. Global px. Empty outside a windup.
+func get_aim_lines() -> Array[PackedVector2Array]:
+	var lines: Array[PackedVector2Array] = []
 	if logic.get_state() != EnemyLogic.State.WINDUP:
-		return PackedVector2Array()
-	var length: float = _lane_length(logic.get_running_attack())
+		return lines
+	var attack: EnemyAttackData = logic.get_running_attack()
+	var length: float = _lane_length(attack)
 	if length <= 0.0:
-		return PackedVector2Array()
+		return lines
 	var start: Vector2 = logic.get_position_tiles()
-	return PackedVector2Array(
-		[
-			Units.vector_tiles_to_px(start),
-			Units.vector_tiles_to_px(start + logic.get_aim() * length),
-		]
-	)
+	var directions: Array[Vector2] = [logic.get_aim()]
+	if attack.is_projectile():
+		directions = attack.volley_directions(logic.get_aim())
+	for direction: Vector2 in directions:
+		(
+			lines
+			. append(
+				PackedVector2Array(
+					[
+						Units.vector_tiles_to_px(start),
+						Units.vector_tiles_to_px(start + direction * length),
+					]
+				)
+			)
+		)
+	return lines
 
 
 ## F-005 AC24: one circle per projectile, at its logic position: x, y = centre, z = radius.
@@ -326,12 +346,11 @@ func _draw_telegraph() -> void:
 	draw_polyline(outline, locked_color if is_locked else tracking_color, line_width_px)
 
 
+## F-008/C11: every line, one per bolt of a volley.
 func _draw_aim_line(telegraph: Telegraph) -> void:
-	var line: PackedVector2Array = get_aim_line()
-	if line.is_empty():
-		return
 	var color: Color = locked_color if telegraph == Telegraph.LOCKED else tracking_color
-	draw_line(line[0] - global_position, line[1] - global_position, color, line_width_px)
+	for line: PackedVector2Array in get_aim_lines():
+		draw_line(line[0] - global_position, line[1] - global_position, color, line_width_px)
 
 
 ## Tiles. 0 when the attack has no line to show.

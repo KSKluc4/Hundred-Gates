@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="EnemyAttackData" format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_attack_data.gd" id="1"]
+[ext_resource type="Resource" path="res://data/attacks/hexer_p2_fan_b.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+aim_track_time = 0.45
+lunge_tiles = 0.0
+projectile_speed_tiles = 6.0
+projectile_max_distance_tiles = 10.0
+trigger_min_tiles = 2.5
+trigger_max_tiles = 9.0
+wall_stun_duration = 0.0
+follow_up = ExtResource("2")
+volley_angles_deg = PackedFloat64Array(-20.0, 0.0, 20.0)
+id = &"hexer_p2_fan_a"
+windup = 0.7
+active = 0.1
+recovery = 0.3
+damage = 18
+arc_angle_deg = 360.0
+range_tiles = 0.25
+knockback_tiles = 0.5
+is_finisher = false
