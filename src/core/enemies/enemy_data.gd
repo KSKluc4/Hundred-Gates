@@ -83,8 +83,9 @@ func validate_against_class(class_data: ClassData) -> PackedStringArray:
 	return errors
 
 
-## F-006/C9: at least one attack, no null entry, each valid on its own and of the brain's kind.
-## F-007/C13 (a), (e): the same for every stage's list, and for every follow-up.
+## F-006/C9: at least one attack, no null entry, each valid on its own. F-007/C13 (a), (e): the
+## same for every stage's list, and for every follow-up. F-008/C6: any brain may use either
+## kind of attack, and a pattern may mix them: EnemyLogic decides per attack.
 func _attack_list_errors(
 	list: Array[EnemyAttackData], step_rate: int, tunables: EnemyCombatTunables
 ) -> PackedStringArray:
@@ -112,7 +113,6 @@ func _chain_errors(
 		seen.append(attack)
 		for error: String in attack.validate_enemy(step_rate, tunables):
 			errors.append("%s: %s" % [attack.id, error])
-		errors.append_array(_attack_kind_errors(attack))
 		if seen.has(attack.follow_up):
 			errors.append("%s: follow_up %s closes a cycle" % [attack.id, attack.follow_up.id])
 			break
@@ -149,21 +149,3 @@ func _stage_name(index: int) -> String:
 	var stage: EnemyStageData = stages[index]
 	var path: String = stage.resource_path if stage != null else ""
 	return "stages[%d] (%s)" % [index, path if not path.is_empty() else "built-in"]
-
-
-## F-005/C9, F-006/C9: a brain may only use the attack kind it supports.
-func _attack_kind_errors(attack: EnemyAttackData) -> PackedStringArray:
-	var errors: PackedStringArray = []
-	match brain:
-		Brain.CHASER, Brain.BRUTE:
-			if attack.is_projectile():
-				errors.append(
-					(
-						"brain %s needs a melee attack, %s is a projectile"
-						% [Brain.find_key(brain), attack.id]
-					)
-				)
-		Brain.CASTER:
-			if not attack.is_projectile():
-				errors.append("brain CASTER needs a projectile attack, %s is melee" % attack.id)
-	return errors

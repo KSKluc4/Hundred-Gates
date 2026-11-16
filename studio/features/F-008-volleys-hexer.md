@@ -1,7 +1,7 @@
 ---
 id: F-008
 title: Volleys + floor 2 boss (Hexer)
-status: APPROVED         # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
@@ -385,7 +385,7 @@ reload isolation, later hits, co-op targets and cross-rate projectile positions.
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** YYYY-MM-DD  ·  **Branch:** `feature/F-008-volleys-hexer`
+**Started:** 2026-11-16  ·  **Branch:** `feature/F-008-volleys-hexer`
 
 ### Progress
 - [ ] T1
