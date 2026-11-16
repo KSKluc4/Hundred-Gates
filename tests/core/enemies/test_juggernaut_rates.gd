@@ -8,7 +8,8 @@ extends GutTest
 ## the right wall and is stunned; the player lands a chain in the stun, walks left and eats an
 ## unstopped double charge; it stomps, the player walks back in and lands hits 1 and 2 in the
 ## stomp's recovery, crossing 50 % mid-attack; after the shift, stage 2 stomps, then Debris;
-## the player backs off and eats the triple charge.
+## the player backs off and eats the triple charge. A second, short fight crosses 50 % with a
+## real sword hit in Charge A's gap, at every rate too (CR-1).
 
 const TIME: float = EnemyArena.TIME
 const RATES: Array[int] = EnemyArena.RATES
@@ -60,6 +61,56 @@ func test_ac10_one_scripted_fight_is_the_same_at_every_tick_rate() -> void:
 			_assert_same_times(run[key], first[key], "%s: %s" % [label, key])
 		assert_eq(run["final_hp"], first["final_hp"], label)
 		_assert_same_bolts(run["bolts"], first["bolts"], label)
+
+
+## AC10 (CR-1): 50 % crossed mid-pattern, by a real sword hit in stage-1 Charge A's gap. The
+## Juggernaut (255 HP) charges +x at the player 5 tiles away; the player steps down out of the
+## lane after the aim locks, walks right under the lunge's end and lands hit 1 in the 0.35 s gap.
+## Charge B still runs (re-aimed down, it wall-stops on the bottom wall), then the shift, then
+## stage 2's stomp and Debris. Same at 30, 60 and 120 ticks/s.
+func test_ac10_crossing_50_percent_in_charge_a_gap_is_the_same_at_every_tick_rate() -> void:
+	var runs: Array[Dictionary] = []
+	for rate: int in RATES:
+		runs.append(_recorded_gap_crossing(rate))
+	for index: int in runs.size():
+		var run: Dictionary = runs[index]
+		var label: String = "%d ticks/s" % RATES[index]
+		assert_eq(
+			run["attacks"],
+			(
+				[
+					&"juggernaut_charge_a",
+					&"juggernaut_charge_b",
+					&"juggernaut_p2_stomp",
+					&"juggernaut_debris",
+				]
+				as Array[StringName]
+			),
+			"%s: A, B, then stage 2" % label
+		)
+		var crossing: Dictionary = run["crossing"]
+		assert_eq(crossing.get("id"), &"juggernaut_charge_a", "%s: crossed in Charge A" % label)
+		assert_eq(crossing.get("state"), EnemyLogic.State.RECOVERY, "%s: in its gap" % label)
+		assert_eq(crossing.get("pending"), true, "%s: Charge B still pending" % label)
+		assert_eq(run["sword"].size(), 1, "%s: one sword hit, the crossing one" % label)
+		assert_eq(run["stops"].size(), 1, "%s: B wall-stops, A doesn't" % label)
+		assert_eq(run["stage_entries"].size(), 1, "%s: one shift" % label)
+		if run["stage_entries"].size() == 1:
+			assert_gt(
+				run["stage_entries"][0], run["b_last"], "%s: B finished before the shift" % label
+			)
+	var first: Dictionary = runs[0]
+	for index: int in range(1, runs.size()):
+		var run: Dictionary = runs[index]
+		var label: String = "%d vs %d ticks/s" % [RATES[index], RATES[0]]
+		assert_eq(run["attacks"], first["attacks"], "%s: attacks" % label)
+		assert_eq(run["stops"], first["stops"], "%s: wall stops" % label)
+		assert_eq(run["damage"], first["damage"], "%s: every hit's damage" % label)
+		assert_almost_eq(run["crossing"]["time"], first["crossing"]["time"], TIME, label)
+		assert_almost_eq(run["b_last"], first["b_last"], TIME, "%s: B's end" % label)
+		for key: String in ["stage_entries", "windups", "hurt", "sword"]:
+			_assert_same_times(run[key], first[key], "%s: %s" % [label, key])
+		assert_eq(run["final_hp"], first["final_hp"], label)
 
 
 func test_ac11a_a_restore_in_charge_a_gap_replays_identically() -> void:
@@ -157,6 +208,64 @@ func _recorded_fight(rate: int) -> Dictionary:
 	for step: int in watch.contacts:
 		bolts[step] = watch.at(step)["projectiles"]
 	result["bolts"] = bolts
+	return result
+
+
+## AC10 (CR-1): the charge-gap crossing fight at `rate`; see its test.
+func _recorded_gap_crossing(rate: int) -> Dictionary:
+	var arena: BruteArena = BruteArena.new()
+	arena.class_data.max_hp = 1000
+	arena.brute_data = load(Tunables.JUGGERNAUT_PATH)
+	arena.add_player(Vector2(10, 6))
+	var juggernaut: EnemyLogic = arena.add_brute(Vector2(5, 6), &"juggernaut")
+	BossValues.set_hp(juggernaut, 255)  # One hit 1 (10) crosses 50 %.
+	var stub: RoomWallStub = RoomWallStub.new(juggernaut, arena.sim, ROOM).install(arena)
+	var watch: CasterWatch = arena.watch_caster(juggernaut)
+	var sim: CombatSim = arena.sim  # Not the arena: the Juggernaut would keep it alive.
+	var result: Dictionary = {
+		"stage_entries": [] as Array[float],
+		"attacks": [] as Array[StringName],
+		"crossing": {},
+		"b_last": -1.0,
+	}
+	var on_stage: Callable = func(_index: int) -> void:
+		result["stage_entries"].append(sim.get_time())
+	var on_damaged: Callable = func(_event: HitEvent) -> void:
+		var crossing: Dictionary = result["crossing"]
+		var running: EnemyAttackData = juggernaut.get_running_attack()
+		if crossing.is_empty() and juggernaut.get_combat_state().get_hp() <= 250:
+			crossing["time"] = sim.get_time()
+			crossing["id"] = running.id if running != null else &""
+			crossing["state"] = juggernaut.get_state()
+			crossing["pending"] = juggernaut.has_pending_follow_up()
+	juggernaut.stage_changed.connect(on_stage)
+	juggernaut.get_combat_state().damaged.connect(on_damaged)
+	var moves: Dictionary = {}
+	for thirtieth: int in range(16, 28):  # Out of the lane, after the aim locks (0.50 s).
+		moves[thirtieth] = Vector2.DOWN
+	for thirtieth: int in range(28, 39):  # Under where the lunge ends.
+		moves[thirtieth] = Vector2.RIGHT
+	var previous: StringName = &""
+	for thirtieth: int in 200:
+		var aim: Vector2 = Vector2(0.1, -1.0).normalized()  # Up at the stopped Juggernaut.
+		arena.play(rate, thirtieth, thirtieth + 1, moves, [], [40], aim)
+		var attack: EnemyAttackData = juggernaut.get_running_attack()
+		var id: StringName = attack.id if attack != null else &""
+		if id != &"" and id != previous:
+			result["attacks"].append(id)
+		if id == &"juggernaut_charge_b":
+			result["b_last"] = sim.get_time()
+		previous = id
+	juggernaut.stage_changed.disconnect(on_stage)
+	juggernaut.get_combat_state().damaged.disconnect(on_damaged)
+	result["stops"] = stub.stops
+	result["windups"] = watch.times_entered(EnemyLogic.State.WINDUP)
+	result["hurt"] = arena.hurt_times
+	result["sword"] = arena.sword_times
+	result["damage"] = arena.hurt_events.map(func(event: HitEvent) -> int: return event.damage)
+	result["final_hp"] = [
+		arena.players[0].get_combat_state().get_hp(), juggernaut.get_combat_state().get_hp()
+	]
 	return result
 
 
