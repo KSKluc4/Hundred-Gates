@@ -1,8 +1,8 @@
 ---
 id: F-008
 title: Volleys + floor 2 boss (Hexer)
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-005, F-007]
@@ -288,6 +288,54 @@ Small, ordered, each independently committable.
 
 <Each completed round starts with its machine line (format in AGENTS.md), then its findings.
 Severity: 🔴 blocking · 🟡 should fix · 🔵 suggestion.>
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Date:** 2026-11-16 · **Review basis:** `main` at `1dd09c6`.
+
+The goal and exclusions are clear, the options have specific trade-offs, and the data matches
+the Hexer design. C6 explicitly supersedes the old brain-kind restriction; D-007/D-008 and
+the shared boss behavior are otherwise preserved. Resolve the combat contract below before build.
+
+### PR-1 · 🔴 blocking — Per-contact protection contradicts the design's lifetime guarantee
+
+- **Location:** §3 rejected shared hit set; §4 C5; §5 AC5; `studio/design/combat.md:322–325`.
+- **Problem:** The design says a volley "never hits one player twice", but C5/AC5 only
+  guarantee one hit at a single contact. Independent, unmarked bolts can hit that player
+  after the 0.6 s hurt i-frames expire. For example, launch the specified ring from the origin
+  along +X with the Warrior at (1, 0). The 0° bolt hits about 0.10 s after launch. After its
+  hitstop and 0.5-tile push, the player can walk to radius 2.6 on the 30° ray and hold. Around
+  0.75 s, protection expires with the unspent 30° bolt only 0.4 tiles away, inside the combined
+  0.6-tile radii. That is a second hit from the same volley under the chosen rules.
+- **Why it matters:** This is an unflagged contradiction with the department design doc.
+  The Builder cannot satisfy lifetime immunity while preserving the specified independent
+  hit sets and adding no new hit rule.
+- **Suggested fix:** Explicitly scope the design guarantee to a contact instant and add an
+  AC confirming that a later bolt may hit after protection expires. If lifetime immunity is
+  intended instead, revise §3 and the state/hit contracts explicitly before implementation.
+
+### PR-2 · 🟡 should fix — Specify the new tunable's resource default
+
+- **Location:** §4 C2/C7; §6 T2; `tests/core/enemies/test_enemy_data.gd:36–38,163–167`.
+- **Problem:** C7 specifies 16 in `enemy_combat.tres`, but leaves the script default for
+  `EnemyCombatTunables.max_volley_size` unstated. Existing tests construct this resource with
+  `new()`, set only the telegraph fields, and expect validation to pass. An implicit int
+  default of 0 would fail those tests, which C2 forbids editing.
+- **Why it matters:** The Builder must guess a compatibility-relevant default or violate
+  the unedited-tests requirement.
+- **Suggested fix:** Specify a valid script default (for example, 16), as well as the
+  authored `.tres` value, while retaining rejection of an explicitly assigned 0.
+
+### PR-3 · 🟡 should fix — Include projectile positions in the tick-rate acceptance test
+
+- **Location:** §4 C10; §5 AC13; §6 T4.
+- **Problem:** C10 requires matching bolt positions at every contact across 30/60/120 ticks/s,
+  but AC13 checks only launch instants, serials, hits and final HP. AC12 compares positions
+  across snapshot replay, which does not cover the cross-rate requirement.
+- **Why it matters:** A bolt that misses the player could drift between rates while all
+  AC13 assertions still pass.
+- **Suggested fix:** Extend AC13/T4 to record and compare each live bolt's serial and
+  position at every shared contact instant, using a stated position tolerance.
 
 ---
 
