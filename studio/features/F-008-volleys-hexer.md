@@ -1,8 +1,8 @@
 ---
 id: F-008
 title: Volleys + floor 2 boss (Hexer)
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder     # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor     # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-005, F-007]
@@ -388,21 +388,30 @@ reload isolation, later hits, co-op targets and cross-rate projectile positions.
 **Started:** 2026-11-16  ·  **Branch:** `feature/F-008-volleys-hexer`
 
 ### Progress
-- [ ] T1
-- [ ] T2
-- [ ] T3
-- [ ] T4
-- [ ] T5
-- [ ] T6
+- [x] T1 — `6733006` brain kind rule removed (`_attack_kind_errors()` and its call); mixed kinds accepted (`test_mixed_kinds.gd`, AC10).
+- [x] T2 — `824a68e` `volley_angles_deg` (field, snapshot key, own copy in `_latch()`, `to_dict()`, `from_snapshot()`), `max_volley_size` (script default 16, `.tres` 16, ≥ 1), validation C7 a–d (`test_volley_data.gd`, AC9, AC11).
+- [x] T3 — `a5f8a54` one `launch()` per entry in `_launch_projectile()`; core tests AC2–AC8, AC5b, AC12 (`test_volleys.gd`), AC3 golden run (`caster_bolt_recorder.gd`, `tests/fixtures/f008/caster_bolt_run.txt`).
+- [x] T4 — `64f7f78` Hexer data (2 enemy files, 8 attacks), path constants in `tunables.gd`; data, brain and 30/60/120 tick-rate tests (`test_hexer.gd`, AC13–AC15).
+- [x] T5 — `1eb591b` `Enemy.get_aim_lines()`; `get_aim_line()` returns its first; `_draw_aim_line()` draws all (AC16).
+- [x] T6 — `6b7469c` `scenes/debug/f008_hexer.tscn`; `f008_scene_test.gd`, `test_f008_scene.gd`, `test_f008_views.gd`, `test_f008_walls.gd` (AC7 physics, AC16, AC17).
 
 ### Deviations from plan
 None.
 
 ### Assumptions made (small, reversible)
+- ASSUMPTION-1: the direction math lives in a new public helper `EnemyAttackData.volley_directions(aim)`, used by both `EnemyLogic._launch_projectile()` (C4) and `Enemy.get_aim_lines()` (C11), so the lines and the bolts can't disagree. An empty list returns `[aim]`.
+- ASSUMPTION-2: `to_dict()` and `from_snapshot()` copy `volley_angles_deg` explicitly, because Godot packed arrays are shared by reference through `get()`/`set()`. Without that, a snapshot and a running attack could share one list (C3).
+- ASSUMPTION-3: when an angle is non-finite or out of range, C7 (c) skips the duplicate check for it, so each bad entry reports exactly one error.
 
 ### Things the Auditor should look at closely
+- C6 names `test_brute_data.gd`, but on `main` it had no brain-kind assertion. Its only projectile test (`test_ac15_a_stun_on_a_projectile_is_rejected`) asserts the wall-stun error, which still applies. So it is unedited. The kind assertions changed were in `test_attack_list.gd`, `test_brute_brain.gd`, `test_caster_data.gd` and `test_stage_validation.gd`.
+- AC3 golden: `caster_bolt_run.txt` was recorded with `caster_bolt_recorder.gd` on `f9c6f4e` (before F-008). It was re-recorded there again at hand-off in a temporary worktree and matches byte for byte.
+- `_latch()` duplicates the list after `attack.duplicate()`. A shallow resource duplicate would otherwise keep sharing the packed array with the data file, and a reload could edit a running attack (AC11).
+- The volley validation runs inside `validate_enemy()`, so it covers stages and follow-ups through the existing `_chain_errors()` path (AC9 tests the follow-up and stage cases).
 
 ### How to test
+- `tools/test`: 92 scripts, 884/884 tests pass (run 2026-11-16 at `6b7469c`). `tools/lint`: no problems. `tools/check_core_purity`: ok.
+- Manual (Lucas): open `scenes/debug/f008_hexer.tscn` and follow §5 "How to verify manually" steps 1–9.
 
 ---
 
