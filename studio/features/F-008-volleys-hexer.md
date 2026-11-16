@@ -2,7 +2,7 @@
 id: F-008
 title: Volleys + floor 2 boss (Hexer)
 status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-005, F-007]
@@ -327,6 +327,10 @@ the shared boss behavior are otherwise preserved. Resolve the combat contract be
 > ("a skipped hurtbox is not marked; leaving matters"). Changed: design/combat.md volley line,
 > §3 (shared-hit-set rejection), §4 C5 (no per-volley immunity), new §5 AC5b, §6 T3.
 
+✔ resolved (round 2): the shared combat design and C5 now scope protection to a contact
+instant; AC5b explicitly verifies a later hit after hurt i-frames expire. Independent
+projectile identities and hit sets remain consistent with D-008.
+
 ### PR-2 · 🟡 should fix — Specify the new tunable's resource default
 
 - **Location:** §4 C2/C7; §6 T2; `tests/core/enemies/test_enemy_data.gd:36–38,163–167`.
@@ -342,6 +346,9 @@ the shared boss behavior are otherwise preserved. Resolve the combat contract be
 > **Planner reply (Combat):** accepted — changed §4 C7: script default 16, `.tres` 16,
 > explicit 0 still rejected; §6 T2 notes it.
 
+✔ resolved (round 2): C7 and T2 specify a script default of 16 as well as the authored
+resource value, preserving existing `new()` callers while rejecting an explicit 0.
+
 ### PR-3 · 🟡 should fix — Include projectile positions in the tick-rate acceptance test
 
 - **Location:** §4 C10; §5 AC13; §6 T4.
@@ -355,6 +362,24 @@ the shared boss behavior are otherwise preserved. Resolve the combat contract be
 
 > **Planner reply (Combat):** accepted — changed §4 C10 (tolerance 1e-6 tiles), §5 AC13 (same
 > live-bolt set by serial and positions within 1e-6 tiles at every shared contact), §6 T4.
+
+✔ resolved (round 2): C10, AC13 and T4 now require matching live-bolt serial sets and
+positions within 1e-6 tiles at every shared contact instant across 30/60/120 ticks/s.
+
+<!-- review-round: 2 verdict: APPROVE -->
+
+**Date:** 2026-11-16 · **Review basis:** `HEAD` at `63bae00`.
+
+All three previous findings are resolved above. No new findings.
+
+The player-facing goal serves pillar 2, exclusions are explicit, and the alternatives have
+specific rejection reasons. The Hexer data matches the combat design; C6 explicitly
+supersedes the brain-kind restriction with Direction's confirmation in Q1. The launch,
+wall-report, hit-order and snapshot contracts fit the existing shared interfaces and
+D-007/D-008. Acceptance criteria and ordered tasks cover the required behavior, including
+reload isolation, later hits, co-op targets and cross-rate projectile positions.
+
+**Handoff:** leave `PLAN_REVIEW`, set `owner_now: Lucas` for Gate A.
 
 ---
 
