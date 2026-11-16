@@ -71,6 +71,39 @@ func test_ac9_two_entries_pointing_the_same_way_are_rejected() -> void:
 	_assert_volley_error([5, 0, 5.001], "volley_angles_deg[0] and [2] point the same way")
 
 
+## F-008 CR-1: exactly VOLLEY_ANGLE_EPSILON_DEG apart passes in either list order, also when
+## translated and across the -180/180 seam; a pair just under it is still rejected either way.
+func test_cr1_the_cutoff_does_not_depend_on_list_order() -> void:
+	var at_cutoff: Array = [
+		[0, 0.01],
+		[0.01, 0],
+		[10, 10.01],
+		[10.01, 10],
+		[-10, -10.01],
+		[-10.01, -10],
+		[123.45, 123.46],
+		[123.46, 123.45],
+		[-180, 179.99],
+		[179.99, -180],
+		[180, -179.99],
+		[-179.99, 180],
+	]
+	for pair: Array in at_cutoff:
+		_assert_valid(pair)
+	var under: Array = [
+		[0, 0.005],
+		[0.005, 0],
+		[10, 10.009],
+		[10.009, 10],
+		[-180, 179.995],
+		[179.995, -180],
+		[180, -179.995],
+		[-179.995, 180],
+	]
+	for pair: Array in under:
+		_assert_volley_error(pair, "volley_angles_deg[0] and [1] point the same way")
+
+
 func test_ac9_at_most_max_volley_size_entries() -> void:
 	_assert_valid(_spread(16))
 	_assert_volley_error(

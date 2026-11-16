@@ -18,6 +18,9 @@ const FULL_CIRCLE_DEG: float = 360.0
 const HALF_CIRCLE_DEG: float = 180.0
 ## F-008/C7 (c): two volley entries closer than this, modulo 360, point the same way.
 const VOLLEY_ANGLE_EPSILON_DEG: float = 0.01
+## F-008 CR-1: float rounding allowed at that cutoff, so a gap of exactly 0.01 passes in any
+## list order. Far below the cutoff: [0, 0.005] is still rejected.
+const VOLLEY_ANGLE_ROUNDING_DEG: float = 1e-9
 
 ## Seconds of windup during which the aim follows the target (CQ11).
 @export var aim_track_time: float = 0.0
@@ -205,8 +208,10 @@ func _volley_errors(tunables: EnemyCombatTunables) -> PackedStringArray:
 
 ## F-008/C7 (c): closer than VOLLEY_ANGLE_EPSILON_DEG modulo 360, so -180 and 180 are one way.
 ## False for a non-finite angle: that one has its own error.
+## Symmetric in a and b (F-008 CR-1): the gap is taken from |a - b|, never from a signed wrap.
 static func _same_direction(a: float, b: float) -> bool:
 	if not (is_finite(a) and is_finite(b)):
 		return false
-	var gap: float = fposmod(a - b, FULL_CIRCLE_DEG)
-	return minf(gap, FULL_CIRCLE_DEG - gap) < VOLLEY_ANGLE_EPSILON_DEG
+	var gap: float = fposmod(absf(a - b), FULL_CIRCLE_DEG)
+	gap = minf(gap, FULL_CIRCLE_DEG - gap)
+	return gap < VOLLEY_ANGLE_EPSILON_DEG - VOLLEY_ANGLE_ROUNDING_DEG
