@@ -57,3 +57,4 @@
 | Pattern | An attack plus its chain of follow-ups, run without a free moment in between. The cooldown starts when its last recovery ends | `follow_up` |
 | Follow-up | The attack that starts the instant another attack's recovery ends. Its trigger band is not read; its target is re-picked | `EnemyAttackData.follow_up` |
 | Gap | The recovery of a pattern attack that has a follow-up. Hittable, but not the punish window | `has_pending_follow_up()`, `gap_color` |
+| Volley | All the projectiles one attack launches at the same instant, one per listed angle from the locked aim. From launch on each is an ordinary projectile | `volley_angles_deg`, `max_volley_size` |

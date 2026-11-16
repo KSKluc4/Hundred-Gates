@@ -65,6 +65,8 @@
 - **Invulnerable stage shift** — takes the player's reward away mid-fight and adds an enemy invulnerability state ("no enemy hurt i-frames"). *Tempting because:* protects the show moment.
 - **Enrage timer / boss HP that scales** — a stat check, not a pattern check (pillar 2). *Tempting because:* stops slow, safe play.
 - **Summoned adds (combatants spawned mid-fight)** — breaks fixed ids/order in snapshots (F-003/C19). *Tempting because:* fits the floor 2 lesson. Possible later as pre-placed dormant enemies (CX9).
+- **Follow-up that keeps the previous aim** — a second aim mode next to re-pick and re-track, and it ignores the nearest player in co-op. *Tempting because:* "fill the lanes that were safe" reads well.
+- **Delays between bolts of one volley** — per-bolt timers to snapshot and keep exact across tick rates; follow-ups already give rhythm. *Tempting because:* sweeping fans look great.
 
 ## Player
 
@@ -264,6 +266,8 @@ windup / active / recovery (GLOSSARY).
 - **No summons, no enrage timer, no invulnerability** (see Rejected).
 - **Distance picks the attack.** The player chooses what the boss does by where they stand.
   That's the readable part; patterns and stages are what keeps it from being solved.
+- **Any brain, any attack kind (F-008/C6).** An enemy may mix melee and projectile attacks,
+  also inside one pattern. The brain only decides movement and when to attack.
 
 ### Floor 1 — Warden (F-007)
 - **Concept:** a big chaser with a real moveset. The exam for read → dodge → punish: now in
@@ -302,18 +306,23 @@ windup / active / recovery (GLOSSARY).
      0.10 s → 18 damage, 3.0 knockback → **punish: 1.00 s recovery**. Reaching it is not the
      win; baiting the nova and dashing through it is.
   2. **Fan volley** (2.5–9.0) — Fan A: 0.70 s windup (0.45 / 0.25) with aim lines → 3 bolts
-     at −20° / 0° / +20° → gap 0.30 s → Fan B: 0.45 s windup (0.25 / 0.20) → 2 bolts at ±10°
-     (the lanes that were safe) → **punish: 0.90 s recovery**. Bolts as the caster's
-     (0.25 tiles, 6 tiles/s, 18 damage, single target).
+     at −20° / 0° / +20° (one on the aim: move) → gap 0.30 s → Fan B: 0.45 s windup
+     (0.25 / 0.20), re-aimed → 2 bolts at ±10° (the gap is on the aim: hold still, or dash
+     through under ~3.5 tiles, where the gap is too narrow) → **punish: 0.90 s recovery**.
+     Bolts as the caster's (0.25 tiles, 6 tiles/s, 10 tiles, 18 damage, single target).
 - **Stage 2 (≤ 50%)** — shift 1.2 s. Moves at 3.0 tiles/s, cooldown 0.9 s.
-  1. **Nova → Ring** (within 2.5) — after the nova's 0.30 s gap: 0.60 s windup → 12 bolts,
-     one every 30°, at 4 tiles/s → **punish: 1.00 s recovery**. The nova pushes you out, the
-     ring comes after you: dash through it back in.
-  2. **Triple fan** (2.5–9.0) — 3 → 2 → 3 bolts → **punish: 0.90 s recovery**.
+  1. **Nova → Ring** (within 2.5) — after the nova's 0.30 s gap: 0.60 s windup (0.35 / 0.25)
+     → 12 bolts, one every 30°, one of them on the aim, at 4 tiles/s up to 8 tiles →
+     **punish: 1.00 s recovery**. The nova pushes you out, the ring comes after you: dash
+     through it back in.
+  2. **Triple fan** (2.5–9.0) — 3 → 2 → 3 bolts (move, hold, move), 0.30 s gaps →
+     **punish: 0.90 s recovery**.
 - **What it teaches:** move toward danger, i-frame through a line instead of away from it,
   break line of sight, and that arriving in melee starts a new read.
-- **Needs:** several projectiles per attack (count + spread, F-008). A boss room with cover
-  (CX9). One hit gives hurt i-frames, so a volley never hits one player twice.
+- **Volleys (F-008).** An attack lists its bolts as angles from the locked aim
+  (`volley_angles_deg`); all launch at the same instant and are ordinary projectiles from
+  then on (D-008). At most `max_volley_size` (16). One hit gives hurt i-frames, so a volley
+  never hits one player twice. A boss room with cover is still open (CX9).
 
 ### Floor 3 — Juggernaut (F-009)
 - **Concept:** a brute that owns the room. The exam for not trading: its normal recovery is
@@ -415,6 +424,15 @@ boss rooms, doors and floor gates belong to Direction.
 | Warden overhead damage / arc / range / knockback / `lunge_tiles` | 25 / 150° / 2.0 / 1.5 / 1.0 tiles | same |
 | Warden spin windup / `aim_track_time` / active / recovery | 0.45 / 0 / 0.10 / 0.90 s | `data/attacks/warden_spin.tres` |
 | Warden spin damage / arc / range / knockback / `lunge_tiles` | 20 / 360° / 1.8 / 1.2 / 0 tiles | same |
+| `max_volley_size` (all enemies) | 16 | `data/tunables/enemy_combat.tres` |
+| Hexer `max_hp` / `hurtbox_radius_tiles` / `knockback_scale` | 320 / 0.5 / 0 | `data/enemies/hexer.tres` |
+| Hexer `move_speed` / `aggro_radius_tiles` / `stop_distance_tiles` / `retreat_distance_tiles` | 2.5 tiles/s / 10.0 / 7.0 / 4.0 | same |
+| Hexer `attack_cooldown` / `attacks` (stage 1) | 1.2 s / [nova, fan_a] | same |
+| Hexer stage 2 `enter_at_hp_percent` / `shift_duration` / `move_speed` / `attack_cooldown` / `attacks` | 50 / 1.2 s / 3.0 tiles/s / 0.9 s / [p2_nova, p2_fan_a] | `data/enemies/hexer_stage_2.tres` |
+| Hexer nova windup / active / recovery · damage / range / knockback / band | 0.60 / 0.10 / 1.00 s (stage 2: 0.30 s gap) · 18 / 2.5 / 3.0 / 0–2.5 tiles | `data/attacks/hexer_nova.tres`, `hexer_p2_nova.tres` |
+| Hexer fans windup / `aim_track_time` / recovery | A 0.70 / 0.45 / 0.30 · B 0.45 / 0.25 / 0.90 (stage 2: 0.30) · C 0.45 / 0.25 / 0.90 s | `data/attacks/hexer_fan_*.tres`, `hexer_p2_fan_*.tres` |
+| Hexer fans `volley_angles_deg` / speed / max distance / band | A, C: −20, 0, 20 · B: −10, 10 / 6.0 tiles/s / 10.0 / 2.5–9.0 tiles | same |
+| Hexer ring windup / `aim_track_time` / recovery / speed / max distance / bolts | 0.60 / 0.35 / 1.00 s / 4.0 tiles/s / 8.0 tiles / 12, every 30° | `data/attacks/hexer_ring.tres` |
 
 ## Open questions (cross-department)
 | # | To | Question | Blocking? |
