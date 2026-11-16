@@ -15,7 +15,7 @@
 | F-006 | Brute — charge, stomp, wall stun | DONE | — | — |
 | F-007 | Boss base + floor 1 boss (Warden) | DONE | — | — |
 | F-008 | Volleys + floor 2 boss (Hexer) | DONE | — | — |
-| F-009 | Floor 3 boss (Juggernaut) | PLAN_CHANGES | Planner | — |
+| F-009 | Floor 3 boss (Juggernaut) | PLAN_REVIEW | Auditor | — |
 | F-010 | Studio queue — chained features, auto-drafted specs, opt-in automatic Gate A | PLAN_REVIEW | Auditor | — |
 
 ## Open questions waiting on Lucas

@@ -1,8 +1,8 @@
 ---
 id: F-009
 title: Floor 3 boss (Juggernaut)
-status: PLAN_CHANGES      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Planner       # who must act next: Planner | Auditor | Builder | Lucas
+status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-006, F-007, F-008]
@@ -237,8 +237,15 @@ Testable, observable. The Auditor checks each one.
   windups 0.80 / 0.60 / 0.50, gaps 0.35 / 0.35, each re-aimed, then 0.60 s recovery and cooldown.
 - [ ] AC8: Given the Juggernaut crossing 50% HP during Charge A's gap, then Charge B still runs,
   the stage shift (1.2 s, planted, takes damage) starts at the first free step start after it,
-  and the next attack comes from the stage-2 list at 2.5 tiles/s. The same when 50% is crossed
-  during Debris' flight: the bolts keep flying through the shift.
+  and the next attack comes from the stage-2 list at 2.5 tiles/s. (Debris only exists in
+  stage 2 and stages only advance, so no Juggernaut bolt can be in flight at the shift. Bolts
+  flying through a shift are already covered generically by `test_stages.gd`
+  `test_ac18_a_bolt_in_flight_keeps_flying_and_hits_during_the_shift`; this feature adds no
+  fixture for it.)
+- [ ] AC8b: Given stage 2 and Debris in flight, when the player hits the Juggernaut (it enters
+  hitstop), then every live bolt's position, by serial, matches a run without that hit at every
+  step until the bolts end (within 1e-6 tiles), and the Juggernaut is in hitstop at least one
+  step while they fly (F-008: owner hitstop changes no bolt).
 - [ ] AC9: Given a player overlapped by two Debris bolts at one contact, then one hit (18 damage)
   lands and the other bolt flies on unmarked (F-008/C5).
 - [ ] AC10: Given the same scripted fight at 30, 60 and 120 physics ticks/s (fixed player
@@ -284,7 +291,7 @@ Small, ordered, each independently committable. F-008 is DONE and §2 is re-chec
 | # | Task | Files likely touched | Notes |
 |---|---|---|---|
 | T1 | Juggernaut data: enemy, stage 2, eight attacks; path constants. | `data/enemies/`, `data/attacks/`, `src/autoload/tunables.gd` | C1–C5, C7. Values from §4 tables exactly. |
-| T2 | Core tests: validation, band picks, double/triple charge, wall stops on every charge (wall stub), stomp → Debris volley, stage shift mid-pattern, one hit from two bolts. | `tests/core/enemies/test_juggernaut.gd` | AC2–AC9. |
+| T2 | Core tests: validation, band picks, double/triple charge, wall stops on every charge (wall stub), stomp → Debris volley, stage shift mid-pattern, Debris through owner hitstop, one hit from two bolts. | `tests/core/enemies/test_juggernaut.gd` | AC2–AC9 (incl. AC8b). |
 | T3 | Tick-rate and snapshot tests on the real data. | `tests/core/enemies/test_juggernaut_rates.gd` | C8, C9. AC10, AC11. |
 | T4 | `f009_juggernaut.tscn`, built like `f007_warden.tscn`; scene tests (startup, real-wall stun, reset, reload). | `scenes/debug/`, `tests/scenes/f009_scene_test.gd`, `tests/scenes/test_f009_*.gd` | C11. AC1 (diff check), AC12. |
 
@@ -325,6 +332,8 @@ data-only scope. One acceptance scenario cannot occur with the specified data.
   `tests/core/enemies/test_stages.gd:test_ac18_a_bolt_in_flight_keeps_flying_and_hits_during_the_shift`
   and F-008, or explicitly request a separate test-only fixture. Do not change the shipping
   Juggernaut's attack lists or add a stage to manufacture this case.
+
+> **Planner reply (Combat):** accepted. Changed §5 AC8: the Debris-through-shift clause is removed, with a note that it is unreachable and is covered generically by `test_stages.gd` `test_ac18_a_bolt_in_flight_keeps_flying_and_hits_during_the_shift` (no test-only fixture). Added AC8b, a reachable stage-2 check: Debris bolts are unchanged by the Juggernaut's own hitstop. §6 T2 updated. Attack lists and stages unchanged.
 
 ---
 
