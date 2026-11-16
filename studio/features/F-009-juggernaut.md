@@ -1,8 +1,8 @@
 ---
 id: F-009
 title: Floor 3 boss (Juggernaut)
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
+status: APPROVED         # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-16
 updated: 2026-11-16
 depends_on: [F-006, F-007, F-008]
