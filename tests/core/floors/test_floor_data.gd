@@ -13,6 +13,12 @@ func test_ac3_valid_floor_passes() -> void:
 	assert_eq(RoomFixtures.valid_floor(2).get_room_count(), 3)
 
 
+func test_ac3_rejects_a_floor_number_below_1() -> void:
+	for number: int in [0, -3]:
+		var floor_data: FloorData = RoomFixtures.valid_floor(2, number)
+		_assert_one_error(floor_data.validate(_rules), "floor_number: must be 1 or more")
+
+
 func test_ac3_rejects_fewer_than_two_rooms() -> void:
 	var floor_data: FloorData = RoomFixtures.valid_floor(0)
 	assert_eq(floor_data.get_room_count(), 1)

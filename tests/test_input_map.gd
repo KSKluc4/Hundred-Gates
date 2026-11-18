@@ -54,6 +54,7 @@ func _expected_bindings() -> Dictionary:
 		"debug_shake_toggle": [_key(KEY_K)],
 		"debug_reset": [_key(KEY_R)],
 		"debug_ai_toggle": [_key(KEY_I)],
+		"debug_next_room": [_key(KEY_N)],
 	}
 
 

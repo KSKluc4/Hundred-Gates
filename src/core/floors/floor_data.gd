@@ -13,6 +13,8 @@ func get_room_count() -> int:
 ## F-011/C8. Empty result means valid. Room errors are prefixed with the room id.
 func validate(rules: FloorTunables) -> PackedStringArray:
 	var errors: PackedStringArray = []
+	if floor_number < 1:
+		errors.append("floor_number: must be 1 or more, is %d" % floor_number)
 	if rooms.size() < 2:
 		errors.append("rooms: a floor needs at least 2 rooms, has %d" % rooms.size())
 	var seen_ids: Array[StringName] = []
