@@ -20,6 +20,50 @@
 
 ---
 
+## D-012 — Rooms are data; core routes on a navigation grid built from them
+- **Status:** ACCEPTED
+- **Date:** 2026-11-18 · **Decided by:** Lucas (proposed by the F-011 lead, chosen in chat)
+- **Context:** Enemies walk straight at the player and stick on walls. Real rooms need
+  pillars and cover (Hexer floor, CX9). D-008 rejected wall geometry in core because every
+  level would describe its walls twice.
+- **Chosen:** A room is a `RoomData` resource holding an ASCII tile grid (G9). The glue builds
+  the wall bodies from it and core builds a `NavGrid` from the same rows, so walls are written
+  once. Brains use the grid only to choose a walking direction, and only when the straight
+  line to the target is blocked. One room = one sim.
+- **Rejected:**
+  - *Open rooms, no path finding* — every layout becomes a rectangle with round-able pillars.
+    Tempting because it needs no core change.
+  - *Godot `NavigationServer2D`* — decisions from an engine server outside core (G6), not
+    snapshot-safe. Tempting because it's built in.
+- **Consequences:** Refines D-008: core now knows walls **as walkable tiles, for routing
+  only**. Hits, projectile stops and charge stops are still decided as D-008 says. Levels are
+  grid-shaped (1 tile resolution). Hand-placed wall bodies in a room scene would be invisible
+  to routing, so rooms don't have them.
+- **Revisit if:** rooms need diagonal or curved walls, or hits must respect line of sight.
+
+## D-011 — F-011 is built by a lead with up to two writing implementers
+- **Status:** ACCEPTED
+- **Date:** 2026-11-18 · **Decided by:** Lucas (instruction in chat)
+- **Context:** Lucas asked Claude Code to run slice 1 (F-011) as orchestrator and lead
+  engineer: "you do not implement. you will spawn sonnet 5.5 high subagents to accomplish
+  this slice (2 max). supply tasks, gates, tests and answer any implementer agent questions."
+  D-010 allowed read-only sub-agents only, and no spec existed.
+- **Chosen:** For F-011, the lead writes the spec (§1–§6), Lucas's instruction is Gate A, and
+  the Auditor's plan review is skipped. Up to two Sonnet implementers write code on disjoint
+  file lists in the one checkout, on the feature branch. They never commit, branch, push, use
+  a worktree or edit `studio/`. The lead runs every gate (tests, lint, purity, diff review),
+  commits each task and writes §8. The Auditor's code review and Lucas's Gate B are unchanged.
+- **Rejected:**
+  - *Worktree-isolated implementers* — still what D-010 rejected: `tools/studio` refuses the
+    step and merges need a second review. Tempting because two writers can't collide.
+  - *Implementers that commit* — two agents moving one branch. Tempting because it saves
+    the lead a step.
+- **Consequences:** D-010 stands for every other feature until Lucas extends this. F-011's
+  file skips `APPROVED` (F-011 §8 DEV-1). Two Godot processes share one `.godot/` cache while
+  both implementers test; the lead's full run before each commit is the one that counts.
+- **Revisit if:** the slice lands cleanly (then consider making it the default), or two
+  implementers collide on files or on the import cache.
+
 ## D-010 — Sub-agents: read-only helpers allowed, parallel builds parked
 - **Status:** ACCEPTED
 - **Date:** 2026-11-16 · **Decided by:** Lucas (proposed by Lucas, reviewed by Direction)

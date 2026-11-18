@@ -2,7 +2,7 @@
 
 > Updated by whoever changes a feature's status. Lucas checks this first.
 
-**Last updated:** 2026-11-16
+**Last updated:** 2026-11-18
 
 | ID | Feature | Status | Next actor | Blocked by |
 |---|---|---|---|---|
@@ -17,6 +17,7 @@
 | F-008 | Volleys + floor 2 boss (Hexer) | DONE | — | — |
 | F-009 | Floor 3 boss (Juggernaut) | DONE | — | — |
 | F-010 | Studio queue — chained features, auto-drafted specs, opt-in automatic Gate A | PLAN_REVIEW | Auditor | — |
+| F-011 | Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox | IN_PROGRESS | Builder | — |
 
 ## Open questions waiting on Lucas
 - _none_
