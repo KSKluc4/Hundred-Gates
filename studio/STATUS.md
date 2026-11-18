@@ -17,7 +17,7 @@
 | F-008 | Volleys + floor 2 boss (Hexer) | DONE | — | — |
 | F-009 | Floor 3 boss (Juggernaut) | DONE | — | — |
 | F-010 | Studio queue — chained features, auto-drafted specs, opt-in automatic Gate A | PLAN_REVIEW | Auditor | — |
-| F-011 | Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox | IN_PROGRESS | Builder | — |
+| F-011 | Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox | CODE_REVIEW | Auditor | — |
 
 ## Open questions waiting on Lucas
 - _none_

@@ -1,8 +1,8 @@
 ---
 id: F-011
 title: Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-004, F-005, F-006, F-007, F-008, F-009, D-006, D-007, D-008, D-011, D-012]
@@ -304,7 +304,7 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - [x] T4 — 6112eeb
 - [x] T5 — bbb765f
 - [x] T6 — 3975aa6
-- [ ] T7
+- [x] T7 — f5837b4
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -357,10 +357,48 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
   block breaks the first line of fire (AC27).
 
 ### Things the Auditor should look at closely
-- _filled at the end_
+- **C2 (no behaviour change without a NavGrid).** `chaser_brain.gd`, `brute_brain.gd` and
+  `caster_brain.gd` now call `EnemyBrain.steer()`. With `view.nav == null` it must be exactly
+  `direction_to`. `tests/core/enemies/test_brain_nav.gd` re-derives the old formulas; the 916
+  tests from `main` are untouched except one line in `tests/test_input_map.gd` (DEV-5).
+- **Room swap inside `_physics_process`.** `FloorScene._build_room()` removes and `free()`s
+  the old room mid-frame. It is safe only because the floor runs at physics priority 1, after
+  the room's `CombatRunner` (DEV-6). `restart_room()` and `skip_room()` also run from
+  `_unhandled_input`.
+- **`NavGrid` keeps one cached field** (the last target tile). With two players in different
+  tiles (phase 3) it would rebuild on every query. Fine for one player; flagged for co-op.
+- **`has_clear_line` uses the enemy's own radius at both ends**, so a player hugging a wall
+  is "not clear" for a brute (0.6) and it routes by tile centres until it shares the player's
+  tile, then falls back to the straight line.
+- **Wide bodies at corners.** A brute is 1.2 tiles wide and the route aims at tile centres; it
+  leans on `move_and_slide()` at pillar corners. Covered at 30 and 120 ticks/s for a pillar and
+  for a 2-tile gap (`test_f011_navigation.gd`), with a standing player only.
+- **§10 Q4:** the caster's hold-and-shoot behind a wall, and the brute charging a pillar. The
+  caster test asserts only that it walks to the gap, not that it gets a clear line.
+- **`F011SceneTest.hit()`** writes to `CombatState.apply_hit` directly (kills only); it does not
+  set aggro. `test_f011_shipped_floors.gd` wakes enemies through `EnemyLogic.apply_hit`.
+- **Not done by anyone:** nobody has played the floors with a keyboard or a gamepad. The lead
+  rendered `f011_floor_1.tscn` to an image once (walls, door, player, two chasers and the label
+  draw as expected); everything else is headless.
+- `tools/lint` expects `.venv/bin` and doesn't run on Windows; the gates called
+  `.venv/Scripts/gdlint` and `gdformat` directly. Not changed here (out of scope).
 
 ### How to test
-- _filled at the end_
+```sh
+export GODOT_BIN=/path/to/Godot_v4.7.2-stable
+tools/test                      # 109 scripts, 1135 tests, all passing (about 5.5 min)
+tools/lint                      # on Windows: .venv/Scripts/gdlint src tests && .venv/Scripts/gdformat --check src tests
+tools/check_core_purity
+```
+`tools/test` ignores `-gtest`; for one script run
+`"$GODOT_BIN" --headless --path . -s res://addons/gut/gut_cmdln.gd -gtest=res://tests/scenes/test_f011_flow.gd -gexit`.
+
+By hand (Gate B): open `scenes/debug/f011_floor_1.tscn`, `f011_floor_2.tscn` or
+`f011_floor_3.tscn` and press F6. `N` skips to the next room, `R` restarts the room. See §5
+"How to verify manually" for what to judge.
+
+Final gate run by the lead on `f5837b4`: 1135/1135 tests, gdlint clean, gdformat 220 files
+unchanged, core purity ok (self-test: 19 rules).
 
 ---
 
