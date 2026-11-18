@@ -1,0 +1,8 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://src/world/floors/floor_scene.tscn" id="1"]
+[ext_resource type="Resource" path="res://data/floors/floor_1.tres" id="2"]
+
+[node name="F011Floor1" instance=ExtResource("1")]
+floor_data = ExtResource("2")
+start_room = 0
