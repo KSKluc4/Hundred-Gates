@@ -49,6 +49,10 @@ const JUGGERNAUT_P2_CHARGE_B_PATH: String = "res://data/attacks/juggernaut_p2_ch
 const JUGGERNAUT_CHARGE_C_PATH: String = "res://data/attacks/juggernaut_charge_c.tres"  # G5
 # F-011/C9, C15
 const FLOORS_PATH: String = "res://data/tunables/floors.tres"  # G5
+# F-011/C15: the shipped floors (floors.md encounter tables).
+const FLOOR_1_PATH: String = "res://data/floors/floor_1.tres"  # G5
+const FLOOR_2_PATH: String = "res://data/floors/floor_2.tres"  # G5
+const FLOOR_3_PATH: String = "res://data/floors/floor_3.tres"  # G5
 
 var game: GameTunables = preload(GAME_TUNABLES_PATH)
 var player_combat: PlayerCombatTunables = preload(PLAYER_COMBAT_PATH)

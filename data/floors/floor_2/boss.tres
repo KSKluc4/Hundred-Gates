@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="RoomData" format=3]
+
+[ext_resource type="Script" path="res://src/core/floors/room_data.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/enemies/enemy_data.gd" id="2"]
+[ext_resource type="Resource" path="res://data/enemies/hexer.tres" id="3"]
+
+[resource]
+script = ExtResource("1")
+id = &"f2_boss"
+rows = PackedStringArray(
+"########################",
+"#......................#",
+"#.P....................#",
+"#......................#",
+"#......##......##......#",
+"#......##......##......#",
+"#......................#",
+"#......................E",
+"#...........1..........E",
+"#......................#",
+"#......##......##......#",
+"#......##......##......#",
+"#......................#",
+"#......................#",
+"#......................#",
+"########################")
+enemies = Array[ExtResource("2")]([ExtResource("3")])
+is_boss_room = true
