@@ -1,6 +1,6 @@
 class_name Hud
 extends CanvasLayer
-## F-012/C13: the bare HUD. A health bar (top left), where the player is (top right) and a banner
+## F-012/C13: the bare HUD. A health bar (bottom left), where the player is (top right) and a banner
 ## (top centre). It decides nothing and nothing reads it (G6): the game tells it what to say, and
 ## the health bar asks `player_provider` for the player every frame. The look → Art & Game Feel
 ## (§10 Q4).
@@ -34,8 +34,15 @@ var _banner_time_left: float = 0.0
 
 func _ready() -> void:
 	_health_bar.player_provider = player_provider
-	_health_bar.position = margin_px
-	# Anchored to the right and to the middle, so the 640 x 360 placeholder sizes aren't assumed.
+	# Bottom left, clear of the debug overlay at the top left and of the boss bar at the bottom
+	# centre. Anchored to the bottom left, so the 640 x 360 placeholder sizes aren't assumed.
+	var bar_size: Vector2 = _health_bar.bar_size_px
+	_health_bar.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_health_bar.offset_left = margin_px.x
+	_health_bar.offset_right = margin_px.x + bar_size.x
+	_health_bar.offset_top = -margin_px.y - bar_size.y
+	_health_bar.offset_bottom = -margin_px.y
+	# The others are anchored to the right and to the middle.
 	_location_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_location_label.offset_left = -location_width_px - margin_px.x
 	_location_label.offset_right = -margin_px.x

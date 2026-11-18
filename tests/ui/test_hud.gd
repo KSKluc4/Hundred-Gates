@@ -139,6 +139,60 @@ func test_ac17_the_hud_hands_a_provider_set_before_ready_to_its_bar() -> void:
 	assert_eq(hud.get_health_bar().get_label_text(), "HP 100 / 100")
 
 
+func test_ac17_the_bar_sits_in_the_bottom_left_corner_at_the_margin() -> void:
+	var hud: Hud = _spawn_hud()
+	await wait_process_frames(1)
+	var bar: HealthBar = hud.get_health_bar()
+	var viewport: Rect2 = bar.get_viewport_rect()
+	var rect: Rect2 = bar.get_global_rect()
+	assert_eq(rect.size, bar.bar_size_px, "the whole bar")
+	assert_eq(rect.position.x, hud.margin_px.x, "margin_px from the left edge")
+	assert_eq(viewport.end.y - rect.end.y, hud.margin_px.y, "margin_px from the bottom edge")
+	assert_eq(rect.end.y, viewport.end.y - hud.margin_px.y)
+
+
+func test_ac17_the_bar_is_inside_the_viewport() -> void:
+	var hud: Hud = _spawn_hud()
+	_provided = _spawn_player()
+	await wait_process_frames(2)
+	var bar: HealthBar = hud.get_health_bar()
+	var viewport: Rect2 = bar.get_viewport_rect()
+	assert_true(viewport.encloses(bar.get_global_rect()), "the bar: %s" % bar.get_global_rect())
+
+
+func test_ac17_the_text_is_inside_the_viewport_and_centred_on_the_bar() -> void:
+	var hud: Hud = _spawn_hud()
+	_provided = _spawn_player()
+	await wait_process_frames(2)
+	var bar: HealthBar = hud.get_health_bar()
+	var label: Label = bar.get_node("Label")
+	var viewport: Rect2 = bar.get_viewport_rect()
+	var text_rect: Rect2 = label.get_global_rect()
+	assert_true(viewport.encloses(text_rect), "the text: %s" % text_rect)
+	assert_eq(text_rect.size.x, bar.bar_size_px.x, "as wide as the bar")
+	var bar_centre: float = bar.get_global_rect().get_center().y
+	assert_almost_eq(text_rect.get_center().y, bar_centre, 2.0, "text %s" % text_rect)
+
+
+func test_ac17_the_bar_follows_margin_px_and_bar_size_px() -> void:
+	var hud: Hud = HUD_SCENE.instantiate()
+	hud.margin_px = Vector2(10, 6)
+	(hud.get_node("HealthBar") as HealthBar).bar_size_px = Vector2(80, 12)
+	add_child_autofree(hud)
+	await wait_process_frames(1)
+	var bar: HealthBar = hud.get_health_bar()
+	var viewport: Rect2 = bar.get_viewport_rect()
+	assert_eq(bar.get_global_rect(), Rect2(10.0, viewport.end.y - 6.0 - 12.0, 80.0, 12.0))
+
+
+func test_ac17_the_bar_is_anchored_to_the_bottom_left_not_to_a_viewport_size() -> void:
+	var bar: HealthBar = _spawn_hud().get_health_bar()
+	assert_eq(bar.anchor_left, 0.0)
+	assert_eq(bar.anchor_right, 0.0)
+	assert_eq(bar.anchor_top, 1.0)
+	assert_eq(bar.anchor_bottom, 1.0)
+
+
 func test_ac18_location_text_for_the_town() -> void:
 	assert_eq(Hud.location_text(0, 0, 1, false), "Town")
 	assert_eq(Hud.location_text(0, 3, 9, true), "Town", "the town ignores the rest")

@@ -22,10 +22,14 @@ var player_provider: Callable
 
 func _ready() -> void:
 	custom_minimum_size = bar_size_px
-	_label.size = bar_size_px
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label.add_theme_font_size_override(&"font_size", label_font_size)
+	# After the font override: a size set before it is clamped to the default font's minimum
+	# height and stays that tall. The label can be taller than the bar (12 px at font size 8, bar
+	# 10 px), so it is centred on the bar's height.
+	_label.size = bar_size_px
+	_label.position = Vector2(0.0, (bar_size_px.y - _label.size.y) / 2.0)
 
 
 func _process(_delta: float) -> void:
