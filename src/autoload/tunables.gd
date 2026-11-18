@@ -53,6 +53,9 @@ const FLOORS_PATH: String = "res://data/tunables/floors.tres"  # G5
 const FLOOR_1_PATH: String = "res://data/floors/floor_1.tres"  # G5
 const FLOOR_2_PATH: String = "res://data/floors/floor_2.tres"  # G5
 const FLOOR_3_PATH: String = "res://data/floors/floor_3.tres"  # G5
+# F-012/C9, C15: the shipped town and the tower that lists it with floors 1-3.
+const TOWN_PATH: String = "res://data/floors/town.tres"  # G5
+const TOWER_PATH: String = "res://data/floors/tower.tres"  # G5
 # F-012/C14, C15
 const TOWER_TUNABLES_PATH: String = "res://data/tunables/tower.tres"  # G5
 
