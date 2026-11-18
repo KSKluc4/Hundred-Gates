@@ -27,7 +27,10 @@ Rules (enforced by `RoomData.validate()`, F-011/C16):
 - Exactly one `P`. Every floor tile reachable from it.
 - No 1-tile corridors and no 1-tile-thick interior walls.
 - Spawns at least 4 tiles from `P`. 1–6 enemies per combat room; exactly 1 in a boss room.
+
+Guidelines (not enforced):
 - `P` and `E` sit on opposite sides, so the room is crossed.
+- Spawns at least 1.5 tiles apart, so bodies don't start overlapping.
 
 ## Encounter tables (phase 1)
 Enemy mix follows `design/combat.md` (CX6): floor 1 chasers; floor 2 adds casters; floor 3

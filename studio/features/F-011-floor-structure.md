@@ -298,10 +298,10 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 **Started:** 2026-11-18  ·  **Branch:** `feature/F-011-floor-structure`
 
 ### Progress
-- [ ] T1
-- [ ] T2
-- [ ] T3
-- [ ] T4
+- [x] T1 — 9962aa5
+- [x] T2 — 1057aeb
+- [x] T3 — f724409
+- [x] T4 — 6112eeb
 - [ ] T5
 - [ ] T6
 - [ ] T7
@@ -316,6 +316,13 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - DEV-2: Implementer sub-agents write files (D-010 allowed read-only ones). — **Why:** D-011.
   — **Impact:** the lead gates and commits every task; the Auditor's §9 is unchanged.
 
+- DEV-3: `# gdlint:disable=max-public-methods` on `combat_state.gd` (22 public methods after
+  `heal`/`set_hp`) and on three long test files. — **Why:** gdlint's cap is 20; `combatant.gd`
+  and `enemy_logic.gd` already do the same. — **Impact:** none at runtime.
+- DEV-4: `RoomData.validate()` has one rule C16 doesn't list, `legend`: unknown characters, a
+  digit with no `enemies` entry, a null entry. — **Why:** such a room can't be built (C8).
+  — **Impact:** stricter data only.
+
 ### Assumptions made (small, reversible)
 - ASSUMPTION-1: tile size stays 16 px and rooms are at most 40 × 22 tiles (one 640 × 360
   screen) — **Why:** the art/pixel-scale decision is still open (CX1); all values are in tiles.
@@ -323,6 +330,15 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
   room comes after them — **Why:** the chain "ends in the boss room".
 - ASSUMPTION-3: death restarts the current room at full HP — **Why:** D-006's return to town
   needs F-012/F-013; this is the smallest placeholder that isn't a rejected option.
+
+- ASSUMPTION-4: reachability is a 4-way flood from `P`; spawn distance is centre to centre and
+  exactly the minimum passes; "touching walkable" means the tile inward of each `E` is walkable.
+- ASSUMPTION-5: `FloorRun.setup()` clamps an out-of-range start room; a clear with a dead
+  player still clears (heal 0); a boss clear emits `room_cleared` and `floor_cleared`;
+  `restart_room()` keeps the floor-cleared flag; `set_hp()` emits no signal.
+- ASSUMPTION-6: `NavGrid` neighbour order is N, E, S, W, NE, SE, SW, NW; touching a wall counts
+  as blocked (distance ≤ radius + `DISTANCE_EPSILON`); a position inside a wall or outside the
+  grid snaps to the nearest walkable tile.
 
 ### Things the Auditor should look at closely
 - _filled at the end_
