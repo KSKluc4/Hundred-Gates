@@ -174,7 +174,7 @@ the F5 reload in debug scenes, snapshots.
 
 **Town (T5)**
 - [ ] AC20: A `TownScene` built from a fixture safe room has the walls, the player at `P` at full HP, no enemies, a `CombatRunner` with no setup errors, and its gate body has no collision. A scripted player can walk around. An invalid town room builds nothing and reports the errors.
-- [ ] AC21: Walking the scripted player onto a gate tile opens the gate menu within one tick, listing exactly `TowerProgress.get_entries()` in order plus a last "stay" entry. While it is open the player's position doesn't change over 60 ticks even with move commands held by real input (input is off).
+- [ ] AC21: Walking the scripted player onto a gate tile opens the gate menu within one tick, listing exactly `TowerProgress.get_entries()` in order plus a last "stay" entry. While it is open the player takes no input: once the motor's own deceleration has ended the position doesn't change (checked over 60 ticks), and it never ends more than 1 tile from where the menu opened.
 - [ ] AC22: Choosing an entry emits `floor_chosen(floor_number, at_boss)` once and closes the menu. Closing without choosing (the stay entry or `ui_cancel`) emits nothing, puts the player on `TownGate.get_return_position_tiles()`, gives input back, and the menu doesn't reopen until the player has left and re-entered the gate.
 - [ ] AC23: `GateMenu`: entry text comes from one static function (`Floor 1 — from the start`, `Floor 1 — at the boss`, with ` (cleared)` appended for a cleared floor); focus starts on the last floor entry; `move_up` / `move_down` and `ui_up` / `ui_down` move the focus; `ui_accept` or `interact` chooses.
 - [ ] AC24: In the town, with debug keys on, `debug_next_room` (N) clears the highest unlocked floor in the injected progress; with them off it does nothing.
@@ -370,10 +370,10 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 `feature/F-011-floor-structure` at `a864404`)
 
 ### Progress
-- [ ] T1
-- [ ] T2
-- [ ] T3
-- [ ] T4
+- [x] T1 — e54c02e
+- [x] T2 — b586abd
+- [x] T3 — b66cb36
+- [x] T4 — 4381170
 - [ ] T5
 - [ ] T6
 - [ ] T7
@@ -389,6 +389,14 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   read this branch as the diff from `a864404`.
 - DEV-3: Implementer sub-agents write files. — **Why:** D-013. — **Impact:** the lead gates
   and commits every task.
+- DEV-4: AC21 was reworded by the lead before T5 started: "position doesn't change over 60
+  ticks" became "after the motor's own deceleration the position doesn't change, and it ends
+  at most 1 tile from where the menu opened". — **Why:** with input off the motor still
+  decelerates; the first wording could not be met without a new stop rule in core. —
+  **Impact:** none on the design (C10 is unchanged).
+- DEV-5: `# gdlint:disable=max-public-methods` on three long test files
+  (`test_tower_progress.gd`, `test_tower_session.gd`, `test_hud.gd`). — **Why:** gdlint's cap
+  is 20; same precedent as F-011 DEV-3. — **Impact:** none at runtime.
 
 ### Assumptions made (small, reversible)
 - ASSUMPTION-1: one feature covers `PHASE1.md`'s F-012, F-013 and the health/floor part of
@@ -401,6 +409,30 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   replay; rewards arrive with loot (F-014).
 - ASSUMPTION-5: debug keys stay on in `main.tscn` — **Why:** no save yet; without `N` every
   session would need the Warden and the Hexer killed to reach floor 3.
+- ASSUMPTION-6 (T1): a safe room with spawn tiles is reported as `spawn_count: a safe room
+  needs 0 spawns`; the spawn-distance rule still runs on any spawn it has. A town that isn't
+  safe gets "must be a safe room" plus its own combat-rule errors, all prefixed `town: `. A
+  room id repeated inside one floor is reported by `FloorData` only, not again by the tower.
+- ASSUMPTION-7 (T1): `TownGate` — a tile owns its left and top edges (`floori`, like
+  `FloorRun`); `setup()` arms the latch; before `setup()`, `check()` is false and the return
+  position is the input position.
+- ASSUMPTION-8 (T2): `TowerProgress.setup()` clamps a negative floor count to 0;
+  `from_dict()` is refused before `setup()`, emits nothing, and refuses non-bool flags.
+  `get_entries()` stops at the first locked floor.
+- ASSUMPTION-9 (T2): `TowerSession` — `setup()` emits no `place_changed`; the floor number is
+  kept through the death pause; a negative `death_return_delay` counts as 0; `tick()` doesn't
+  guard a negative delta. A replay's clear still lets the player leave through the door.
+- ASSUMPTION-10 (T2): the "cleared during this visit" flag is not in the session snapshot: a
+  restored floor starts over (`FloorRun` isn't part of it either), so its exit stays shut
+  until the floor is cleared again. `from_dict()` keeps the same `TowerProgress` object and
+  emits `place_changed` only if the place differs. A town snapshot must have floor 0, start
+  room 0 and no time left.
+- ASSUMPTION-11 (T3): with `death_restarts_room` on, `player_died` is not emitted (F-011's
+  behaviour exactly). `skip_room()` (debug N) is not blocked after a reported death; the
+  session ignores room reports during the death pause, so it changes nothing.
+- ASSUMPTION-12 (T4): the health bar draws its back rect with no player (an empty bar); the
+  banner counts down only while visible; the location label starts empty and `Game` sets it.
+  HUD placement: bar 96 × 10 px top left, location top right, banner top centre at y = 24.
 
 ### Things the Auditor should look at closely
 
