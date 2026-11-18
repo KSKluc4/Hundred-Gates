@@ -302,8 +302,8 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - [x] T2 — 1057aeb
 - [x] T3 — f724409
 - [x] T4 — 6112eeb
-- [ ] T5
-- [ ] T6
+- [x] T5 — bbb765f
+- [x] T6 — 3975aa6
 - [ ] T7
 
 ### Deviations from plan
@@ -322,6 +322,16 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - DEV-4: `RoomData.validate()` has one rule C16 doesn't list, `legend`: unknown characters, a
   digit with no `enemies` entry, a null entry. — **Why:** such a room can't be built (C8).
   — **Impact:** stricter data only.
+- DEV-5: one line added to `tests/test_input_map.gd` (`debug_next_room`). — **Why:** that test
+  pins the exact action list, so any new input action changes it; C2's "no existing test
+  edited" can't hold for it. — **Impact:** none beyond the new action.
+- DEV-6: `FloorScene` and `Room` have `player_input_enabled` (not in the contracts), and
+  `FloorScene` runs at `process_physics_priority = 1`. — **Why:** scripted runs need input
+  off on rebuilt rooms; running after the room's `CombatRunner` puts the heal and the door
+  opening in the same tick as the kill. — **Impact:** the old room is freed inside
+  `_physics_process`, which is safe only while the floor runs after the runner.
+- DEV-7: test fixtures for the glue are built in code (`tests/fixtures/floors/floor_fixtures.gd`),
+  not `.tres` files. — **Why:** easier to vary per test. — **Impact:** none.
 
 ### Assumptions made (small, reversible)
 - ASSUMPTION-1: tile size stays 16 px and rooms are at most 40 × 22 tiles (one 640 × 360
@@ -339,6 +349,12 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - ASSUMPTION-6: `NavGrid` neighbour order is N, E, S, W, NE, SE, SW, NW; touching a wall counts
   as blocked (distance ≤ radius + `DISTANCE_EPSILON`); a position inside a wall or outside the
   grid snaps to the nearest walkable tile.
+- ASSUMPTION-7: `room_entered` is emitted on every build (first room, next room, restart,
+  skip). `skip_room()` (debug N) marks the room cleared without healing. A dead player
+  restarts the room even if it was already cleared.
+- ASSUMPTION-8: every shipped spawn, bosses included, starts outside its own aggro radius
+  from `P`, so the player starts each fight. The Hexer room's `P` is in a corner so a cover
+  block breaks the first line of fire (AC27).
 
 ### Things the Auditor should look at closely
 - _filled at the end_
@@ -358,6 +374,7 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 |---|---|---|---|---|
 | Q1 | Lead | → Combat: hits ignore walls (circle–sector in core). C16's "no thin walls" keeps 1-tile walls out of rooms, but a 2-tile pillar corner can still be clipped by a long sector (Warden overhead 2.0 tiles). Accept for phase 1, or make hits respect line of sight? | no | |
 | Q2 | Lead | → Combat: a caster with no clear line still shoots (its bolt hits the wall). Kept on purpose: walls are cover. Should it reposition instead? | no | |
+| Q4 | Lead | → Combat: found in T5's scene tests. (a) A caster inside its stop distance (6 tiles) never routes: behind a wall it holds and shoots the wall for as long as the player stays put. Not a softlock (the player can walk to it), but it never repositions for a clear line. (b) A brute whose target is 3–7 tiles away behind a pillar charges the pillar and stuns itself, then walks round. Both follow from C3 (attack choice ignores walls). Keep as cover play, or teach attack choice about line of sight? | no | |
 | Q3 | Lead | → Lucas: starting values to judge at Gate B — heal 30 %, room sizes, enemy counts per room (`studio/design/floors.md`). | no | |
 
 ---
