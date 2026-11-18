@@ -49,6 +49,22 @@ static func pick_attack_in(attacks: Array[EnemyAttackData], distance: float) -> 
 	return -1
 
 
+## F-011/C3 (D-012): where to walk to reach `target_position`. The straight direction when there
+## is no NavGrid or the line is clear for this enemy's own body; the grid's path direction when a
+## wall is in the way. No path (ZERO) falls back to straight (AC9). Never read by attack choice.
+static func steer(view: CombatView, enemy: EnemyLogic, target_position: Vector2) -> Vector2:
+	var own_position: Vector2 = enemy.get_position_tiles()
+	var straight: Vector2 = own_position.direction_to(target_position)
+	if view.nav == null:
+		return straight
+	if view.nav.has_clear_line(
+		own_position, target_position, enemy.get_data().hurtbox_radius_tiles
+	):
+		return straight
+	var routed: Vector2 = view.nav.direction_toward(own_position, target_position)
+	return routed if routed != Vector2.ZERO else straight
+
+
 ## F-004/C4: asked once, at a step start where the enemy is free.
 func decide(_enemy: EnemyLogic, _view: CombatView) -> EnemyIntent:
 	return EnemyIntent.idle()

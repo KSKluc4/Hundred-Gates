@@ -1,7 +1,8 @@
 class_name CasterBrain
 extends EnemyBrain
 ## Ranged area denial: keeps 3–6 tiles from the target and shoots (F-005/C7, design doc). No
-## memory, so no hysteresis band (§3). Walks straight toward or away: no path finding.
+## memory, so no hysteresis band (§3). Retreats straight away; walks in around a wall when a
+## NavGrid says one is between (F-011/C3).
 
 
 func decide(enemy: EnemyLogic, view: CombatView) -> EnemyIntent:
@@ -21,13 +22,16 @@ func decide(enemy: EnemyLogic, view: CombatView) -> EnemyIntent:
 		if attack_index >= 0:
 			return EnemyIntent.attack(target.combat_id, attack_index)
 	var direction: Vector2 = own_position.direction_to(target.position)
-	return _keep_distance(data, target.combat_id, direction, distance)
+	var approach: Vector2 = direction
+	if distance > data.stop_distance_tiles + Geometry.DISTANCE_EPSILON:
+		approach = EnemyBrain.steer(view, enemy, target.position)  # F-011/C3: walking in only.
+	return _keep_distance(data, target.combat_id, direction, approach, distance)
 
 
 ## C7 steps 4-6: back off below the retreat distance, walk in above the stop distance, hold in
 ## between. Never past the band's edge in one step. A zero direction holds.
 func _keep_distance(
-	data: EnemyData, target_id: StringName, direction: Vector2, distance: float
+	data: EnemyData, target_id: StringName, direction: Vector2, approach: Vector2, distance: float
 ) -> EnemyIntent:
 	var epsilon: float = Geometry.DISTANCE_EPSILON
 	if direction == Vector2.ZERO:
@@ -35,5 +39,5 @@ func _keep_distance(
 	if distance < data.retreat_distance_tiles - epsilon:
 		return EnemyIntent.move(target_id, -direction, data.retreat_distance_tiles - distance)
 	if distance > data.stop_distance_tiles + epsilon:
-		return EnemyIntent.move(target_id, direction, distance - data.stop_distance_tiles)
+		return EnemyIntent.move(target_id, approach, distance - data.stop_distance_tiles)
 	return EnemyIntent.move(target_id, direction, 0.0)

@@ -14,11 +14,15 @@ class Entry:
 	var is_alive: bool
 
 
+## F-011/C2: the room's walls for brains that route around them. Null: straight lines only.
+var nav: NavGrid = null
+
 var _entries: Array[Entry] = []
 
 
-static func capture(combatants: Array[Combatant]) -> CombatView:
+static func capture(combatants: Array[Combatant], nav_grid: NavGrid = null) -> CombatView:
 	var view: CombatView = CombatView.new()
+	view.nav = nav_grid
 	for combatant: Combatant in combatants:
 		var entry: Entry = Entry.new()
 		entry.combat_id = combatant.get_combat_id()

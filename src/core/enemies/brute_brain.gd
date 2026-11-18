@@ -1,7 +1,8 @@
 class_name BruteBrain
 extends EnemyBrain
 ## Heavy space control (F-006/C5, design doc): stomps when you hug it, charges from mid range,
-## walks in between. Never retreats. No path finding: walls are the body's problem.
+## walks in between. Never retreats. Walls are the body's problem, unless a NavGrid says the line
+## is blocked (F-011/C3).
 
 
 func decide(enemy: EnemyLogic, view: CombatView) -> EnemyIntent:
@@ -19,7 +20,7 @@ func decide(enemy: EnemyLogic, view: CombatView) -> EnemyIntent:
 		var attack_index: int = EnemyBrain.pick_attack_in(attacks, distance)
 		if attack_index >= 0:
 			return EnemyIntent.attack(target.combat_id, attack_index)
-	var direction: Vector2 = own_position.direction_to(target.position)
+	var direction: Vector2 = EnemyBrain.steer(view, enemy, target.position)  # F-011/C3.
 	if direction != Vector2.ZERO and distance > data.stop_distance_tiles + epsilon:
 		return EnemyIntent.move(target.combat_id, direction, distance - data.stop_distance_tiles)
 	return EnemyIntent.move(target.combat_id, Vector2.ZERO, 0.0)  # Holds, keeping its target.
