@@ -374,8 +374,8 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 - [x] T2 — b586abd
 - [x] T3 — b66cb36
 - [x] T4 — 4381170
-- [ ] T5
-- [ ] T6
+- [x] T5 — 641fc54
+- [x] T6 — d768146
 - [ ] T7
 
 ### Deviations from plan
@@ -394,8 +394,15 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   at most 1 tile from where the menu opened". — **Why:** with input off the motor still
   decelerates; the first wording could not be met without a new stop rule in core. —
   **Impact:** none on the design (C10 is unchanged).
-- DEV-5: `# gdlint:disable=max-public-methods` on three long test files
-  (`test_tower_progress.gd`, `test_tower_session.gd`, `test_hud.gd`). — **Why:** gdlint's cap
+- DEV-6: `scenes/debug/f012_town.tscn` (in T7's file list) is not built. — **Why:** a town on
+  its own has nothing to do after a floor is chosen (its input stays off for the owner to
+  replace it, C12); `scenes/main.tscn` with the debug keys is the isolated scene for this
+  feature (G3). — **Impact:** one file fewer; the town is covered by `test_f012_town.gd`.
+- DEV-7: `GateMenu` has one public method the contract doesn't list, `get_focus_index()`. —
+  **Why:** tests need to read the focus. — **Impact:** none.
+- DEV-5: `# gdlint:disable=max-public-methods` on six long test files
+  (`test_tower_progress.gd`, `test_tower_session.gd`, `test_hud.gd`, `test_f012_town.gd`,
+  `test_gate_menu.gd`, `test_shipped_tower.gd`). — **Why:** gdlint's cap
   is 20; same precedent as F-011 DEV-3. — **Impact:** none at runtime.
 
 ### Assumptions made (small, reversible)
@@ -433,6 +440,17 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 - ASSUMPTION-12 (T4): the health bar draws its back rect with no player (an empty bar); the
   banner counts down only while visible; the location label starts empty and `Game` sets it.
   HUD placement: bar 96 × 10 px top left, location top right, banner top centre at y = 24.
+- ASSUMPTION-13 (T5): `GateMenu` handles its keys itself in `_input` while open and marks them
+  handled; other keys (N) pass through. The focus is clamped, it doesn't wrap. Key repeat is
+  not a press. `choose()` and `cancel()` do nothing while closed. The list has no scrolling:
+  fine for 3 floors, not for 100 (§10 Q5).
+- ASSUMPTION-14 (T5): on a setup error the town's debug key is off too and `get_progress()` is
+  null unless one was injected. After a cancel the player is put on the return tile with the
+  motor's velocity left as it is (at most about 0.1 tile of drift, off the gate).
+- ASSUMPTION-15 (T6): the gate is x = 10..13, so its centre line is a tile edge and `P` can't
+  sit exactly under it: `P` is at tile (11, 10), half a tile left. The two blocks are at
+  (7..8, 4..5) and (15..16, 4..5), mirrored about the gate's centre line. The shipped town
+  equals the fixture town.
 
 ### Things the Auditor should look at closely
 
@@ -452,6 +470,8 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 | Q2 | Lead | → Lucas (Gate B): values to judge — death pause 1.5 s, banner 2.5 s, town size, back to town after every boss. | no | |
 | Q3 | Lead | → Direction: `PHASE1.md` rows F-012, F-013 and part of F-015 are built here as one feature; later rows need renumbering. F-011's row still says "Not started". | no | |
 | Q4 | Lead | → Art & Game Feel: look of the health bar, location text, banners and the gate list (all placeholders; FX1, CX8). | no | |
+| Q5 | Lead | → Direction: the gate list is a plain column with no scrolling. It holds 3 floors; by slice 5 (floors 4–6, two entries each) it needs paging or a different shape. | no | |
+| Q6 | Lead | → Lucas (Gate B): `dodge` (Space) is also `ui_accept`, so a second Space press right after dashing into the gate chooses the focused entry (the highest floor). Annoying or fine? | no | |
 
 ---
 
