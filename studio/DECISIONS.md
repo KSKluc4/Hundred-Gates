@@ -20,6 +20,27 @@
 
 ---
 
+## D-013 — F-012 is built stacked on F-011, by a lead with up to two writing implementers
+- **Status:** ACCEPTED
+- **Date:** 2026-11-18 · **Decided by:** Lucas (instruction in chat)
+- **Context:** Lucas asked for slice 2 ("now i need you to begin slice 2") while F-011 was at
+  `CODE_REVIEW`. Slice 2 needs F-011's code. D-011 covered F-011 only, and the Builder rules
+  say a feature branch is cut from `main`.
+- **Chosen:** Slice 2 is one feature, F-012 "The loop" (progression, one-room town, bare HUD),
+  on `feature/F-012-the-loop`, cut from the tip of `feature/F-011-floor-structure`. D-011's
+  arrangement applies to it unchanged: the lead writes the spec, Lucas's instruction is Gate A,
+  the plan review is skipped, up to two Sonnet implementers write on disjoint file lists, and
+  only the lead gates and commits. The Auditor's code review and Lucas's Gate B are unchanged.
+- **Rejected:**
+  - *Wait for F-011 to be DONE* — the build would sit idle behind two gates. Tempting because
+    nothing would ever need a rebase.
+  - *Three features (F-012, F-013, HUD) as in `PHASE1.md`* — three specs and three reviews for
+    parts that only work together. Tempting because it matches the plan's rows.
+- **Consequences:** F-011 must be reviewed and merged before F-012. A change to F-011's code in
+  review means rebasing F-012. `PHASE1.md` needs its rows merged and renumbered (Direction).
+- **Revisit if:** F-011's review forces a rebase that costs more than the wait would have.
+
+
 ## D-012 — Rooms are data; core routes on a navigation grid built from them
 - **Status:** ACCEPTED
 - **Date:** 2026-11-18 · **Decided by:** Lucas (proposed by the F-011 lead, chosen in chat)

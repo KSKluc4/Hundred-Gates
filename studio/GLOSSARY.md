@@ -58,3 +58,11 @@
 | Follow-up | The attack that starts the instant another attack's recovery ends. Its trigger band is not read; its target is re-picked | `EnemyAttackData.follow_up` |
 | Gap | The recovery of a pattern attack that has a follow-up. Hittable, but not the punish window | `has_pending_follow_up()`, `gap_color` |
 | Volley | All the projectiles one attack launches at the same instant, one per listed angle from the locked aim. From launch on each is an ordinary projectile | `volley_angles_deg`, `max_volley_size` |
+| Floor | One level of the tower: a linear chain of rooms ending in a boss room | `FloorData` |
+| Room | One screen of a floor, written as an ASCII tile grid. One room is one combat sim | `RoomData`, `Room` |
+| Safe room | A room with no enemies that is not part of a floor. The town is one | `is_safe_room` |
+| Town | The safe room between floors, where every run starts and every death returns (D-006) | `TownScene`, `TowerData.town` |
+| Tower gate | The town's exit tiles. Walking onto them opens the list of floors that can be entered | `TownGate`, `GateMenu` |
+| Unlocked | A floor that may be entered: floor 1, or a floor whose previous floor is cleared | `is_floor_unlocked()` |
+| Boss reached | The character has entered that floor's boss room at least once, so the floor may be started there (D-006) | `is_boss_reached()` |
+| Tower progress | Which floors a character has cleared and which boss rooms it has reached | `TowerProgress` |

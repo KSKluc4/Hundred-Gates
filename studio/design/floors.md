@@ -3,7 +3,7 @@
 > Living document. Owned by the Floors & Level Design department (opened 2026-11-18 for
 > F-011; brief still to be written by Direction).
 > Source of truth for how floors and rooms are built. Specs must match it.
-> **Status:** phase 1 structure set (2026-11-18, F-011). All numbers are starting values for
+> **Status:** phase 1 structure and loop set (2026-11-18, F-011, F-012). All numbers are starting values for
 > the first playtest.
 
 ## Fixed so far (Lucas, 2026-11-18)
@@ -15,7 +15,13 @@
   and the navigation grid all come from it.
 - **Enemies route around walls** with a flow field in core, only when the straight line is
   blocked (D-012).
-- Death: D-006. Until F-012 exists, death restarts the room at full HP (placeholder).
+- Death: D-006. In the game, death returns to town (F-012). In F-011's debug scenes it still
+  restarts the room at full HP.
+- **The town sits between every floor** (Lucas, 2026-11-18, F-012): when a boss dies a door
+  opens in its room and leads back to town, with the next floor unlocked.
+- **The tower gate is a floor list** (Lucas, 2026-11-18, F-012): walking into the gate lists
+  the unlocked floors; a floor whose boss room was reached offers "from the start" and "at
+  the boss"; cleared floors can be replayed.
 
 ## Room format
 Legend: `#` wall · `.` floor · `P` player start · `E` exit · `1`–`9` spawn of the room's
@@ -31,6 +37,26 @@ Rules (enforced by `RoomData.validate()`, F-011/C16):
 Guidelines (not enforced):
 - `P` and `E` sit on opposite sides, so the room is crossed.
 - Spawns at least 1.5 tiles apart, so bodies don't start overlapping.
+
+## The tower loop (F-012)
+- Floor `n` is unlocked when `n` is 1 or floor `n − 1` is cleared.
+- A boss room counts as **reached** the moment it is entered (D-006). Dying there, the
+  character may start that floor again directly in the boss room.
+- Every entry into a floor starts at full HP. Room-clear healing is unchanged.
+- Death: a short pause (`death_return_delay`, 1.5 s), then the town. Nothing is lost.
+- A floor is left only by dying or through the cleared boss room's door (F-012 §10 Q1).
+- Clearing a floor again gives nothing yet (rewards → Items & Economy).
+- Progress is per character (D-005) and lives for one run of the game until save/load
+  (phase 2).
+
+## Town (phase 1)
+One safe room (`is_safe_room`): no enemies, never a boss room, every other room rule
+applies. Its `E` run is the **tower gate**.
+- Size 24 × 14 tiles, border included.
+- The gate is 4 tiles wide, centred on the north border: the tower is "up".
+- `P` is in the lower half, centred, so the first thing the player does is walk up to it.
+- Two 2 × 2 blocks flank the path to the gate, only to make the room read as a place.
+- Nothing else: NPCs, shops and storage arrive with their own features.
 
 ## Encounter tables (phase 1)
 Enemy mix follows `design/combat.md` (CX6): floor 1 chasers; floor 2 adds casters; floor 3
@@ -67,3 +93,5 @@ Notes:
 | FX2 | → Direction | Boss rooms: do floors 2 and 3 want pre-placed dormant adds (CX9)? Designed without. | No |
 | FX3 | → Combat | Hits ignore walls; casters shoot without a clear line (F-011 §10 Q1, Q2). | No |
 | FX4 | → Direction | Room transitions are hard cuts. Is a fade or a short corridor wanted (F-012/F-015)? | No |
+| FX5 | → Direction | Should the player be able to leave a floor mid-run without dying (F-012 §10 Q1)? | No |
+| FX6 | → Items & Economy | What does replaying a cleared floor give (F-012 ASSUMPTION-4)? | No |
