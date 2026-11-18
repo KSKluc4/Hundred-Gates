@@ -53,11 +53,14 @@ const FLOORS_PATH: String = "res://data/tunables/floors.tres"  # G5
 const FLOOR_1_PATH: String = "res://data/floors/floor_1.tres"  # G5
 const FLOOR_2_PATH: String = "res://data/floors/floor_2.tres"  # G5
 const FLOOR_3_PATH: String = "res://data/floors/floor_3.tres"  # G5
+# F-012/C14, C15
+const TOWER_TUNABLES_PATH: String = "res://data/tunables/tower.tres"  # G5
 
 var game: GameTunables = preload(GAME_TUNABLES_PATH)
 var player_combat: PlayerCombatTunables = preload(PLAYER_COMBAT_PATH)
 var enemy_combat: EnemyCombatTunables = preload(ENEMY_COMBAT_PATH)
 var floors: FloorTunables = preload(FLOORS_PATH)
+var tower: TowerTunables = preload(TOWER_TUNABLES_PATH)
 
 
 ## F-001/C17, F-003/C18: reads a data file from disk, never from the cache. Null if it's gone.
