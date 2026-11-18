@@ -47,8 +47,13 @@ F3 shows or hides the debug overlay. Set `debug_overlay_visible_on_start` on
 
 The three floors run on their own for now: open `scenes/debug/f011_floor_1.tscn`,
 `f011_floor_2.tscn` or `f011_floor_3.tscn` in Godot and press F6. `N` skips to the next room and
-`R` restarts the current one. These scenes are placeholders until the game loop is wired into
-`main.tscn`.
+`R` restarts the current one. They remain as isolated test scenes for a single floor, where death
+restarts the room.
+
+F5 starts the game in the town: walk into the gate at the top to pick a floor. In a floor, `N`
+skips a room; in the town, `N` clears the highest unlocked floor and so unlocks the next one.
+Dying returns to the town, and so does the exit that opens when a boss dies. Nothing is saved
+between runs yet.
 
 ## Checks
 
