@@ -1,8 +1,8 @@
 ---
 id: F-012
 title: The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-011, D-005, D-006, D-010, D-012, D-013]
@@ -373,10 +373,10 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 - [x] T1 — e54c02e
 - [x] T2 — b586abd
 - [x] T3 — b66cb36
-- [x] T4 — 4381170
+- [x] T4 — 4381170, placement fix 5a280b0
 - [x] T5 — 641fc54
 - [x] T6 — d768146
-- [ ] T7
+- [x] T7 — 9216679
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -398,8 +398,21 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   its own has nothing to do after a floor is chosen (its input stays off for the owner to
   replace it, C12); `scenes/main.tscn` with the debug keys is the isolated scene for this
   feature (G3). — **Impact:** one file fewer; the town is covered by `test_f012_town.gd`.
-- DEV-7: `GateMenu` has one public method the contract doesn't list, `get_focus_index()`. —
-  **Why:** tests need to read the focus. — **Impact:** none.
+- DEV-7: `GateMenu` has one public method the contract doesn't list, `get_focus_index()`, and
+  `Game` has one, the static `cleared_banner_text()`. — **Why:** tests read the focus; the
+  banner text is built in one place (C16). — **Impact:** none.
+- DEV-8: the health bar moved from the top left (T4 as first built) to the bottom left, and its
+  text was re-centred on the bar (`5a280b0`). — **Why:** the lead rendered `main.tscn`: the bar was
+  drawn on top of the debug overlay's first line, and its label was 23 px tall on a 10 px bar.
+  Headless tests could not see either. — **Impact:** tests now assert the bar and its text are
+  on screen and overlap neither the overlay nor the boss bar.
+- DEV-9: AC30 says the swap happens "on the tick after the report". It happens later in the
+  **same** physics tick: `Game` (priority 2) runs after `FloorScene` (priority 1), once the
+  handler has returned. — **Why:** that is what C12 asks for (never inside the signal); waiting
+  a whole extra tick would add nothing. — **Impact:** none; the tests check "valid inside the
+  handler, gone by the next tick".
+- DEV-10: one sentence of F-011's README paragraph was reworded (the floor debug scenes are no
+  longer "placeholders until the loop is wired"). — **Why:** it became false. — **Impact:** none.
 - DEV-5: `# gdlint:disable=max-public-methods` on six long test files
   (`test_tower_progress.gd`, `test_tower_session.gd`, `test_hud.gd`, `test_f012_town.gd`,
   `test_gate_menu.gd`, `test_shipped_tower.gd`). — **Why:** gdlint's cap
@@ -451,10 +464,67 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   sit exactly under it: `P` is at tile (11, 10), half a tile left. The two blocks are at
   (7..8, 4..5) and (15..16, 4..5), mirrored about the gate's centre line. The shipped town
   equals the fixture town.
+- ASSUMPTION-16 (T7): the "You died" banner is shown when `Game` sees the death pause, for
+  `death_return_delay` seconds; with a delay of 0 there is no pause and no banner. Clearing
+  the last floor always says "no floor above yet", also on a replay. In a floor the location
+  counts combat rooms only (`Room 1 / 3`, then `Boss`).
+- ASSUMPTION-17 (T7): on a setup error `Game` keeps only the HUD (empty bar, no location) and
+  its getters return null. A debug skip (N) during the death pause still makes `FloorScene`
+  build the next room; the session ignores it and the HUD location doesn't change.
 
 ### Things the Auditor should look at closely
+- **Read this branch as the diff from `a864404`** (the tip of `feature/F-011-floor-structure`).
+  F-011 is still in review; anything it changes means a rebase here (DEV-2).
+- **C2 (rules only in core).** `Game`, `TownScene` and `GateMenu` should contain no `if` about
+  unlocking, boss reached or whether a floor may be entered. The one sanctioned exception is
+  `TownScene._clear_highest_unlocked_floor()` (debug N, C17), which calls `TowerProgress`
+  directly.
+- **C12 (no scene freed inside its own signal).** `Game`'s handlers only report to the session;
+  `place_changed` sets `_is_shown_stale`; the swap is in `Game._physics_process`, which relies
+  on physics priority 2 > `FloorScene`/`TownScene` 1 > the room's `CombatRunner` 0. The old
+  scene is `remove_child` + `queue_free`. See DEV-9 for the timing wording.
+- **`FloorScene` defaults (C11).** Three new exports default to F-011's behaviour; the 47
+  F-011 scene tests are untouched. After a reported death `_physics_process` returns at the
+  top, but `skip_room()` and `restart_room()` still work (ASSUMPTION-11, -17).
+- **`RoomData.validate()` changed for safe rooms only** (`_check_spawns` branches on
+  `is_safe_room` first). F-011's room tests are untouched.
+- **Session snapshot.** "Cleared during this visit" is deliberately not saved
+  (ASSUMPTION-10); nothing writes a snapshot to disk yet, so this only matters to slice 4.
+- **Input in the gate list.** `GateMenu._input` consumes `ui_*`, `move_up/down` and `interact`
+  while open. `dodge` (Space) is also `ui_accept` (§10 Q6). If `Game` ever refused a choice
+  the town would leave the player without input; it can't today because the list is exactly
+  what the session accepts.
+- **The player can stand slightly outside the room on the gate tiles** (about 0.1 tile of
+  deceleration drift): the open gate has no collision and nothing lies beyond it. A cancel
+  puts the player back inside (C10).
+- **Found, not fixed (F-011 code):** the boss bar's label in `room.gd` is 23 px tall for 8 px
+  text, because its size is set before the font override. The text is top-aligned so it looks
+  right; only the control's rectangle is oversized (§10 Q7).
+- **Tests that change tunables:** `F012GameTest` sets `Tunables.tower.banner_duration` and
+  `death_return_delay` per test and restores both in `after_each`.
+- **Not done by anyone:** nobody has played the loop with a keyboard or a gamepad. The lead
+  rendered `main.tscn` to images with a scratch driver (town, gate list open, floor 1 room 1
+  with the HUD): everything draws where the tests say. The boss room, the banners and a
+  death were not rendered. No full fought run is tested: the end-to-end tests skip rooms and
+  kill with direct hits.
 
 ### How to test
+```sh
+export GODOT_BIN=/path/to/Godot_v4.7.2-stable
+tools/test                      # 122 scripts, 1462 tests, all passing (about 7 min)
+tools/lint                      # on Windows: .venv/Scripts/gdlint src tests && .venv/Scripts/gdformat --check src tests
+tools/check_core_purity
+```
+One script: `"$GODOT_BIN" --headless --path . -s res://addons/gut/gut_cmdln.gd -gtest=res://tests/scenes/test_f012_game.gd -gexit`.
+All of this feature's scene tests: `-gdir=res://tests/scenes -gselect=f012`.
+
+By hand (Gate B): open the project and press F5. See §5 "How to verify manually". `N` skips a
+room in a floor and unlocks the next floor in the town; `R` restarts a room; `F3` hides the
+debug overlay.
+
+Final gate run by the lead on the tree committed as `9216679`: 1462/1462 tests (1135 from the F-011
+branch, none changed, plus 327 new), gdlint clean, gdformat 247 files unchanged, core purity ok
+(self-test: 19 rules).
 
 ---
 
@@ -472,6 +542,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 | Q4 | Lead | → Art & Game Feel: look of the health bar, location text, banners and the gate list (all placeholders; FX1, CX8). | no | |
 | Q5 | Lead | → Direction: the gate list is a plain column with no scrolling. It holds 3 floors; by slice 5 (floors 4–6, two entries each) it needs paging or a different shape. | no | |
 | Q6 | Lead | → Lucas (Gate B): `dodge` (Space) is also `ui_accept`, so a second Space press right after dashing into the gate chooses the focused entry (the highest floor). Annoying or fine? | no | |
+| Q7 | Lead | → Direction / F-011's review: the boss bar label in `src/world/floors/room.gd` sets its size before the font override and ends up 23 px tall (found in T7's layout tests). Harmless today; fix with F-011's review changes or a later feature? | no | |
 
 ---
 
