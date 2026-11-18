@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="FloorTunables" format=3]
+
+[ext_resource type="Script" path="res://src/core/tunables/floor_tunables.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+room_clear_heal_fraction = 0.3
+boss_room_full_heal = true
+min_spawn_distance_tiles = 4.0
+max_enemies_per_room = 6
+min_room_size = Vector2i(8, 6)
+max_room_size = Vector2i(40, 22)
+exit_min_width_tiles = 2

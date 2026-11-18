@@ -1,0 +1,359 @@
+class_name RoomData
+extends Resource
+## One room as an ASCII tile grid (F-011/C6, D-012, G9). One character = one tile.
+## `#` wall, `.` floor, `P` player start, `E` exit, `1`-`9` spawn of `enemies[digit - 1]`.
+## Tile (x, y) has its centre at (x + 0.5, y + 0.5) tiles; the top-left corner is (0, 0).
+
+const WALL: String = "#"
+const FLOOR: String = "."
+const PLAYER_START: String = "P"
+const EXIT: String = "E"
+const LEGEND: String = "#.PE123456789"
+const CARDINALS: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
+## The 2x2 blocks that contain a tile, as the offset of each block's top-left corner.
+const BLOCK_ORIGINS: Array[Vector2i] = [
+	Vector2i(-1, -1), Vector2i(0, -1), Vector2i(-1, 0), Vector2i.ZERO
+]
+
+@export var id: StringName = &""
+@export var rows: PackedStringArray = []
+@export var enemies: Array[EnemyData] = []
+@export var is_boss_room: bool = false
+
+
+## Width of the first row by number of rows. validate() refuses a grid that isn't rectangular.
+func get_size() -> Vector2i:
+	return Vector2i(rows[0].length() if not rows.is_empty() else 0, rows.size())
+
+
+## F-011 contract: floor, player start and spawns walk. Wall, exit and outside don't.
+func is_walkable(tile: Vector2i) -> bool:
+	var tile_char: String = _char_at(tile.x, tile.y)
+	return tile_char == FLOOR or tile_char == PLAYER_START or _is_spawn_char(tile_char)
+
+
+## Centre of the `P` tile, in tiles. Zero when there is none (validate() refuses that).
+func get_player_start_tiles() -> Vector2:
+	for y: int in rows.size():
+		var x: int = rows[y].find(PLAYER_START)
+		if x >= 0:
+			return _centre_of(Vector2i(x, y))
+	return Vector2.ZERO
+
+
+func get_exit_tiles() -> Array[Vector2i]:
+	return _tiles_where(_is_exit_char)
+
+
+## F-011/C7: row-major, ids `<EnemyData.id>_<n>`, n counting every spawn tile from 1. A digit
+## without an enemy is skipped here and reported by validate().
+func get_spawns() -> Array[RoomSpawn]:
+	var spawns: Array[RoomSpawn] = []
+	var tiles: Array[Vector2i] = _spawn_tiles()
+	for index: int in tiles.size():
+		var enemy_index: int = _char_at(tiles[index].x, tiles[index].y).to_int() - 1
+		if enemy_index >= enemies.size() or enemies[enemy_index] == null:
+			continue
+		var spawn: RoomSpawn = RoomSpawn.new()
+		spawn.enemy = enemies[enemy_index]
+		spawn.position_tiles = _centre_of(tiles[index])
+		spawn.combat_id = StringName("%s_%d" % [spawn.enemy.id, index + 1])
+		spawns.append(spawn)
+	return spawns
+
+
+## F-011/C8, C16. Empty result means valid. Every error starts with the rule's name and, where
+## it applies, names the tile `(x, y)`. All errors are returned, not the first.
+func validate(rules: FloorTunables) -> PackedStringArray:
+	var errors: PackedStringArray = []
+	if not _is_rectangular():
+		errors.append("rectangular: every row must be the same length, and there must be rows")
+		return errors  # nothing below can read a ragged grid
+	_check_size(rules, errors)
+	_check_legend(errors)
+	_check_border(errors)
+	_check_player_start(errors)
+	_check_exit(rules, errors)
+	_check_reachable(errors)
+	_check_corridors(errors)
+	_check_thin_walls(errors)
+	_check_spawns(rules, errors)
+	return errors
+
+
+func _check_size(rules: FloorTunables, errors: PackedStringArray) -> void:
+	var size: Vector2i = get_size()
+	var fits: bool = (
+		size.x >= rules.min_room_size.x
+		and size.y >= rules.min_room_size.y
+		and size.x <= rules.max_room_size.x
+		and size.y <= rules.max_room_size.y
+	)
+	if not fits:
+		errors.append(
+			(
+				"size: room is %d x %d, must be between %d x %d and %d x %d"
+				% [
+					size.x,
+					size.y,
+					rules.min_room_size.x,
+					rules.min_room_size.y,
+					rules.max_room_size.x,
+					rules.max_room_size.y
+				]
+			)
+		)
+
+
+## Not a C16 rule: a character outside the legend, or a digit with no enemy, can't be built.
+func _check_legend(errors: PackedStringArray) -> void:
+	var size: Vector2i = get_size()
+	for y: int in size.y:
+		for x: int in size.x:
+			var tile_char: String = _char_at(x, y)
+			if not LEGEND.contains(tile_char):
+				errors.append(
+					"legend: tile %s has unknown character '%s'" % [_name(x, y), tile_char]
+				)
+			elif _is_spawn_char(tile_char) and tile_char.to_int() > enemies.size():
+				errors.append(
+					(
+						"legend: tile %s spawns '%s' but enemies has %d entries"
+						% [_name(x, y), tile_char, enemies.size()]
+					)
+				)
+	for index: int in enemies.size():
+		if enemies[index] == null:
+			errors.append("legend: enemies[%d] must not be null" % index)
+
+
+func _check_border(errors: PackedStringArray) -> void:
+	var size: Vector2i = get_size()
+	for y: int in size.y:
+		for x: int in size.x:
+			if not _is_border(x, y):
+				continue
+			var tile_char: String = _char_at(x, y)
+			if tile_char != WALL and tile_char != EXIT:
+				errors.append(
+					"border: tile %s must be # or E, found '%s'" % [_name(x, y), tile_char]
+				)
+
+
+func _check_player_start(errors: PackedStringArray) -> void:
+	var count: int = _tiles_where(_is_player_char).size()
+	if count != 1:
+		errors.append("player_start: exactly one P is required, found %d" % count)
+
+
+## C16: one straight run on the border, not on a corner, long enough, touching floor. A corner
+## tile is reported only as a corner, so each rule can fail on its own.
+func _check_exit(rules: FloorTunables, errors: PackedStringArray) -> void:
+	var exits: Array[Vector2i] = get_exit_tiles()
+	if exits.size() < rules.exit_min_width_tiles:
+		errors.append(
+			"exit: needs at least %d E tiles, found %d" % [rules.exit_min_width_tiles, exits.size()]
+		)
+	if exits.is_empty():
+		return
+	var all_on_border: bool = true
+	for tile: Vector2i in exits:
+		if not _is_border(tile.x, tile.y):
+			all_on_border = false
+			errors.append("exit: tile %s is not on the border" % _name(tile.x, tile.y))
+		elif _is_corner(tile):
+			errors.append("exit: tile %s is on a corner" % _name(tile.x, tile.y))
+		elif not is_walkable(tile + _inward(tile)):
+			errors.append("exit: tile %s does not touch a walkable tile" % _name(tile.x, tile.y))
+	if all_on_border:
+		_check_exit_run(exits, errors)
+
+
+## All exit tiles on one side of the border, with no gap between them.
+func _check_exit_run(exits: Array[Vector2i], errors: PackedStringArray) -> void:
+	var size: Vector2i = get_size()
+	var sides: Array[Callable] = [
+		func(tile: Vector2i) -> bool: return tile.y == 0,
+		func(tile: Vector2i) -> bool: return tile.y == size.y - 1,
+		func(tile: Vector2i) -> bool: return tile.x == 0,
+		func(tile: Vector2i) -> bool: return tile.x == size.x - 1,
+	]
+	var vertical_side: bool = false
+	var found: bool = false
+	for side_index: int in sides.size():
+		if exits.all(sides[side_index]):
+			found = true
+			vertical_side = side_index >= 2
+			break
+	if not found:
+		errors.append("exit: E tiles must lie on one side of the border")
+		return
+	for index: int in range(1, exits.size()):
+		var gap: Vector2i = exits[index] - exits[index - 1]
+		if (gap.y if vertical_side else gap.x) != 1:
+			errors.append(
+				(
+					"exit: E tiles must be one unbroken run, gap before tile %s"
+					% _name(exits[index].x, exits[index].y)
+				)
+			)
+
+
+## C16: flood fill from P, four ways. Needs exactly one P to mean anything.
+func _check_reachable(errors: PackedStringArray) -> void:
+	var starts: Array[Vector2i] = _tiles_where(_is_player_char)
+	if starts.size() != 1:
+		return
+	var size: Vector2i = get_size()
+	var reached: PackedByteArray = PackedByteArray()
+	reached.resize(size.x * size.y)
+	var open: Array[Vector2i] = [starts[0]]
+	reached[starts[0].y * size.x + starts[0].x] = 1
+	while not open.is_empty():
+		var tile: Vector2i = open.pop_back()
+		for step: Vector2i in CARDINALS:
+			var next: Vector2i = tile + step
+			if is_walkable(next) and reached[next.y * size.x + next.x] == 0:
+				reached[next.y * size.x + next.x] = 1
+				open.append(next)
+	for y: int in size.y:
+		for x: int in size.x:
+			if is_walkable(Vector2i(x, y)) and reached[y * size.x + x] == 0:
+				errors.append("reachable: tile %s can't be reached from P" % _name(x, y))
+
+
+## C16: bodies are up to 0.8 tiles, so no floor tile may sit outside a 2x2 block of floor.
+func _check_corridors(errors: PackedStringArray) -> void:
+	var size: Vector2i = get_size()
+	for y: int in size.y:
+		for x: int in size.x:
+			if is_walkable(Vector2i(x, y)) and not _in_block(Vector2i(x, y), is_walkable):
+				errors.append(
+					"corridor: floor tile %s is not in a 2x2 block of floor" % _name(x, y)
+				)
+
+
+## C16: melee can't reach through a wall, and a wall tile alone would be an easy dodge. Only
+## interior walls are checked, but the block may borrow the border.
+func _check_thin_walls(errors: PackedStringArray) -> void:
+	var size: Vector2i = get_size()
+	for y: int in size.y:
+		for x: int in size.x:
+			if _is_border(x, y) or _char_at(x, y) != WALL:
+				continue
+			if not _in_block(Vector2i(x, y), _is_wall):
+				errors.append("thin_wall: wall tile %s is not in a 2x2 block of wall" % _name(x, y))
+
+
+## C16: spawn distance from P, and how many spawns a combat or boss room holds.
+func _check_spawns(rules: FloorTunables, errors: PackedStringArray) -> void:
+	var tiles: Array[Vector2i] = _spawn_tiles()
+	var starts: Array[Vector2i] = _tiles_where(_is_player_char)
+	if starts.size() == 1:
+		for tile: Vector2i in tiles:
+			var distance: float = _centre_of(tile).distance_to(_centre_of(starts[0]))
+			if not distance >= rules.min_spawn_distance_tiles:
+				errors.append(
+					(
+						"spawn_distance: spawn at %s is %.2f tiles from P, needs at least %s"
+						% [_name(tile.x, tile.y), distance, rules.min_spawn_distance_tiles]
+					)
+				)
+	if is_boss_room:
+		if tiles.size() != 1:
+			errors.append("spawn_count: a boss room needs exactly 1 spawn, found %d" % tiles.size())
+	elif tiles.size() < 1 or tiles.size() > rules.max_enemies_per_room:
+		errors.append(
+			(
+				"spawn_count: a combat room needs 1 to %d spawns, found %d"
+				% [rules.max_enemies_per_room, tiles.size()]
+			)
+		)
+
+
+## True when some 2x2 block holding `tile` has `test` true on all four tiles.
+func _in_block(tile: Vector2i, test: Callable) -> bool:
+	for origin: Vector2i in BLOCK_ORIGINS:
+		var corner: Vector2i = tile + origin
+		if (
+			test.call(corner)
+			and test.call(corner + Vector2i.RIGHT)
+			and test.call(corner + Vector2i.DOWN)
+			and test.call(corner + Vector2i.ONE)
+		):
+			return true
+	return false
+
+
+func _is_rectangular() -> bool:
+	if rows.is_empty() or rows[0].is_empty():
+		return false
+	for row: String in rows:
+		if row.length() != rows[0].length():
+			return false
+	return true
+
+
+func _is_wall(tile: Vector2i) -> bool:
+	return _char_at(tile.x, tile.y) == WALL
+
+
+func _is_border(x: int, y: int) -> bool:
+	var size: Vector2i = get_size()
+	return x == 0 or y == 0 or x == size.x - 1 or y == size.y - 1
+
+
+func _is_corner(tile: Vector2i) -> bool:
+	var size: Vector2i = get_size()
+	return (tile.x == 0 or tile.x == size.x - 1) and (tile.y == 0 or tile.y == size.y - 1)
+
+
+## Direction from a non-corner border tile into the room.
+func _inward(tile: Vector2i) -> Vector2i:
+	var size: Vector2i = get_size()
+	if tile.y == 0:
+		return Vector2i.DOWN
+	if tile.y == size.y - 1:
+		return Vector2i.UP
+	return Vector2i.RIGHT if tile.x == 0 else Vector2i.LEFT
+
+
+func _spawn_tiles() -> Array[Vector2i]:
+	return _tiles_where(_is_spawn_char)
+
+
+## Row-major (top row first, left to right).
+func _tiles_where(test: Callable) -> Array[Vector2i]:
+	var tiles: Array[Vector2i] = []
+	for y: int in rows.size():
+		for x: int in rows[y].length():
+			if test.call(rows[y][x]):
+				tiles.append(Vector2i(x, y))
+	return tiles
+
+
+func _is_spawn_char(tile_char: String) -> bool:
+	return tile_char.length() == 1 and tile_char >= "1" and tile_char <= "9"
+
+
+func _is_exit_char(tile_char: String) -> bool:
+	return tile_char == EXIT
+
+
+func _is_player_char(tile_char: String) -> bool:
+	return tile_char == PLAYER_START
+
+
+## "" outside the grid or past the end of a short row.
+func _char_at(x: int, y: int) -> String:
+	if y < 0 or y >= rows.size() or x < 0 or x >= rows[y].length():
+		return ""
+	return rows[y][x]
+
+
+func _centre_of(tile: Vector2i) -> Vector2:
+	return Vector2(tile) + Vector2(0.5, 0.5)
+
+
+func _name(x: int, y: int) -> String:
+	return "(%d, %d)" % [x, y]
