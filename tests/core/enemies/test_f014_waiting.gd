@@ -226,7 +226,12 @@ func test_ac5_arrive_emits_arrived_once_and_after_the_state_changed() -> void:
 	var arena: EnemyArena = _reserve_arena(Vector2.ZERO, Vector2(9, 9))
 	var enemy: EnemyLogic = arena.enemies[0]
 	var seen: Array[EnemyLogic.State] = []
-	enemy.arrived.connect(func() -> void: seen.append(enemy.get_state()))
+	# Weak: a lambda that held the enemy, connected to the enemy's own signal, is a cycle that
+	# keeps the enemy, its sim and their resources alive past the end of the run.
+	var weak_enemy: WeakRef = weakref(enemy)
+	enemy.arrived.connect(
+		func() -> void: seen.append((weak_enemy.get_ref() as EnemyLogic).get_state())
+	)
 	watch_signals(enemy)
 	enemy.arrive(Vector2(1, 1))
 	arena.ticks(RATE)
