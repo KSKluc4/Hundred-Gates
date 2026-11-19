@@ -191,7 +191,9 @@ func _build_player() -> void:
 
 
 ## F-013/C2, C3, C4: limits from the room, smoothing from camera.tres, set before the camera
-## enters the tree so it starts on its limited target and never glides in from another place.
+## enters the tree, so there is no moment in which it is unlimited. The engine re-reads the limits
+## whenever they are set, so the order is not observable from outside; C4 (never gliding in from
+## another room's place) holds because every way into a room builds a new Room and a new camera.
 ## Physics callback: the player's body moves in _physics_process (PR-11). `limit_smoothed` stays
 ## off. The offset the shake adds is applied by the engine after the limits (C5 covers it).
 func _configure_camera(shake: PlaceholderShake) -> void:

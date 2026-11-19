@@ -14,19 +14,15 @@ const NEAR_PX: float = 0.01
 const DEATH_DELAY: float = 0.2
 
 var _smoothing_speed_before: float
-var _max_room_before: Vector2i
 
 
 func before_each() -> void:
 	super.before_each()
 	_smoothing_speed_before = Tunables.camera.follow_smoothing_speed
-	_max_room_before = Tunables.floors.max_room_size
-	Tunables.floors.max_room_size = CameraTest.MAX_ROOM_FOR_TESTS
 
 
 func after_each() -> void:
 	Tunables.camera.follow_smoothing_speed = _smoothing_speed_before
-	Tunables.floors.max_room_size = _max_room_before
 	await super.after_each()
 
 

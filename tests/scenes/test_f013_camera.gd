@@ -13,8 +13,6 @@ const NO_TILE: Vector2i = Vector2i(-1, -1)
 const SMALL: Vector2i = Vector2i(12, 8)
 const MEDIUM: Vector2i = Vector2i(48, 28)
 const LARGE: Vector2i = Vector2i(64, 36)
-## Raised for each test: the shipped file still says 40 x 22 while T2 is not in.
-const MAX_ROOM_FOR_TESTS: Vector2i = Vector2i(80, 46)
 ## Pixels: a camera that is "at" a place is within this of it.
 const NEAR_PX: float = 0.01
 const WALK_TICKS: int = 300
@@ -23,7 +21,6 @@ var _built: Room
 var _smoothing_enabled_before: bool
 var _smoothing_speed_before: float
 var _margin_before: int
-var _max_room_before: Vector2i
 
 
 func before_each() -> void:
@@ -32,15 +29,12 @@ func before_each() -> void:
 	_smoothing_enabled_before = Tunables.camera.follow_smoothing_enabled
 	_smoothing_speed_before = Tunables.camera.follow_smoothing_speed
 	_margin_before = Tunables.camera.outside_margin_tiles
-	_max_room_before = Tunables.floors.max_room_size
-	Tunables.floors.max_room_size = MAX_ROOM_FOR_TESTS
 
 
 func after_each() -> void:
 	Tunables.camera.follow_smoothing_enabled = _smoothing_enabled_before
 	Tunables.camera.follow_smoothing_speed = _smoothing_speed_before
 	Tunables.camera.outside_margin_tiles = _margin_before
-	Tunables.floors.max_room_size = _max_room_before
 	await super.after_each()
 
 
@@ -428,6 +422,23 @@ func test_ac5_a_room_built_directly_is_on_its_limited_start_without_settling() -
 	assert_on_start_target("48 x 28")
 	_assert_near(center_px(), Vector2(320.0, 14.0 * 16.0 + 8.0), "not the player's own place", 0.01)
 	assert_gt(center_px().x, player_px().x + 200.0, "the start is near the west wall: limited")
+
+
+## C4, read in the same call that adds the room, before any frame. This does not pin the order of
+## `_configure_camera()` and entering the tree: the engine re-reads the limits the moment they are
+## set, so both orders look the same from outside (CR-7 a).
+func test_ac5_the_camera_is_on_its_limited_start_in_the_call_that_adds_the_room() -> void:
+	for size: Vector2i in [MEDIUM, LARGE]:
+		_built = Room.new()
+		_built.player_input_enabled = false
+		_built.setup(empty_room(size), 100)
+		add_child_autofree(_built)
+		assert_on_start_target("%s, no frame yet" % size)
+		var unlimited: Vector2 = player_px()
+		assert_gt(center_px().x, unlimited.x + 200.0, "not the player's own place: %s" % size)
+		await get_tree().physics_frame
+		_built.queue_free()
+		await get_tree().process_frame
 
 
 func test_ac5_the_first_room_of_a_floor() -> void:

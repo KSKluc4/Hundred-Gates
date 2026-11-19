@@ -545,6 +545,74 @@ func test_c14_setup_clears_the_recovery() -> void:
 	assert_ne(motor.get_state(), RECOVERY)
 
 
+# --- CR-5: a malformed snapshot does not reach the recovery's clock ---
+
+
+## A motor at 0.2 s of a shipped dash (in its recovery, 0.07 s left) and its snapshot.
+func _recovery_snapshot() -> Dictionary:
+	var motor: PlayerMotor = _motor()
+	_play(motor, 120, 0.2, [0.0], [], Vector2.RIGHT)
+	assert_eq(motor.get_state(), RECOVERY)
+	return motor.to_dict()
+
+
+func _restored(snapshot: Dictionary) -> PlayerMotor:
+	var restored: PlayerMotor = Harness.motor_with(_shipped())
+	restored.from_dict(snapshot)
+	return restored
+
+
+func test_cr5_a_negative_time_left_is_read_as_zero_and_gives_the_step_no_extra_time() -> void:
+	for bad: float in [-0.5, NAN]:
+		var snapshot: Dictionary = _recovery_snapshot()
+		snapshot["dash_recovery_remaining"] = bad
+		var restored: PlayerMotor = _restored(snapshot)
+		assert_eq(restored.to_dict()["dash_recovery_remaining"], 0.0, "read as 0: %s" % bad)
+		var before: float = _time_of(restored)
+		var x_before: float = _x(restored)
+		_play(restored, 60, 1.0 / 60.0, [], [], Vector2.RIGHT)
+		assert_almost_eq(_time_of(restored), before + 1.0 / 60.0, NEAR, "no extra time: %s" % bad)
+		assert_lt(_x(restored) - x_before, 0.1, "walked one tick's worth at most: %s" % bad)
+		assert_ne(restored.get_state(), RECOVERY, "and the recovery is over: %s" % bad)
+
+
+func test_cr5_a_time_left_longer_than_the_latched_duration_is_cut_to_it() -> void:
+	var snapshot: Dictionary = _recovery_snapshot()
+	snapshot["dash_recovery_remaining"] = 5.0
+	var restored: PlayerMotor = _restored(snapshot)
+	assert_almost_eq(restored.to_dict()["dash_recovery_remaining"], 0.12, NEAR, "cut to 0.12")
+	_play(restored, 60, 0.2, [], [], Vector2.RIGHT)
+	assert_ne(restored.get_state(), RECOVERY, "over within the latched duration, not after 5 s")
+
+
+func test_cr5_a_time_left_with_no_latched_duration_roots_nobody() -> void:
+	var snapshot: Dictionary = _recovery_snapshot()
+	snapshot["dash_recovery_duration"] = 0.0
+	snapshot["dash_recovery_remaining"] = 5.0
+	var restored: PlayerMotor = _restored(snapshot)
+	assert_eq(restored.to_dict()["dash_recovery_remaining"], 0.0)
+	_play(restored, 60, 1.0 / 30.0, [], [], Vector2.RIGHT)
+	assert_ne(restored.get_state(), RECOVERY)
+
+
+func test_cr5_a_time_left_outside_a_recovery_is_cleared_on_restore() -> void:
+	var motor: PlayerMotor = _motor()
+	for state: PlayerMotor.State in [PlayerMotor.State.IDLE, PlayerMotor.State.DASHING]:
+		var snapshot: Dictionary = motor.to_dict()
+		snapshot["state"] = state
+		snapshot["dash_recovery_remaining"] = 0.5
+		snapshot["dash_recovery_duration"] = 0.12
+		var restored: PlayerMotor = _restored(snapshot)
+		assert_eq(restored.to_dict()["dash_recovery_remaining"], 0.0, "state %s" % state)
+
+
+func test_cr5_a_valid_snapshot_restores_exactly_as_before() -> void:
+	var snapshot: Dictionary = _recovery_snapshot()
+	var restored: PlayerMotor = _restored(snapshot)
+	assert_eq(restored.to_dict(), snapshot)
+	assert_almost_eq(restored.to_dict()["dash_recovery_remaining"], 0.07, NEAR)
+
+
 # --- AC23: the duration is latched when the dash fires ---
 
 

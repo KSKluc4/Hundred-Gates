@@ -216,7 +216,7 @@ func from_dict(snapshot: Dictionary) -> void:
 	_dash_duration = snapshot["dash_duration"]
 	_dash_iframe_duration = snapshot["dash_iframe_duration"]
 	_dash_recovery_duration = snapshot["dash_recovery_duration"]
-	_dash_recovery_remaining = snapshot["dash_recovery_remaining"]
+	_dash_recovery_remaining = _restored_recovery_remaining(snapshot["dash_recovery_remaining"])
 	_cooldown_remaining = snapshot["cooldown_remaining"]
 	_has_buffered_dash = snapshot["has_buffered_dash"]
 	_buffered_dash_age = snapshot["buffered_dash_age"]
@@ -366,7 +366,7 @@ func _is_free() -> bool:
 	return _state == State.IDLE or _state == State.MOVING
 
 
-func _is_in_recovery() -> bool:
+func _is_in_attack_recovery() -> bool:
 	return _state == State.ATTACKING and _attack_chain.get_phase() == AttackChain.Phase.RECOVERY
 
 
@@ -440,7 +440,7 @@ func _fire_buffered_actions() -> void:
 func _can_fire_buffered_dash() -> bool:
 	return (
 		_has_buffered_dash
-		and (_is_free() or _is_in_recovery())
+		and (_is_free() or _is_in_attack_recovery())
 		# F-003/C15: rounding must not move a fire past the contact on its expiry instant.
 		and _cooldown_remaining <= TIME_EPSILON
 		and _buffered_dash_age <= _buffer_window() + TIME_EPSILON
@@ -450,7 +450,7 @@ func _can_fire_buffered_dash() -> bool:
 func _can_fire_buffered_attack() -> bool:
 	if not _has_buffered_attack or _buffered_attack_age > _buffer_window() + TIME_EPSILON:
 		return false
-	if _is_in_recovery():
+	if _is_in_attack_recovery():
 		return not _attack_chain.is_finisher()  # AC6: only a dash cancels a finisher's recovery.
 	return _is_free()
 
@@ -504,10 +504,19 @@ func _end_dash(ran_full_length: bool) -> void:
 	dash_ended.emit()
 
 
+## F-013/CR-5: a snapshot is trusted for its shape, not its numbers. The time left belongs to a
+## recovery only: in any other state it is 0, and in a recovery it lies in [0, the latched
+## duration] (NaN counts as 0). Valid snapshots are unchanged.
+func _restored_recovery_remaining(remaining: float) -> float:
+	if _state != State.DASH_RECOVERY or not remaining > 0.0:
+		return 0.0
+	return minf(remaining, _dash_recovery_duration)
+
+
 ## F-013/C13 (c), (d): rooted, nothing fires, the cooldown keeps counting. It ends in its own
 ## exact segment, so whatever is buffered can fire at that same instant. Returns the time consumed.
 func _advance_dash_recovery(limit: float) -> float:
-	var segment: float = minf(limit, _dash_recovery_remaining)
+	var segment: float = minf(limit, maxf(0.0, _dash_recovery_remaining))  # CR-5: never negative
 	_cooldown_remaining = maxf(0.0, _cooldown_remaining - segment)
 	_dash_recovery_remaining -= segment
 	if _dash_recovery_remaining <= TIME_EPSILON:
