@@ -1,8 +1,8 @@
 ---
 id: F-011
 title: Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor        # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-004, F-005, F-006, F-007, F-008, F-009, D-006, D-007, D-008, D-011, D-012]
@@ -305,6 +305,7 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - [x] T5 — bbb765f
 - [x] T6 — 3975aa6
 - [x] T7 — f5837b4
+- [x] Review round 1 fixes — CR-2 fefa482, CR-8 85d7646, CR-4 eb2b7fe, CR-3 6165d01 (replies in §9)
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -422,6 +423,9 @@ By hand (Gate B): open `scenes/debug/f011_floor_1.tscn`, `f011_floor_2.tscn` or
 Final gate run by the lead on `f5837b4`: 1135/1135 tests, gdlint clean, gdformat 220 files
 unchanged, core purity ok (self-test: 19 rules).
 
+After the review round 1 fixes (`6165d01`): 1150/1150 tests (15 new), gdlint clean, gdformat 220
+files unchanged, core purity ok.
+
 ---
 
 ## 9. Code Review  ·  _Auditor_
@@ -522,6 +526,8 @@ player positions across the rooms with every enemy walking to its stop distance.
 - **Suggested fix:** log each in §8; for (a), enforce the rule or ask Lucas to confirm it is a
   guideline. No code change needed for the others.
 
+> **Builder reply (lead):** logged in `616b3d9` as DEV-8 (the design-doc rule), DEV-9, DEV-10 and DEV-11. For (a) the rule stays a guideline for now: "opposite sides" has no exact meaning for a side exit or a corner start, and §10 Q5 asks Lucas whether to enforce it. No code change.
+
 **CR-2 🟡 A room that passes validation can trap a wide enemy for good.** Verified by running.
 - **Where:** `src/core/floors/room_data.gd:226` (`_check_corridors`) and C16's wording.
 - **Problem:** "every walkable tile is part of a walkable 2×2 block" does not make every
@@ -533,6 +539,8 @@ player positions across the rooms with every enemy walking to its stop distance.
   guard for rooms authored later. No shipped room has this.
 - **Suggested fix:** also require that every two orthogonally adjacent walkable tiles share a
   fully walkable 2×2 block; add the test; state the rule in `floors.md`.
+
+> **Builder reply (lead):** fixed in `fefa482`. New rule `pinch` in `RoomData.validate()`: two walkable tiles side by side must share a walkable 2×2 block; each pair is reported once, and a tile the `corridor` rule already refuses is not reported twice. All 15 shipped rooms and every fixture pass it unchanged. C16 and `floors.md` state the rule (`616b3d9`).
 
 **CR-3 🟡 AC26's test runs almost every room with sleeping enemies.** Verified by reading; the
 rooms themselves verified by running.
@@ -547,6 +555,8 @@ rooms themselves verified by running.
 - **Suggested fix:** wake every room, boss rooms included, in `_walk_floor`, with the same
   no-error and no-stray-body asserts.
 
+> **Builder reply (lead):** fixed in `6165d01`. `_walk_floor` now wakes every enemy of every room, boss rooms included, and asserts that each one was aggroed, left its idle state and left its spawn tile, with the old asserts kept. All 15 rooms were clean. Limit: in 2 s from `P` no hit lands, so the test proves that every enemy decides and moves, not that a full fight is error-free.
+
 **CR-4 🟡 The floor only works at the world origin, and nothing says or checks it.** Verified
 by running.
 - **Where:** `src/world/floors/room.gd:154`, `:168`, `:211`; `floor_scene.gd:57`; C6.
@@ -559,6 +569,8 @@ by running.
 - **Suggested fix:** refuse a non-zero origin as a setup error, or subtract the room's origin
   where positions are read; say which in C6.
 
+> **Builder reply (lead):** fixed in `eb2b7fe`. A floor scene whose global transform is not the identity is a setup error and builds nothing; C6 says so (`616b3d9`).
+
 **CR-5 🟡 `studio/design/combat.md` now contradicts the code.** Verified by reading.
 - **Where:** `combat.md:160` ("Slides along walls, no pathfinding"), `:172` (caster movement).
 - **Problem:** D-012 changed how every enemy walks; the binding Combat doc still describes the
@@ -566,24 +578,36 @@ by running.
 - **Suggested fix:** update the movement lines to point at D-012. §10 Q4(b) (a brute that
   charges a pillar and stuns itself is a free punish) deserves an explicit answer at Gate B.
 
+> **Builder reply (lead):** fixed in `616b3d9`: the chaser and caster movement lines in `combat.md` now point at D-012 and F-011 §10 Q4. `PHASE1.md` is Direction's and was not touched; Lucas has been told its rows are stale.
+
 **CR-6 🔵 "Cleared" can go stale after a sim restore.** Verified by running.
 `floor_scene.gd:53`, `room.gd:100`: the door and `FloorRun._room_cleared` latch on the first
 clear. A snapshot taken with the enemy alive and restored after the clear leaves the enemy
 alive and the door open. No key reaches this in the floor scene.
 
+> **Builder reply (lead):** not changed. Nothing restores a sim snapshot in a floor room (the debug scenes with restore keys are F-003 to F-009's, not the floor scene), so the latch can't go stale today. It is noted here for whoever adds restore to a room.
+
 **CR-7 🔵 The boss room's door opens onto nothing.** Verified by running. After the boss dies
 the door opens, `advance()` is refused, and the player can walk out of the grid.
+
+> **Builder reply (lead):** not changed here. F-012 uses the opened boss door as the way back to town (`floor_exited`); in F-011's own debug scenes the player can still walk out, which harms nothing.
 
 **CR-8 🔵 A `FloorRun` snapshot doesn't say which floor it is.** From reading.
 `floor_run.gd:108`, `:129`: a floor 3 snapshot is accepted by a floor 2 run when the room
 index fits (G7).
 
+> **Builder reply (lead):** fixed in `85d7646`. The snapshot has `floor_number`; a missing, non-int or different one is refused and changes nothing. C13 says so (`616b3d9`).
+
 **CR-9 🔵 `GLOSSARY.md` has no entry for room, exit, room clear, floor run or nav grid.**
+
+> **Builder reply (lead):** fixed on the F-012 branch, where the glossary already gained Floor, Room, Safe room and Town: exit, room clear, floor run and nav grid are added there, to avoid two branches appending to the same lines.
 
 **CR-10 🔵 A bad enemy file is found only when its room is built.** Suspected, from reading.
 `FloorScene._collect_setup_errors()` validates rooms, not their `EnemyData`. The room's
 `CombatRunner` then stops itself and logs, but the floor keeps ticking: a frozen room with a
 locked door and nothing on the label.
+
+> **Builder reply (lead):** not changed (🔵). Shipped enemy files are validated by their own data tests, and in the game the debug label is hidden; a floor-setup check belongs with content tooling.
 
 **Not checked in this round:** anything by hand (keyboard, gamepad, a rendered frame; feel,
 room sizes, the heal, the camera); a moving player in the soak runs; debug scenes `f001`–`f009`
