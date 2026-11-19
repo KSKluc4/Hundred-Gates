@@ -434,7 +434,8 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   `ui_cancel` gains pad B (their keys are listed again unchanged). — **Why:** review round 3,
   CR-17: in this project the built-ins had no pad button, so only Y chose in the gate list. —
   **Impact:** every focused `Control` in the project now answers pad A, which is the point;
-  pad A is also `dodge`, covered by a town test. No game action was added or changed, and
+  pad A is also `dodge`, covered by a town test. The override binds the keys to all devices
+  where the built-ins bind one device: a superset. No game action was added or changed, and
   `tests/test_input_map.gd` is untouched; a new `tests/test_ui_input_map.gd` pins the two.
 - DEV-10: one sentence of F-011's README paragraph was reworded (the floor debug scenes are no
   longer "placeholders until the loop is wired"). — **Why:** it became false. — **Impact:** none.
@@ -904,6 +905,54 @@ running. It dates from T5, not from the fixes.
 
 **Not checked in this round:** a real gamepad, keyboard or mouse (every stick and button result
 is from synthetic events); a rendered frame.
+
+<!-- review-round: 4 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 32454cd (the round 3 fixes are in `2f5cb54`)
+
+**Date:** 2026-11-18 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+A narrow round by the same reviewer on a fresh extraction. On the fix commit the full suite
+passed (1572 tests), lint, format and core purity were clean, and `main.tscn` booted headless
+with no error. A 🟡 alone would be APPROVE_WITH_NOTES by the letter of `AGENTS.md`; this one
+reopens the case CR-3 was raised for, so the round asks for the change.
+
+| Item | Result | Evidence |
+|---|---|---|
+| CR-15 | ✔ resolved as asked | The round 3 probe, 15/15: W or d-pad up held at open, released, then a stick push counts; keys and the stick no longer block each other. But see CR-18. |
+| CR-16 | ✔ resolved | The overshoot, jitter and wobble sequences move nothing extra; the ramp steps once, at −0.7. |
+| CR-17 | ✔ resolved | Pad A chooses once and pad B cancels once, on the press; X does nothing, Y still chooses. The override against a blank 4.7.2 project: the keys are identical; the only difference is the device (the built-ins bind device 16, the override all devices), a superset. Nothing else in the project reacts to A or B: the list's buttons are the only focusable controls. In the real `Game`, A outside the list is one dodge and B does nothing; a floor chosen with a held A starts no dodge. The pad A town test fails when input is given back in the handler. |
+| Regressions in the list | none in the round 3 probe set | Keys, d-pad, repeats, left and right, ramped diagonal, two openings, `open()` while open. |
+| Spec text | matches | AC23 and DEV-14 against `gate_menu.gd:176` and `project.godot`. DEV-14's "keys listed again unchanged" is true for the keys, not for the device. |
+
+### New finding
+
+**CR-18 🟡 A menu built while the stick is already held doesn't know it is held; letting go
+then moves the focus.** Verified by running with synthetic events. A regression from `2f5cb54`.
+- **Where:** `src/ui/town/gate_menu.gd:44` (the state starts empty), `:67`, `:176` (it comes
+  only from motion events this instance receives), `:97` (round 3's seed in `open()` is gone).
+  `Game` builds a new `TownScene`, and so a new `GateMenu`, on every return to town.
+- **Problem:** a stick held at a constant value sends no events. If it is up before the town
+  is built and stays up until the list opens, the menu thinks it is at rest, and the first
+  event past 0.5, the start of a release included, counts as a push. Measured at menu level
+  (stick at −1.0, then the menu is created and opened: a release moves the focus 4 → 3) and in
+  the real `Game` (die in the boss room, stick up during the death pause, town, gate: the list
+  opens on "Floor 1 — at the boss" and letting go moves it to "Floor 1 — from the start"). The
+  same sequences on `8905f83`'s menu leave the focus alone.
+- **Why it matters:** it is CR-3's own case, on the die-and-retry path this feature exists
+  for. One more press then enters the floor from the start.
+- **Why the tests miss it:** every held-at-open test creates the menu first and moves the
+  stick afterwards.
+- **Suggested fix:** seed the stick's state from the stick itself when the list opens
+  (`Input.get_joy_axis` is stick-only), counting a direction past its smaller deadzone as
+  already pushed. That also restores round 2's expectation for a stick resting at −0.4.
+
+**Note on the record itself:** in round 3 the lead corrected an enemy count (41 → 42) by
+editing earlier review lines of F-011's file in place. `AGENTS.md` says a review only grows.
+The edits are undone and the correction stands as its own line (see F-011 §9).
+
+**Not checked in this round:** a real gamepad, keyboard or mouse (CR-18 included: every stick
+result is from synthetic events); more than one pad at once; a rendered frame.
 
 ---
 
