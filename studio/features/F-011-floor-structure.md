@@ -307,6 +307,7 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - [x] T7 — f5837b4
 - [x] Review round 1 fixes — CR-2 fefa482, CR-8 85d7646, CR-4 eb2b7fe, CR-3 6165d01 (replies in §9)
 - [x] Review round 2 note — CR-11 2c71d51
+- [x] Gate B playtest fix — camera lost on a walked-in room, c40c2a6 (§10 Q6, DEV-13). Gate: 1157/1157 tests (7 new, 4 of which fail without the fix), lint, format and purity clean.
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
