@@ -72,6 +72,17 @@ const HEXER_BLOCK_COUNT: int = 4
 const HEXER_ARENA_TILES: Vector2i = Vector2i(6, 4)
 ## Floor 3: a brute needs this many walkable tiles in a row to build a charge.
 const BRUTE_LANE_TILES: int = 14
+## F-013/C9: the Warden and the Juggernaut stand this far east of `P`, in tiles.
+const BOSS_EAST_TILES: Vector2 = Vector2(12.0, 18.0)
+## F-013/C9: room 1-1's two chasers are at least this far apart.
+const FIRST_ROOM_CHASER_GAP_TILES: float = 6.0
+## F-013/C9: room 3-3's brute is more than this from `P` and within NEAR_SPAWN_MAX_TILES of it.
+const BRUTE_MIN_DISTANCE_TILES: float = 7.0
+## F-013/C9: room 3-1's two interior walls.
+const WALL_THICKNESS_TILES: int = 2
+const WALL_MIN_LENGTH_TILES: int = 14
+## F-013/C9: room 2-3's blocks and its casters.
+const MIN_LONG_ROOM_BLOCKS: int = 5
 ## `P` must sit this close to the wall opposite the exit.
 const START_EDGE_TILES: float = 3.0
 
@@ -462,7 +473,110 @@ func test_c10d_no_shipped_attack_starts_further_than_the_limit() -> void:
 	gut.p("%d attacks checked, longest trigger range %s tiles" % [seen.size(), longest])
 
 
+# --- F-013 C9 pins: what the room table says, beyond the rules of C10 ---
+
+
+## Every caster of floor 3 stands behind cover from `P` with a body of no size at all: a line that
+## clears a block's corner by a hair is cover only on paper (CR-6). Floor 2's own pin is above.
+func test_c9_every_caster_of_floor_3_has_no_clear_line_to_the_player_start_at_radius_zero() -> void:
+	var casters: int = 0
+	for room: RoomData in _load_floor(3).rooms:
+		var nav: NavGrid = NavGrid.from_rows(room.rows)
+		for spawn: RoomSpawn in room.get_spawns():
+			if spawn.enemy.id != &"caster":
+				continue
+			casters += 1
+			assert_false(
+				nav.has_clear_line(spawn.position_tiles, room.get_player_start_tiles(), 0.0),
+				"%s: %s sees P" % [room.id, spawn.combat_id]
+			)
+	assert_eq(casters, 4, "the casters of 3-3 and 3-5")
+
+
+func test_c9_the_hexers_room_has_exactly_four_interior_blocks() -> void:
+	var blocks: Array[Rect2i] = _interior_wall_blocks(_room(&"f2_boss"))
+	assert_eq(blocks.size(), HEXER_BLOCK_COUNT, "separate interior walls")
+	for block: Rect2i in blocks:
+		assert_eq(block.size, Vector2i(2, 2), "the block at %s is 2 x 2" % block.position)
+
+
+func test_c9_the_warden_and_the_juggernaut_stand_12_to_18_tiles_east_of_the_player_start() -> void:
+	for room_id: StringName in [&"f1_boss", &"f3_boss"]:
+		var room: RoomData = _room(room_id)
+		var east: float = room.get_spawns()[0].position_tiles.x - room.get_player_start_tiles().x
+		assert_gte(east, BOSS_EAST_TILES.x, "%s: east of P" % room_id)
+		assert_lte(east, BOSS_EAST_TILES.y, "%s: east of P" % room_id)
+
+
+func test_c9_room_1_1_has_its_two_chasers_at_least_6_tiles_apart() -> void:
+	var spawns: Array[RoomSpawn] = _room(&"f1_r1").get_spawns()
+	assert_eq(spawns.size(), 2, "two chasers")
+	var gap: float = spawns[0].position_tiles.distance_to(spawns[1].position_tiles)
+	assert_gte(gap, FIRST_ROOM_CHASER_GAP_TILES, "the chasers' gap")
+
+
+func test_c9_room_3_3_brute_is_within_18_tiles_of_the_player_start_and_more_than_7_away() -> void:
+	var room: RoomData = _room(&"f3_r3")
+	var start: Vector2 = room.get_player_start_tiles()
+	var brutes: int = 0
+	for spawn: RoomSpawn in room.get_spawns():
+		if spawn.enemy.id != &"brute":
+			continue
+		brutes += 1
+		var away: Vector2 = (spawn.position_tiles - start).abs()
+		assert_lte(away.x, NEAR_SPAWN_MAX_TILES.x, "the brute's x distance")
+		assert_lte(away.y, NEAR_SPAWN_MAX_TILES.y, "the brute's y distance")
+		assert_gt(away.length(), BRUTE_MIN_DISTANCE_TILES, "the brute's distance")
+	assert_eq(brutes, 1)
+
+
+func test_c9_room_3_1_has_two_free_standing_walls_2_thick_and_at_least_14_long() -> void:
+	var room: RoomData = _room(&"f3_r1")
+	var size: Vector2i = room.get_size()
+	var walls: Array[Rect2i] = _interior_wall_blocks(room)
+	assert_eq(walls.size(), 2, "interior walls")
+	for wall: Rect2i in walls:
+		var thin: int = mini(wall.size.x, wall.size.y)
+		var long: int = maxi(wall.size.x, wall.size.y)
+		assert_eq(thin, WALL_THICKNESS_TILES, "the wall at %s is 2 thick" % wall.position)
+		assert_gte(long, WALL_MIN_LENGTH_TILES, "the wall at %s is long enough" % wall.position)
+		assert_eq(wall.size.x > wall.size.y, size.x > size.y, "parallel to the long side")
+		assert_true(
+			_is_free_standing(wall, size), "the wall at %s touches the border" % wall.position
+		)
+
+
+func test_c9_room_2_3_has_five_free_standing_blocks_and_its_three_casters_in_the_east_third(
+) -> void:
+	var room: RoomData = _room(&"f2_r3")
+	var size: Vector2i = room.get_size()
+	var blocks: Array[Rect2i] = _interior_wall_blocks(room)
+	assert_gte(blocks.size(), MIN_LONG_ROOM_BLOCKS, "separate blocks")
+	for block: Rect2i in blocks:
+		assert_true(
+			_is_free_standing(block, size), "the block at %s touches the border" % block.position
+		)
+	var casters: int = 0
+	for spawn: RoomSpawn in room.get_spawns():
+		if spawn.enemy.id == &"caster":
+			casters += 1
+			assert_gte(
+				spawn.position_tiles.x, size.x * 2.0 / 3.0, "%s in the east third" % spawn.combat_id
+			)
+	assert_eq(casters, 3, "three casters")
+
+
 # --- helpers ---
+
+
+## An interior wall box that leaves at least one floor tile between it and the border wall.
+func _is_free_standing(wall: Rect2i, room_size: Vector2i) -> bool:
+	return (
+		wall.position.x > 1
+		and wall.position.y > 1
+		and wall.end.x < room_size.x - 1
+		and wall.end.y < room_size.y - 1
+	)
 
 
 func _load_floor(number: int) -> FloorData:

@@ -4,12 +4,30 @@ extends GutTest
 ## rows and asked the same seeded questions, and every answer must be equal (`==`, no tolerance).
 ## Directions: many goals, several askers per goal in a shuffled order, so that a half-settled
 ## field is resumed, then asked again from nearer and from further away. Lines: segments of every
-## kind, at four radii. The seeds are fixed, so a failure reproduces.
+## kind, at the radii the enemies' bodies really have (read from the shipped enemy files) and at
+## the bolt's, and segments whose end sits a hair either side of the distance at which it touches
+## a wall (CR-1: a clip that leaves out one tile is a wrong answer). The seeds are fixed, so a
+## failure reproduces.
 
 const GOALS_PER_ROOM: int = 110
 const ASKERS_PER_GOAL: int = 10
 const SEGMENTS_PER_ROOM: int = 2000
-const RADII: Array[float] = [0.0, 0.25, 0.5, 0.6]
+## F-005: a bolt's radius. The other radii are the shipped enemies' hurtbox radii (_radii()).
+const BOLT_RADIUS_TILES: float = 0.25
+const ENEMY_DATA_DIR: String = "res://data/enemies"  # G5
+## The graze segments: the end (or the start) is `radius + offset * GRAZE_UNIT` from a wall face,
+## offset -GRAZE_OFFSETS..GRAZE_OFFSETS, each with GRAZE_SAMPLES random other ends, both ways round.
+const GRAZE_UNIT: float = 1e-6
+const GRAZE_OFFSETS: int = 5
+const GRAZE_SAMPLES: int = 24
+const MIN_GRAZE_CHECKS_PER_SIDE: int = 4000
+## A "long" graze segment is at least this long on the axis it runs along, where the room allows.
+const LONG_SEGMENT_TILES: float = 32.0
+const SIDES: int = 4
+const SIDE_EAST: int = 0
+const SIDE_WEST: int = 1
+const SIDE_NORTH: int = 2
+const SIDE_SOUTH: int = 3
 ## How far past the grid random points may land.
 const OUTSIDE_TILES: float = 3.0
 const SEGMENT_KINDS: int = 9
@@ -17,6 +35,7 @@ const GOAL_KINDS: int = 6
 const TOGGLES: int = 24
 ## The biggest shipped room: f3_r5, 64 x 36 with pillars.
 const LARGEST_SHIPPED_ROOM_PATH: String = "res://data/floors/floor_3/room_5.tres"  # G5
+const WARDEN_ROOM_PATH: String = "res://data/floors/floor_1/boss.tres"  # G5
 const BIG_SIZE: Vector2i = Vector2i(64, 36)
 ## The sealed pocket added to the big room: walkable tiles (30..33, 28..31), walls all round.
 const POCKET: Rect2i = Rect2i(30, 28, 4, 4)
@@ -25,11 +44,14 @@ const POCKET_WALLS: Rect2i = Rect2i(28, 26, 8, 8)
 var _differences: PackedStringArray = PackedStringArray()
 ## Answers that were a direction and not ZERO, counted by _compare_directions().
 var _moving: int = 0
+## How many answers differed (`_differences` keeps only the first twenty).
+var _mismatches: int = 0
 
 
 func before_each() -> void:
 	_differences = PackedStringArray()
 	_moving = 0
+	_mismatches = 0
 
 
 # --- directions ---
@@ -145,7 +167,72 @@ func test_lines_equal_the_reference_in_an_empty_room() -> void:
 	gut.p("empty 64 x 36: %d line answers compared" % total)
 
 
+## CR-1/CR-2: the end of a long segment a hair either side of the distance at which it touches a
+## wall, on all four sides, at every enemy radius, with the graze at the end and at the start.
+func test_lines_equal_the_reference_when_an_end_grazes_a_wall_on_every_side() -> void:
+	var rooms: Array = _fixture_rooms()
+	rooms.append(["blocks 64 x 36", big_rows(true)])
+	rooms.append(["f3_r5", _largest_shipped_room().rows])
+	rooms.append(["f1_boss", load(WARDEN_ROOM_PATH).rows])
+	rooms.append(["empty 64 x 36", empty_rows(BIG_SIZE)])
+	rooms.append(["empty 64 x 12", empty_rows(Vector2i(64, 12))])
+	var total: int = 0
+	for index: int in rooms.size():
+		total += _compare_grazes(rooms[index][0], rooms[index][1], 9000 + index, GRAZE_SAMPLES)
+	assert_eq(_differences, PackedStringArray(), "differences")
+	assert_eq(_mismatches, 0, "differences in all")
+	gut.p("%d graze answers compared in %d rooms" % [total, rooms.size()])
+
+
+## The reviewer's first case: a 64 x 12 empty room, a segment of 40 tiles, radius 0.7.
+func test_cr1_a_64_by_12_room_at_radius_0_7_the_reviewers_segment() -> void:
+	var rows: PackedStringArray = empty_rows(Vector2i(64, 12))
+	var from: Vector2 = Vector2(22.367403, 3.0021656)
+	var to: Vector2 = Vector2(62.3, 7.769074)
+	var old: NavGridReference = NavGridReference.from_rows(rows)
+	assert_false(old.has_clear_line(from, to, 0.7), "the old code: blocked by the east wall")
+	assert_eq(NavGrid.from_rows(rows).has_clear_line(from, to, 0.7), false, "the new code agrees")
+
+
+## The reviewer's second case: the Warden's room, radius 0.7, the target at x = 54.3 (0.7 from the
+## east wall's face at 55), the asker anywhere in the west 22 columns: 20,000 checks.
+func test_cr1_the_wardens_room_with_the_target_at_x_54_3_and_the_asker_in_the_west() -> void:
+	var rows: PackedStringArray = (load(WARDEN_ROOM_PATH) as RoomData).rows
+	var fresh: NavGrid = NavGrid.from_rows(rows)
+	var old: NavGridReference = NavGridReference.from_rows(rows)
+	var size: Vector2i = fresh.get_size()
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = 9100
+	var blocked: int = 0
+	for _check: int in 20000:
+		var from: Vector2 = Vector2(rng.randf_range(1.0, 23.0), rng.randf_range(1.0, size.y - 1.0))
+		var to: Vector2 = Vector2(54.3, rng.randf_range(1.0, size.y - 1.0))
+		var wanted: bool = old.has_clear_line(from, to, 0.7)
+		blocked += 0 if wanted else 1
+		if fresh.has_clear_line(from, to, 0.7) != wanted:
+			_mismatches += 1
+	assert_eq(_mismatches, 0, "of 20000 checks differ")
+	assert_gt(blocked, 0, "some of them are blocked")
+
+
+## The reviewer's third case: grazing probes on a 64 x 36 room, each side, many checks.
+func test_cr1_grazing_probes_on_a_64_by_36_room_on_each_side() -> void:
+	var total: int = _compare_grazes("64 x 36", empty_rows(BIG_SIZE), 9200, 4 * GRAZE_SAMPLES)
+	assert_eq(_differences, PackedStringArray(), "differences")
+	assert_eq(_mismatches, 0, "differences in all")
+	gut.p("64 x 36 probes: %d graze answers compared" % total)
+
+
 # --- the rooms ---
+
+
+## A walled room of `size` with nothing inside.
+static func empty_rows(size: Vector2i) -> PackedStringArray:
+	var rows: PackedStringArray = PackedStringArray()
+	for y: int in size.y:
+		var border: bool = y == 0 or y == size.y - 1
+		rows.append("#".repeat(size.x) if border else "#" + ".".repeat(size.x - 2) + "#")
+	return rows
 
 
 func _largest_shipped_room() -> RoomData:
@@ -257,25 +344,120 @@ func _compare_lines(label: String, rows: PackedStringArray, seed_value: int) -> 
 	var size: Vector2i = fresh.get_size()
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = seed_value
+	var radii: Array[float] = _radii()
+	assert_gte(radii.size(), 8, "0, the bolt and the six body radii of the shipped enemies")
 	var compared: int = 0
 	var blocked: int = 0
 	for number: int in SEGMENTS_PER_ROOM:
 		var ends: Array[Vector2] = _segment(rng, number, size)
-		for radius: float in RADII:
+		for radius: float in radii:
 			var got: bool = fresh.has_clear_line(ends[0], ends[1], radius)
 			var wanted: bool = old.has_clear_line(ends[0], ends[1], radius)
 			compared += 1
 			blocked += 0 if wanted else 1
-			if got != wanted and _differences.size() < 20:
-				_differences.append(
-					(
-						"%s: %s to %s radius %s gave %s, was %s"
-						% [label, ends[0], ends[1], radius, got, wanted]
+			if got != wanted:
+				_mismatches += 1
+				if _differences.size() < 20:
+					_differences.append(
+						(
+							"%s: %s to %s radius %s gave %s, was %s"
+							% [label, ends[0], ends[1], radius, got, wanted]
+						)
 					)
-				)
 	assert_gte(compared, SEGMENTS_PER_ROOM, "%s: line checks" % label)
 	gut.p("%s: %d of %d line answers were blocked" % [label, blocked, compared])
 	return compared
+
+
+## Every graze check of a room: for each side, each radius, each offset and `samples` random other
+## ends, a long segment and a short one, the graze at the end and at the start. Returns how many
+## answers were compared.
+func _compare_grazes(label: String, rows: PackedStringArray, seed_value: int, samples: int) -> int:
+	var fresh: NavGrid = NavGrid.from_rows(rows)
+	var old: NavGridReference = NavGridReference.from_rows(rows)
+	var size: Vector2i = fresh.get_size()
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var radii: Array[float] = _radii()
+	var compared: int = 0
+	for side: int in SIDES:
+		var per_side: int = 0
+		for radius: float in radii:
+			for offset: int in range(-GRAZE_OFFSETS, GRAZE_OFFSETS + 1):
+				for sample: int in samples:
+					for at_start: bool in [false, true]:
+						var ends: Array[Vector2] = _graze_segment(
+							rng, side, radius, offset, size, at_start, sample % 2 == 0
+						)
+						var wanted: bool = old.has_clear_line(ends[0], ends[1], radius)
+						per_side += 1
+						if fresh.has_clear_line(ends[0], ends[1], radius) != wanted:
+							_mismatches += 1
+							if _differences.size() < 20:
+								_differences.append(
+									(
+										"%s side %d: %s to %s radius %s was %s"
+										% [label, side, ends[0], ends[1], radius, wanted]
+									)
+								)
+		assert_gte(per_side, MIN_GRAZE_CHECKS_PER_SIDE, "%s: checks on side %d" % [label, side])
+		compared += per_side
+	return compared
+
+
+## A segment with one end `radius + offset * GRAZE_UNIT` from the face of a border wall on `side`
+## (a circle of that radius just touches the wall, or just misses it, or just overlaps it) and the
+## other end somewhere in the room: at least LONG_SEGMENT_TILES away along the axis where `long`
+## and the room allows. `at_start` puts the graze at the first end and not the last.
+func _graze_segment(
+	rng: RandomNumberGenerator,
+	side: int,
+	radius: float,
+	offset: int,
+	size: Vector2i,
+	at_start: bool,
+	long: bool
+) -> Array[Vector2]:
+	var shift: float = radius + offset * GRAZE_UNIT
+	var graze: Vector2 = Vector2(
+		rng.randf_range(1.0, size.x - 1.0), rng.randf_range(1.0, size.y - 1.0)
+	)
+	var other: Vector2 = Vector2(
+		rng.randf_range(1.0, size.x - 1.0), rng.randf_range(1.0, size.y - 1.0)
+	)
+	if side == SIDE_EAST:
+		graze.x = size.x - 1.0 - shift
+		if long and graze.x - LONG_SEGMENT_TILES >= 1.0:
+			other.x = rng.randf_range(1.0, graze.x - LONG_SEGMENT_TILES)
+	elif side == SIDE_WEST:
+		graze.x = 1.0 + shift
+		if long and graze.x + LONG_SEGMENT_TILES <= size.x - 1.0:
+			other.x = rng.randf_range(graze.x + LONG_SEGMENT_TILES, size.x - 1.0)
+	elif side == SIDE_NORTH:
+		graze.y = 1.0 + shift
+		if long and graze.y + LONG_SEGMENT_TILES <= size.y - 1.0:
+			other.y = rng.randf_range(graze.y + LONG_SEGMENT_TILES, size.y - 1.0)
+	else:
+		graze.y = size.y - 1.0 - shift
+		if long and graze.y - LONG_SEGMENT_TILES >= 1.0:
+			other.y = rng.randf_range(1.0, graze.y - LONG_SEGMENT_TILES)
+	if at_start:
+		return [graze, other]
+	return [other, graze]
+
+
+## 0, the bolt's radius and every distinct hurtbox radius of the shipped EnemyData files: the
+## radii the enemy brains pass to has_clear_line().
+func _radii() -> Array[float]:
+	var radii: Array[float] = [0.0, BOLT_RADIUS_TILES]
+	for file_name: String in DirAccess.get_files_at(ENEMY_DATA_DIR):
+		if not file_name.ends_with(".tres"):
+			continue
+		var data: EnemyData = load("%s/%s" % [ENEMY_DATA_DIR, file_name]) as EnemyData
+		if data != null and not radii.has(data.hurtbox_radius_tiles):
+			radii.append(data.hurtbox_radius_tiles)
+	radii.sort()
+	return radii
 
 
 # --- the seeded questions ---

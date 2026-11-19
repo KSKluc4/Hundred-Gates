@@ -26,9 +26,16 @@ const DIAGONAL_COST: float = sqrt(2.0)
 const DIAGONAL_BETWEEN: Array[int] = [0b0011, 0b0110, 0b1100, 0b1001]
 ## Costs closer than this are a tie, so float noise can't change which neighbour wins (C4).
 const COST_EPSILON: float = 1e-9
-## F-013/C17: a line check looks this far beyond the reach it must test, so float rounding in the
-## clipping can never leave out a tile the full box scan would have tested.
-const CLIP_MARGIN: float = 1e-6
+## F-013/C17 (c): the slack, in tiles, of the line check's clip. The clip only chooses which tiles
+## to test; a tile it keeps by mistake costs microseconds, a tile it drops by mistake is a wrong
+## answer. So it must err on the side of keeping, and by more than every rounding it can meet:
+## Vector2 holds 32-bit floats, a coordinate of 64 has steps of 7.6e-6, a difference of two such
+## coordinates is off by up to 1.5e-5, and the distance test it feeds is off by about as much.
+## The largest room is 80 x 46. 1e-3 is some 60 times the worst of that, and costs at most an
+## extra tile at each end of a row.
+const CLIP_MARGIN: float = 1e-3
+## The whole tiles added at each end of a row's columns, on top of CLIP_MARGIN.
+const CLIP_TILES: int = 1
 ## `_settled` values: 0 not yet taken off the queue, 1 settled (its cost is final), 2 not yet
 ## settled and wanted by the question being answered (it stays 2 only when no path reaches it).
 const UNSETTLED: int = 0
@@ -96,8 +103,9 @@ func tile_of(position_tiles: Vector2) -> Vector2i:
 ## sampled points. Touching counts as blocked, so a zero radius that grazes a corner is blocked.
 ## F-013/C17 (c): the tests are the same ones, on tiles of that same box, but a row of the box
 ## only visits the columns the segment passes near, so a long diagonal no longer tests the whole
-## rectangle. A tile left out is one the segment is further from than the limit, so it could
-## never have made the line blocked.
+## rectangle. A tile is left out only when the segment is further from it than the limit by more
+## than CLIP_MARGIN plus a tile, which float rounding cannot bridge, so no tile that could have
+## made the line blocked is ever left out. The clip never goes beyond the old box either.
 func has_clear_line(from: Vector2, to: Vector2, radius_tiles: float) -> bool:
 	var limit: float = radius_tiles + Geometry.DISTANCE_EPSILON
 	var reach: Vector2 = Vector2.ONE * limit  # A tile that only touches the box counts too.
@@ -121,11 +129,15 @@ func has_clear_line(from: Vector2, to: Vector2, radius_tiles: float) -> bool:
 			t_last = minf(1.0, maxf(t_a, t_b))
 			if t_first > t_last:
 				continue
-		var x_a: float = from.x + along.x * t_first
-		var x_b: float = from.x + along.x * t_last
+		# Where that part starts and ends. An end the row did not cut is the segment's own end,
+		# not `from + along * t`: `along` is a difference of 32-bit floats, and for a segment of
+		# 32 tiles or more its rounding is larger than a margin of 1e-6 (the CR-1 bug).
+		var x_first: float = from.x if t_first == 0.0 else from.x + along.x * t_first
+		var x_last: float = to.x if t_last == 1.0 else from.x + along.x * t_last
 		# A tile whose square is within `limit` of a point at x spans x - limit - 1 .. x + limit.
-		var from_x: int = maxi(first_x, floori(minf(x_a, x_b) - band) - 1)
-		var to_x: int = mini(last_x, floori(maxf(x_a, x_b) + band))
+		# Slack at both ends, the same at each.
+		var from_x: int = maxi(first_x, floori(minf(x_first, x_last) - band) - CLIP_TILES)
+		var to_x: int = mini(last_x, floori(maxf(x_first, x_last) + band) + CLIP_TILES)
 		for x: int in range(from_x, to_x + 1):
 			if x >= 0 and y >= 0 and x < _width and y < _height and _walkable[y * _width + x] == 1:
 				continue
