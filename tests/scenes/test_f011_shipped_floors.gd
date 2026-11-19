@@ -183,6 +183,7 @@ func _check_acted(data: RoomData, spawns: Array[RoomSpawn]) -> void:
 		var tag: String = "%s: %s" % [data.id, spawns[spawn_index].combat_id]
 		assert_true(logic.is_aggroed(), "%s was awake" % tag)
 		assert_true(_acted[spawn_index], "%s never chased or attacked" % tag)
+		assert_true(_left[spawn_index], "%s never left its spawn tile" % tag)
 		report.append(
 			(
 				"%s acted %s, left spawn %s"
