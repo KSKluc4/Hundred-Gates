@@ -1,12 +1,22 @@
+# gdlint:disable=max-public-methods
 extends F011SceneTest
 ## F-012 T3 (AC14-AC16): the floor scene's death and exit signals and its debug switches. The
 ## default exports keep F-011's behaviour; the F-011 scene tests cover that half of AC14.
+## Review round 1 (CR-4): a dead player takes no input and the debug keys do nothing until the
+## room is rebuilt.
 
 const WALK_TICKS: int = 60
 
 var _died: int = 0
 var _exited: Array[int] = []
 var _cleared: Array[int] = []
+var _input_at_death: bool = true
+var _held_keys: Array[Key] = []
+
+
+func after_each() -> void:
+	_release_held_keys()
+	super.after_each()
 
 
 func test_ac14_by_default_a_death_restarts_the_room_and_reports_nothing() -> void:
@@ -214,6 +224,93 @@ func test_ac16_the_player_and_the_boss_dying_in_one_tick_is_a_death() -> void:
 	assert_eq(_exited, [] as Array[int])
 
 
+# --- CR-4: a dead player takes no input and the debug keys do nothing, until a rebuild ---
+
+
+func test_cr4_a_reported_death_turns_the_players_input_off_before_the_signal() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _no_restart_connect_and_input_on)
+	assert_true(player().input_enabled, "the floor was built with the player's own input")
+	hit(player().motor, 1000)
+	await run_ticks(2)
+	assert_eq(_died, 1)
+	assert_false(player().input_enabled, "off after the death")
+	assert_false(_input_at_death, "and already off when player_died was emitted")
+
+
+func test_cr4_a_dead_player_does_not_walk_dash_or_attack_with_the_real_input_held() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _no_restart_connect_and_input_on)
+	enemy().logic.set_ai_enabled(false)  # Nobody pushes the body: any motion would be input.
+	hit(player().motor, 1000)
+	await run_ticks(2)
+	assert_eq(_died, 1)
+	var start: Vector2 = player().motor.get_position_tiles()
+	await _hold_key_between_ticks(KEY_W)
+	await _hold_key_between_ticks(KEY_J)  # attack
+	await _hold_key_between_ticks(KEY_SPACE)  # dodge
+	var seen: Dictionary = await _watch_ticks(WALK_TICKS)
+	assert_eq(seen["farthest"], 0.0, "did not walk or dash")
+	assert_eq(player().motor.get_position_tiles(), start)
+	assert_eq(
+		seen["states"], [PlayerMotor.State.IDLE] as Array[int], "never moving, dashing or attacking"
+	)
+	assert_eq(hp(), 0)
+
+
+func test_cr4_r_and_n_pressed_after_the_death_change_nothing() -> void:
+	await spawn_floor(_floor_of_solo_rooms(2), 0, _no_restart_and_connect)
+	var old_room: Room = room()
+	var entered: Array[int] = []
+	_floor.room_entered.connect(func(index: int) -> void: entered.append(index))
+	hit(player().motor, 1000)
+	await run_ticks(2)
+	assert_eq(_died, 1)
+	press_key(KEY_R)
+	press_key(KEY_N)
+	await run_ticks(WALK_TICKS)
+	assert_same(room(), old_room, "the same room object")
+	assert_eq(hp(), 0, "still dead: R did not revive")
+	assert_eq(entered, [] as Array[int], "no room_entered")
+	assert_eq(_floor.get_run().get_room_index(), 0, "N did not move on")
+	assert_eq(_died, 1)
+
+
+func test_cr4_restart_room_called_directly_rebuilds_with_the_input_and_the_keys_back() -> void:
+	await spawn_floor(_floor_of_solo_rooms(2), 0, _no_restart_connect_and_input_on)
+	hit(player().motor, 1000)
+	await run_ticks(2)
+	assert_false(player().input_enabled)
+	var dead_room: Room = room()
+	_floor.restart_room()
+	assert_ne(room(), dead_room, "a new room")
+	assert_eq(hp(), 100)
+	assert_true(player().input_enabled, "the input as the floor was built with it")
+	var second_room: Room = room()
+	press_key(KEY_R)
+	assert_ne(room(), second_room, "and the keys work again")
+	hit(player().motor, 1000)
+	await run_ticks(2)
+	assert_eq(_died, 2, "a second death is reported and silenced the same way")
+	assert_false(player().input_enabled)
+
+
+func test_cr4_with_death_restarts_room_on_nothing_about_the_input_changes() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _connect_and_input_on)
+	var old_room: Room = room()
+	hit(player().motor, 1000)
+	await run_ticks(2)
+	assert_ne(room(), old_room, "F-011's rule: a new room")
+	assert_eq(_died, 0)
+	assert_true(player().input_enabled, "the new player has its input")
+	enemy().logic.set_ai_enabled(false)
+	await _hold_key_between_ticks(KEY_W)
+	var seen: Dictionary = await _watch_ticks(WALK_TICKS / 2)
+	assert_gt(seen["farthest"], 0.0, "the player's own input walks it")
+	var before_r: Room = room()
+	press_key(KEY_R)
+	assert_ne(room(), before_r, "R still restarts")
+	assert_true(player().input_enabled)
+
+
 ## Kills the room, stands on the exit, and checks the report is once and only for the exit.
 func _clear_and_stand_on_exit_checks(floor_number: int) -> void:
 	_stand_on_exit()
@@ -237,7 +334,8 @@ func _connect_signals(scene: FloorScene) -> void:
 	_died = 0
 	_exited = []
 	_cleared = []
-	scene.player_died.connect(func() -> void: _died += 1)
+	_input_at_death = true
+	scene.player_died.connect(_on_player_died)
 	scene.floor_exited.connect(func(number: int) -> void: _exited.append(number))
 	scene.floor_cleared.connect(func(number: int) -> void: _cleared.append(number))
 
@@ -249,6 +347,59 @@ func _no_restart_and_connect(scene: FloorScene) -> void:
 
 func _keys_off(scene: FloorScene) -> void:
 	scene.debug_keys_enabled = false
+
+
+func _no_restart_connect_and_input_on(scene: FloorScene) -> void:
+	scene.player_input_enabled = true
+	_no_restart_and_connect(scene)
+
+
+func _connect_and_input_on(scene: FloorScene) -> void:
+	scene.player_input_enabled = true
+	_connect_signals(scene)
+
+
+## With nothing scripted, the way the player's own input is polled: one tick per iteration. The
+## farthest the player got from where it started, and the states its motor was in.
+func _watch_ticks(ticks: int) -> Dictionary:
+	var start: Vector2 = player().motor.get_position_tiles()
+	var farthest: float = 0.0
+	var states: Array[int] = []
+	for _i: int in ticks:
+		await get_tree().physics_frame
+		var state: int = player().motor.get_state()
+		if not states.has(state):
+			states.append(state)
+		farthest = maxf(farthest, (player().motor.get_position_tiles() - start).length())
+	return {"farthest": farthest, "states": states}
+
+
+## The key goes down between two physics ticks, where the OS delivers it, and stays down until
+## after_each(). Both the key and the physical key, as the keyboard sends them.
+func _hold_key_between_ticks(key: Key) -> void:
+	await get_tree().process_frame
+	_send_key(key, true)
+	_held_keys.append(key)
+
+
+func _release_held_keys() -> void:
+	for key: Key in _held_keys:
+		_send_key(key, false)
+	_held_keys.clear()
+
+
+func _send_key(key: Key, pressed: bool) -> void:
+	var event: InputEventKey = InputEventKey.new()
+	event.keycode = key
+	event.physical_keycode = key
+	event.pressed = pressed
+	Input.parse_input_event(event)
+	Input.flush_buffered_events()
+
+
+func _on_player_died() -> void:
+	_died += 1
+	_input_at_death = player().input_enabled
 
 
 ## `solo_rooms` combat rooms of one weak enemy, then the fixture boss room.

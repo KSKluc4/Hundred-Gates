@@ -6,6 +6,8 @@ extends F012GameTest
 ## The death pause of these tests, in seconds (the shipped one is longer).
 const DEATH_DELAY: float = 0.5
 const PAUSE_TICKS: int = 60
+## Long enough for PAUSE_TICKS of a held key and a few ticks either side, at 120 ticks/s.
+const DEATH_PAUSE_SECONDS: float = 1.0
 const BOSS_TEXT: String = "Floor 1 · Boss"
 
 ## What a probe saw inside a signal handler of the floor scene.
@@ -495,6 +497,20 @@ func test_ac32_the_keys_and_the_hud_do_nothing_without_a_game() -> void:
 	_assert_nothing_built()
 
 
+# --- C9: the scenes the game shows sit at the world origin ---
+
+
+func test_c9_the_town_and_the_floor_the_game_shows_sit_at_the_origin_with_no_errors() -> void:
+	await spawn_game(TowerFixtures.tower_of(1, 1))
+	assert_true(town().global_transform.is_equal_approx(Transform2D.IDENTITY), "the town")
+	assert_eq(town().get_setup_errors(), PackedStringArray())
+	assert_not_null(town().get_room(), "and it built")
+	await enter_floor_through_gate(1)
+	assert_true(floor_scene().global_transform.is_equal_approx(Transform2D.IDENTITY), "the floor")
+	assert_eq(floor_scene().get_setup_errors(), PackedStringArray())
+	assert_not_null(room(), "and it built")
+
+
 # --- C5: death ---
 
 
@@ -560,6 +576,62 @@ func test_c5_a_second_death_after_coming_back_works_the_same() -> void:
 		assert_true(await run_until(back, PAUSE_TICKS * 3))
 		assert_eq(hp(), max_hp())
 		await run_ticks(2)
+
+
+# --- C5, review round 1 (CR-4): the dead player and the keys during the pause ---
+
+
+func test_cr4_during_the_death_pause_nothing_the_person_does_has_any_effect() -> void:
+	set_death_delay(DEATH_PAUSE_SECONDS)
+	await spawn_game(
+		TowerFixtures.tower_of(1, 1), func(node: Game) -> void: node.player_input_enabled = true
+	)
+	# The player's own input walks to the gate and takes the only entry.
+	hold_key(KEY_W)
+	var opened: Callable = func() -> bool: return menu().is_open()
+	assert_true(
+		await run_until(opened, WALK_LIMIT_TICKS), "the player's own input reached the gate"
+	)
+	release_held_keys()
+	await choose_entry(1)
+	assert_true(player().input_enabled, "in the floor, alive: the input is on")
+	enemy().logic.set_ai_enabled(false)  # Nobody pushes the body: any motion would be input.
+	var dead_floor: FloorScene = floor_scene()
+	var dead_room: Room = room()
+	kill_player()
+	await run_ticks(2)
+	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
+	assert_false(player().input_enabled, "a dead player takes no input")
+	var start: Vector2 = player().motor.get_position_tiles()
+	# A held movement key, a dodge, an attack, and R and N pressed in the middle of the pause.
+	await hold_key_between_ticks(KEY_W)
+	await hold_key_between_ticks(KEY_J)
+	await hold_key_between_ticks(KEY_SPACE)
+	var states: Array[int] = []
+	for tick: int in PAUSE_TICKS:
+		if tick == PAUSE_TICKS / 2:
+			press_key(KEY_R)
+			press_key(KEY_N)
+		await get_tree().physics_frame
+		if not states.has(player().motor.get_state()):
+			states.append(player().motor.get_state())
+	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE, "still in the pause")
+	assert_same(floor_scene(), dead_floor, "the same floor scene")
+	assert_same(room(), dead_room, "and the same room: R did not rebuild it")
+	assert_eq(dead_floor.get_run().get_room_index(), 0, "N did not move on")
+	assert_eq(hp(), 0, "still dead")
+	assert_eq(player().motor.get_position_tiles(), start, "did not walk or dash")
+	assert_eq(states, [PlayerMotor.State.IDLE] as Array[int], "never moving, dashing or attacking")
+	assert_eq(hud().get_banner_text(), Game.DEATH_BANNER)
+	# The pause ends on its own, with the keys let go: the town, at full HP and with input.
+	release_held_keys()
+	var back: Callable = func() -> bool: return town() != null
+	assert_true(await run_until(back, PAUSE_TICKS * 4), "the town came back")
+	await run_ticks(1)
+	assert_eq(session().get_place(), TowerSession.Place.TOWN)
+	assert_false(is_instance_valid(dead_floor), "the floor was freed")
+	assert_eq(hp(), max_hp(), "full HP")
+	assert_true(player().input_enabled, "and the input as the game was built with it")
 
 
 # --- C6: an uncleared room's exit does nothing ---

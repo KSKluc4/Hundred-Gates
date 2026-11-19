@@ -30,6 +30,7 @@ const AFTER_RUNNER_PRIORITY: int = 1
 ## through `player_died` and the floor stops: whoever owns the floor decides what comes next.
 @export var death_restarts_room: bool = true
 ## F-012/C11: off, N and R do nothing. The public skip_room() / restart_room() still work.
+## They also do nothing once a death was reported (C5).
 @export var debug_keys_enabled: bool = true
 ## F-012/C11: off hides the debug label's layer.
 @export var debug_label_visible: bool = true
@@ -69,6 +70,8 @@ func _physics_process(_delta: float) -> void:
 			restart_room()  # F-011/AC20: placeholder death rule.
 		else:
 			_death_reported = true
+			# F-012/C5 (CR-4): a dead player takes no input. A rebuilt room has it as built.
+			_room.get_player().input_enabled = false
 			player_died.emit()
 		return
 	if _room.is_cleared() and not _run.is_room_cleared():
@@ -84,8 +87,8 @@ func _physics_process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not debug_keys_enabled:
-		return  # F-012/C11
+	if not debug_keys_enabled or _death_reported:
+		return  # F-012/C11; C5 (CR-4): after the death N and R do nothing either.
 	if event.is_action_pressed(RESET_ACTION):
 		restart_room()
 	elif event.is_action_pressed(NEXT_ROOM_ACTION):
