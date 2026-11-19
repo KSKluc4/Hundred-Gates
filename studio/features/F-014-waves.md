@@ -1,8 +1,8 @@
 ---
 id: F-014
 title: Waves — reinforcements arrive in a room until its kill target is reached (Gate B playtest, third fix)
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-19
 updated: 2026-11-19
 depends_on: [F-004, F-011, F-012, F-013, D-007, D-010, D-012, D-014, D-015]
@@ -557,15 +557,15 @@ without `APPROVED`.
 **Started:** 2026-11-19  ·  **Branch:** `feature/F-014-waves` (cut from `feature/F-013-camera-rooms-dash`, D-015)
 
 ### Progress
-- [ ] T1
-- [ ] T2
-- [ ] T3
-- [ ] T4
-- [ ] T5
-- [ ] T6
-- [ ] T7
-- [ ] T8
-- [ ] T9
+- [x] T1 — a351404 (room data, validation, eight tunables; 37 + 9 tests)
+- [x] T2 — ffe511b (`WAITING`, `hold_in_reserve()`, `arrive()`; the node and the debug draw; 32 + 17 tests)
+- [x] T3 — f1576c2 (`RoomWaves`, the sim hook and snapshot; 48 + 19 tests)
+- [x] T4 — ad383d0 (the room: reserve, director, `is_cleared()`, counts, runner reset refused; 27 tests)
+- [x] T5 — cc2c066 (`WaveMarkers`; 14 tests)
+- [x] T6 — e49d9f0 (the HUD line; 13 tests), 5d31c35 (`Game` feeds it; 9 tests)
+- [x] T7 — 1684c7e (the 12 rooms' data: 204 arrival points), b36965f (core tests over the shipped rooms; 25 tests), 5d31c35 (room 1-1 in the game; C16 (1))
+- [x] T8 — c994bde (`design/floors.md`, `design/combat.md`, `GLOSSARY.md`)
+- [x] T9 — final gate on 65019e6, results under "How to test"
 
 ### Deviations from plan
 - DEV-1: the two implementers were started on T1 and T2 while plan review round 3 (a check
@@ -577,12 +577,157 @@ without `APPROVED`.
   3, kill targets 6 to 15) and has had no review round of its own. — **Why:** the round's
   PR-21 showed the old numbers could not reach their caps. — **Impact:** AC23 and C14 (c)
   are what check it; the numbers are data and Lucas's to tune (§10 Q1).
+- DEV-4: the tasks ran in another order than §6 gives, and two were split. T7's data
+  (1684c7e) and its core tests (b36965f) came before T4, T6 came as two commits, and T7's
+  scene test and C16 (1) came with T6's second commit (5d31c35). — **Why:** to keep both
+  implementers busy while T3 and T4 were built; the room data and the core tests need no
+  `Room`. — **Impact:** between 1684c7e and ad383d0 the shipped rooms carried wave data that
+  nothing read yet (every test passed); see DEV-5.
+- DEV-5: commit ad383d0 (T4) leaves three tests failing, the ones C16 (1) names; 5d31c35
+  fixes them. — **Why:** the fix was another implementer's file. — **Impact:** two commits
+  (ad383d0, cc2c066) on which `tools/test` is not green.
+- DEV-6: the full suite was not run before each commit, as in F-013 (its DEV-3): each task
+  was committed after its own tests, the suites its files touch, lint and format; the full
+  suite ran after the last task.
+- DEV-7: AC23 is checked at core level for all 12 rooms (b36965f: a real sim, the room's
+  nav grid, no walls for bodies) and in the game for room 1-1 only (5d31c35). — **Why:** a
+  scene run of every room would add minutes to the suite, and `Room`'s part is tested on
+  fixtures. — **Impact:** in the scene test the cap clause cannot fail (its script kills
+  too fast for the cap to bind); the core test is what proves the cap. Its script also
+  holds the player's HP at 60 before the last kill, so the room-clear heal is visible.
+- DEV-8: test hooks that are recorded state on presentation nodes: `Enemy.did_draw_body()`
+  and `WaveMarkers.get_last_drawn()`. — **Why:** draw calls cannot be observed in a
+  headless run. — **Impact:** none on behaviour; both can be dropped with the lines that
+  read them.
+- DEV-9: `Enemy.move_with_combatant()` for a waiting enemy puts the body on the logic's
+  position and skips the move and the wall reports. — **Why:** after a sim-only restore
+  the runner would otherwise copy the hidden body's stale position into the waiting logic.
+- DEV-10: public names the spec does not give: `RoomWaves.get_next_index()`,
+  `RoomWaves.Pending`, `RoomData.ARRIVAL_POINT`, `Room.get_waves()`,
+  `Room.get_wave_markers()`, `Enemy.is_body_drawn()`, `WaveMarkers.get_markers()`,
+  `CombatDebugDraw.hurtboxes_for()` and `has_director()`, `Hud.kills_text()`,
+  `Hud.get_kills_text()`.
+- DEV-11: `Game` feeds the kills line every physics frame, as C13 says, and also when a
+  room is entered. — **Why:** a debug skip happens between ticks; the per-frame feed alone
+  would show the new count one tick after the location text (AC21).
+- DEV-12: during T1 and T2 the implementers ran their mutations in the live checkout, and
+  their two mutation scripts, both at the scratchpad's root, overwrote each other once; one
+  implementer found a line of `room_data.gd` it had not written. — **Why:** the briefs did
+  not forbid it. — **Impact:** none in what was committed: every file was compared with the
+  implementer's clean copy and reviewed as a diff by the lead before its commit. From T3
+  on, mutations ran only in scratch copies of the project and each implementer had its own
+  folder.
+
+**Pre-existing tests changed (C16), all of them:**
+- C16 (1): `tests/scenes/test_f011_shipped_floors.gd`, two lines in `_check_loaded()`: the
+  expected ids also hold `get_reinforcement_spawns()`'s. Nothing else in that file changed;
+  its "alive" count still holds because the reserve is waiting.
+- C16 (2): `tests/core/floors/test_floor_tunables.gd`: eight asserts added to the
+  shipped-values test and nine `test_ac3_*` tests appended. Nothing existing changed.
+- C16 (3): no test pinned a tile where an `S` now stands.
+- Fixture files gained builders, appended: `tests/fixtures/floors/floor_fixtures.gd`
+  (`wave_pillar_room()`).
 
 ### Assumptions made (small, reversible)
+- ASSUMPTION-1: `get_kill_target()` counts the reinforcement entries that resolve to an
+  enemy (as `get_spawns()` skips a bad digit); it differs from "the number of
+  reinforcements" only in rooms `validate()` refuses.
+- ASSUMPTION-2: in a boss room or a safe room only the "not allowed here" wave errors are
+  reported, so each rule can fail alone; the spacing rules run in every room; a negative
+  `max_engaged` is refused even without waves; `max_engaged` has no upper bound.
+- ASSUMPTION-3: `hold_in_reserve()` and `arrive()` return a bool. "Nothing running" is:
+  data present, `IDLE`, not aggroed, no latched attack, no projectile, no hitstop, no
+  knockback. `arrive()` leaves the attack cooldown as it was.
+- ASSUMPTION-4: `restore_errors()` of an enemy refuses a state value it does not know and a
+  waiting enemy that is aggroed.
+- ASSUMPTION-5: the fight starts when any of the room's enemies is aggroed or dead, the
+  reserve included; a reserve enemy killed by a test while waiting starts the fight but
+  releases nothing. A room with no placed enemy (validation never allows one) releases its
+  whole reserve.
+- ASSUMPTION-6: in C8 "far enough" and "inside the box" are inclusive within
+  `Geometry.DISTANCE_EPSILON`, and an enemy is "nearer than the gap" only below the gap
+  minus that epsilon. The shipped rooms rely on the box edge being inside: in most rooms a
+  second or third choice lies exactly 19 or 10 tiles away.
+- ASSUMPTION-7: a reserve enemy that is not waiting is passed over before the cap, the
+  interval and the player are checked; that moves the index and nothing else.
+- ASSUMPTION-8: the director's snapshot is `{started, next_index, since_last, pending}` with
+  each pending entry `{index, point, left, total}`; a `waves` key given to a sim with no
+  director is ignored.
+- ASSUMPTION-9: without a director `Room.get_kill_count()` is the enemies that are not
+  alive.
+- ASSUMPTION-10: the marker's fill is a disc that grows from the centre to the ring; the
+  node redraws every frame and sits at `z_index` −1 so the runner stays the room's last
+  child.
+- ASSUMPTION-11: the kills line is 120 px wide at y 16 (both exports), so it clears the
+  banner; `hide_kills()` also clears the text; during the death pause the line keeps the
+  room's counts until the town is shown.
+- ASSUMPTION-12: the arrival points were placed at least 4 tiles from each other (the rule
+  is 1.5) so they spread evenly; rule (b) was checked over every tile that is not a wall,
+  `P` and `E` included.
 
 ### Things the Auditor should look at closely
+- `RoomWaves.step()`: the order of (1) to (4); that a pending arrival whose enemy was
+  killed still counts toward the cap until the next step drops it; that
+  `get_released_count()` is recomputed inside the send loop.
+- The wave table's numbers (DEV-3): they passed AC23 and C14 (c) but no review round.
+- `EnemyLogic`: every path that could take an enemy out of `WAITING` other than `arrive()`
+  and death (`setup()` does, by design; the runner refuses a reset in a waves room).
+- The `Enemy` node after a restore in both directions, and `hide_when_dead`.
+- The marker is a ring of the arriving body's radius (6.4 px for a chaser at 640 × 360).
+  It was seen in one rendered run; whether it reads in a fight is unverified.
+- `tests/scenes/test_f005_reload.gd`, `test_ac22_a_pending_launch_rejects_the_rate…`: the
+  plan reviewer saw it fail once in a full run (it has no room and no director). It passed
+  in every run since, the lead's full runs included.
+- One F-014 test file left 28 objects alive at the end of the test run (found by the lead
+  in the gate; the game itself left none). Fixed in 65019e6.
 
 ### How to test
+```
+tools/test                      # 140 scripts, 2023 tests, all passing (639 s)
+.venv/Scripts/gdlint src tests  # no problems
+.venv/Scripts/gdformat --check src tests   # 270 files unchanged
+tools/check_core_purity         # core purity ok
+godot --headless --path . res://scenes/main.tscn --quit-after 120   # no error line
+```
+Final gate (T9) on 65019e6: all of the above, with no "Orphans" line and no leak line at
+the end of the suite's output.
+
+**The scripted run of every shipped room** (AC23, core level; one kill every 3 s, so the
+times say how the fights are shaped, not how long a player takes):
+
+| Room | Kill target | Cap | Most engaged | Seconds with 1 / 2 / 3 engaged | Arrival points |
+|---|---|---|---|---|---|
+| 1-1 | 6 | 2 | 2 | 9.2 / 8.8 / 0 | 13 |
+| 1-2 | 9 | 2 | 2 | 13.8 / 13.2 / 0 | 14 |
+| 1-3 | 12 | 3 | 3 | 10.6 / 15.2 / 10.2 | 18 |
+| 2-1 | 12 | 3 | 3 | 11.4 / 15.9 / 8.7 | 13 |
+| 2-2 | 12 | 3 | 3 | 15.2 / 18.0 / 2.8 | 17 |
+| 2-3 | 12 | 3 | 3 | 15.2 / 18.0 / 2.8 | 18 |
+| 2-4 | 15 | 3 | 3 | 19.0 / 22.5 / 3.5 | 22 |
+| 3-1 | 3 | 1 | 1 | 7.4 / 0 / 0 | 15 |
+| 3-2 | 9 | 3 | 3 | 11.4 / 13.5 / 2.1 | 16 |
+| 3-3 | 7 | 2 | 2 | 12.2 / 8.8 / 0 | 17 |
+| 3-4 | 4 | 2 | 2 | 7.6 / 4.4 / 0 | 19 |
+| 3-5 | 15 | 3 | 3 | 19.0 / 22.5 / 3.5 | 22 |
+
+Every reinforcement arrives, no arrival goes over the cap, every cap is reached, no share
+starts early, each room clears exactly at its kill target. From every walkable tile of
+every room the director's first three choices of arrival point lie inside the arrival box
+(worst offsets exactly 19 and 10 tiles).
+
+**Cost of the reserve (T9; lead, headless, whole frame, 600 frames, two runs each):** room
+3-5 with everyone asleep: median 0.63 ms a frame with its 10 waiting enemies, 0.41 ms in a
+copy of the project whose room 3-5 has none. That is 0.22 ms for the reserve, under the
+1 ms of T9. A fight in that room with the player's HP refilled (7 enemies alive): median
+2.2 ms, 95th percentile 3.8, worst 6.4 (the same room without waves, 5 enemies of which
+one or two fight: 0.63 ms; the two are not the same fight).
+
+**Rendered (lead):** room 1-1 from the town: `Kills 0 / 6` under the location text; the
+player put next to a placed chaser; a blue ring near the player while the warning runs; a
+chaser in its place afterwards, chasing; the other placed chaser still asleep. One run,
+screenshots only; nobody played it.
+
+Manual: §5, "How to verify manually".
 
 ---
 
