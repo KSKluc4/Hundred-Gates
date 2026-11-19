@@ -1,8 +1,8 @@
 ---
 id: F-012
 title: The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-011, D-005, D-006, D-010, D-012, D-013]
@@ -176,7 +176,7 @@ the F5 reload in debug scenes, snapshots.
 - [ ] AC20: A `TownScene` built from a fixture safe room has the walls, the player at `P` at full HP, no enemies, a `CombatRunner` with no setup errors, and its gate body has no collision. A scripted player can walk around. An invalid town room builds nothing and reports the errors.
 - [ ] AC21: Walking the scripted player onto a gate tile opens the gate menu within one tick, listing exactly `TowerProgress.get_entries()` in order plus a last "stay" entry. While the gate is engaged the player takes no input and stays exactly on the position they had when the list opened, checked over 60 ticks for a player who walked in and for one who dashed in (review round 1, CR-1).
 - [ ] AC22: Choosing an entry emits `floor_chosen(floor_number, at_boss)` once and closes the menu. Closing without choosing (the stay entry or `ui_cancel`) emits nothing, puts the player on `TownGate.get_return_position_tiles()`, gives input back on the next tick (later if a dash is still running or buffered), and the menu doesn't reopen until the player has left and re-entered the gate. Closing it with a real Space key press (`ui_accept` and `dodge` at once) or a click doesn't make the player dodge or attack (review round 1, CR-2).
-- [ ] AC23: `GateMenu`: entry text comes from one static function (`Floor 1 — from the start`, `Floor 1 — at the boss`, with ` (cleared)` appended for a cleared floor); focus starts on the last floor entry; `move_up` / `move_down` and `ui_up` / `ui_down` move the focus; `ui_accept` or `interact` chooses. A held stick moves the focus one step per push, not one per motion event (review round 1, CR-3): a push starts past the larger deadzone of its direction and ends inside the smaller one, and only the stick sets the stick's state (round 3, CR-15, CR-16). On a gamepad A chooses and B cancels (round 3, CR-17).
+- [ ] AC23: `GateMenu`: entry text comes from one static function (`Floor 1 — from the start`, `Floor 1 — at the boss`, with ` (cleared)` appended for a cleared floor); focus starts on the last floor entry; `move_up` / `move_down` and `ui_up` / `ui_down` move the focus; `ui_accept` or `interact` chooses. A held stick moves the focus one step per push, not one per motion event (review round 1, CR-3): a push starts past the larger deadzone of its direction and ends inside the smaller one, and only the stick sets the stick's state (round 3, CR-15, CR-16). When the list opens the stick is read as it is: a direction it is already past the smaller deadzone in counts as pushed, so letting go of a stick that was held on arrival moves nothing (round 4, CR-18). On a gamepad A chooses and B cancels (round 3, CR-17).
 - [ ] AC24: In the town, with debug keys on, `debug_next_room` (N) clears the highest unlocked floor in the injected progress; with them off it does nothing.
 
 **Shipped data (T6)**
@@ -384,6 +384,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 - [x] Review round 2 fix — CR-3 a772a52; spec and log edits 19a57bf; F-011's round 2 merged in 8905f83
 - [x] Review round 3 notes — CR-15, CR-16, CR-17 2f5cb54
 - [x] Review round 4 fix — CR-18 983846b
+- [x] Review round 5 note — CR-19 41760e4. Rounds: 1 changes requested, 2 changes requested, 3 approved with notes, 4 changes requested, 5 approved with notes.
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -544,7 +545,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 ### How to test
 ```sh
 export GODOT_BIN=/path/to/Godot_v4.7.2-stable
-tools/test                      # 123 scripts, 1578 tests, all passing (about 7.5 min)
+tools/test                      # 123 scripts, 1579 tests, all passing (about 7.5 min)
 tools/lint                      # on Windows: .venv/Scripts/gdlint src tests && .venv/Scripts/gdformat --check src tests
 tools/check_core_purity
 ```
@@ -554,6 +555,9 @@ All of this feature's scene tests: `-gdir=res://tests/scenes -gselect=f012`.
 By hand (Gate B): open the project and press F5. See §5 "How to verify manually". `N` skips a
 room in a floor and unlocks the next floor in the town; `R` restarts a room; `F3` hides the
 debug overlay.
+
+Final state (`41760e4`): 1579/1579 tests, gdlint clean, gdformat 248 files unchanged, core purity ok,
+and `main.tscn` boots headless with no error.
 
 After the round 4 fix (`983846b`): 1578/1578 tests, gdlint clean, gdformat 248 files unchanged, core
 purity ok, and `main.tscn` boots headless with no error.
@@ -959,6 +963,42 @@ The edits are undone and the correction stands as its own line (see F-011 §9).
 
 **Not checked in this round:** a real gamepad, keyboard or mouse (CR-18 included: every stick
 result is from synthetic events); more than one pad at once; a rendered frame.
+
+<!-- review-round: 5 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** 52b00dc (the CR-18 fix is `983846b`)
+
+**Date:** 2026-11-18 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+A narrow round by the same reviewer on a fresh extraction. On the fix commit the full suite
+passed (1578 tests), lint, format and core purity were clean, and `main.tscn` booted headless
+with no error. No blocking finding and no open 🟡: the feature is ready for Gate B.
+
+| Item | Result | Evidence |
+|---|---|---|
+| CR-18 | ✔ resolved | `gate_menu.gd:98`, `:180`. The round 4 probes, unchanged, pass: stick at −1.0 before the menu exists, then a small change and a plain release leave the focus alone; in the real `Game`, through a death and a rebuilt town, the list opens on "Floor 1 — at the boss" and stays there through the release. Against the round 3 menu the 4 tests the reply names fail. |
+| CR-15, CR-16, CR-17 | still hold | The round 3 and round 4 probes pass on this code; pad A and B behave as in round 4. |
+| Regressions in the list | none | Keys, d-pad, repeats, left and right, ramped diagonal, two openings, `open()` while open. |
+| The seeding | nothing wrong found | New probe, 9/9: held up at open then flipped straight down; held diagonally at open; a key and the stick both held at open; `open()` while open with the stick held or mid-push; no stale reading after a release made while the list was closed. A synthetic stick on device 1 is not seen headless (only connected pads and device 0 are asked): a test artefact, since a real pad is in the connected list. |
+
+Round 2's expectation for a stick resting at −0.4 when the list opens (no step on −0.9) is back,
+and the reviewer agrees with it.
+
+### New finding
+
+**CR-19 🔵 One new test's name says a key and the stick are held; only the key is.** Verified
+by reading. `tests/ui/test_gate_menu.gd:747`: it holds W, opens, releases W and pushes the
+stick. The named case works (the reviewer's probe passes) but has no test in the repository.
+
+> **Builder reply (lead):** fixed in `41760e4`: the test now holds the stick and W before the menu
+> exists and checks that neither release moves the focus; the W-only scenario keeps a test
+> under an honest name. AC23 also states the reading at open.
+
+**Not checked by any round:** a real gamepad, keyboard or mouse. Every stick and button result
+in rounds 1 to 5 is from synthetic events, including the premise of CR-18 (a held stick sends
+no event) and the claim that a real pad on a device other than 0 is in the connected list. Two
+pads at once, a pad connected after the list has opened, and a rendered frame of the list with
+a pad in hand. These are for Gate B.
 
 ---
 
