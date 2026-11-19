@@ -4,7 +4,8 @@ extends Control
 ## button. It shows what TowerProgress.get_entries() says and decides nothing (C2, G6): the town
 ## scene opens it and forwards the choice. Hidden until open(). While open it moves the focus with
 ## `ui_up` / `ui_down` and `move_up` / `move_down`, chooses with `ui_accept` or `interact`, and
-## cancels with `ui_cancel`. While closed it handles no input at all. The look → Art & Game Feel
+## cancels with `ui_cancel`; left and right do nothing (one column). While closed it handles no
+## input at all. The look → Art & Game Feel
 ## (§10 Q4).
 
 ## Once, with the floor and where to start it; the menu has closed by then. Not emitted by cancel().
@@ -23,6 +24,9 @@ const PREVIOUS_ACTIONS: Array[StringName] = [&"ui_up", &"move_up"]
 const NEXT_ACTIONS: Array[StringName] = [&"ui_down", &"move_down"]
 const CHOOSE_ACTIONS: Array[StringName] = [&"ui_accept", &"interact"]
 const CANCEL_ACTION: StringName = &"ui_cancel"
+## The list is one column and the menu moves it alone: while open, every event of these is consumed,
+## so Godot's own focus navigation never adds a step or a sideways jump (F-012/CR-3).
+const NAVIGATION_ACTIONS: Array[StringName] = [&"ui_up", &"ui_down", &"ui_left", &"ui_right"]
 
 @export var font_size: int = 8
 @export var panel_min_width_px: float = 160.0
@@ -32,6 +36,9 @@ var _entries: Array[TowerEntry] = []
 var _buttons: Array[Button] = []
 var _focus_index: int = 0
 var _is_open: bool = false
+## F-012/CR-3: per action, whether the stick was already past its deadzone when the last joypad
+## motion event came in. A push counts once: on the event that crosses.
+var _stick_held: Dictionary[StringName, bool] = {}
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _list: VBoxContainer = $Panel/List
@@ -55,10 +62,12 @@ func _input(event: InputEvent) -> void:
 	if not _is_open:
 		return
 	var action: Callable = _action_for(event)
-	if not action.is_valid():
-		return
-	get_viewport().set_input_as_handled()
-	action.call()
+	_track_stick(event)
+	if action.is_valid():
+		get_viewport().set_input_as_handled()
+		action.call()
+	elif _is_navigation(event):
+		get_viewport().set_input_as_handled()
 
 
 ## One line of the list per entry: "Floor 2 — at the boss (cleared)".
@@ -79,6 +88,9 @@ func open(entries: Array[TowerEntry]) -> void:
 	_add_button(STAY_TEXT, cancel)
 	_is_open = true
 	visible = true
+	_stick_held.clear()
+	for action: StringName in _watched_actions():
+		_stick_held[action] = Input.is_action_pressed(action)  # A stick held now is not a push.
 	_set_focus(maxi(_entries.size() - 1, 0))
 
 
@@ -134,12 +146,46 @@ func _action_for(event: InputEvent) -> Callable:
 
 
 ## Key repeat is not a press (is_action_pressed ignores echoes): a key held while walking into the
-## gate does not choose.
+## gate does not choose. A stick is a press only on the event that crosses its deadzone (CR-3).
 func _is_pressed(event: InputEvent, actions: Array[StringName]) -> bool:
 	for action: StringName in actions:
-		if event.is_action_pressed(action):
+		if event.is_action_pressed(action) and not _is_stick_already_held(event, action):
 			return true
 	return false
+
+
+## Any event of the four ui navigation actions: a repeat, a release, a stick event that is not a
+## crossing, a push sideways.
+func _is_navigation(event: InputEvent) -> bool:
+	for action: StringName in NAVIGATION_ACTIONS:
+		if event.is_action(action):
+			return true
+	return false
+
+
+## Every joypad motion event past the deadzone says "pressed", not only the first, and
+## Input.is_action_just_pressed is no help: it is true for every event of the same frame.
+func _is_stick_already_held(event: InputEvent, action: StringName) -> bool:
+	return event is InputEventJoypadMotion and _stick_held.get(action, false)
+
+
+## After the event is answered: which actions the stick holds now. The engine has already taken the
+## event into its own action state, and that state also covers a motion on the other axis, which
+## says nothing about this action.
+func _track_stick(event: InputEvent) -> void:
+	if not event is InputEventJoypadMotion:
+		return
+	for action: StringName in _watched_actions():
+		_stick_held[action] = Input.is_action_pressed(action)
+
+
+func _watched_actions() -> Array[StringName]:
+	var actions: Array[StringName] = []
+	actions.append_array(PREVIOUS_ACTIONS)
+	actions.append_array(NEXT_ACTIONS)
+	actions.append_array(CHOOSE_ACTIONS)
+	actions.append(CANCEL_ACTION)
+	return actions
 
 
 ## Clamped: the list doesn't wrap.
@@ -162,6 +208,9 @@ func _add_button(text: String, on_pressed: Callable) -> void:
 	button.text = text
 	button.add_theme_font_size_override(&"font_size", font_size)
 	button.pressed.connect(on_pressed)
+	# Sideways has nowhere to go: a neighbour that is itself keeps the focus where it is.
+	button.focus_neighbor_left = ^"."
+	button.focus_neighbor_right = ^"."
 	# Godot's own focus moves (Tab, the mouse) keep the focus index true.
 	button.focus_entered.connect(_on_button_focused.bind(_buttons.size()))
 	_buttons.append(button)

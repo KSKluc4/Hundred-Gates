@@ -1,20 +1,46 @@
 # gdlint:disable=max-public-methods
 extends GutTest
-## F-012 T5 (AC23): the gate menu. The keys go through the engine's input path
+## F-012 T5 (AC23): the gate menu. The keys and the stick go through the engine's input path
 ## (Input.parse_input_event), so `_input` is what answers them. The town scene's use of the menu
-## is tested in test_f012_town.
+## is tested in test_f012_town. Whatever a test presses, after_each lets go of (CR-10).
 
 const MENU_SCENE: PackedScene = preload("res://src/ui/town/gate_menu.tscn")
 const LIST_PATH: NodePath = ^"Panel/List"
+const HANDLED_ACTIONS: Array[StringName] = [
+	&"ui_up",
+	&"ui_down",
+	&"move_up",
+	&"move_down",
+	&"ui_accept",
+	&"interact",
+	&"ui_cancel",
+	&"ui_left",
+	&"ui_right",
+]
 
 var _menu: GateMenu
 var _chosen: Array[Vector2i] = []
 var _closed: int = 0
+var _held_keys: Array[Key] = []
+var _stick_axes: Array[JoyAxis] = []
 
 
 func before_each() -> void:
 	_chosen = []
 	_closed = 0
+	_held_keys = []
+	_stick_axes = []
+
+
+## Leaves no pressed action or tilted stick behind for the next test.
+func after_each() -> void:
+	for key: Key in _held_keys:
+		_send_key(key, false)
+	for axis: JoyAxis in _stick_axes:
+		_send_stick(axis, 0.0, 1)
+	Input.flush_buffered_events()
+	for action: StringName in HANDLED_ACTIONS:
+		assert_false(Input.is_action_pressed(action), "%s let go of" % action)
 
 
 func test_ac23_entry_text_for_a_floor_from_its_start() -> void:
@@ -260,12 +286,8 @@ func test_ac23_other_keys_pass_through_an_open_menu() -> void:
 func test_ac23_a_held_key_repeating_does_not_move_or_choose() -> void:
 	_spawn_menu()
 	_menu.open(_three_entries())
-	for key: Key in [KEY_E, KEY_UP, KEY_ESCAPE]:
-		var event: InputEventKey = InputEventKey.new()
-		event.physical_keycode = key
-		event.pressed = true
-		event.echo = true
-		Input.parse_input_event(event)
+	for key: Key in [KEY_E, KEY_UP, KEY_DOWN, KEY_ENTER, KEY_SPACE, KEY_ESCAPE]:
+		_send_key(key, true, true)
 	Input.flush_buffered_events()
 	assert_true(_menu.is_open())
 	assert_eq(_menu.get_focus_index(), 2)
@@ -273,15 +295,264 @@ func test_ac23_a_held_key_repeating_does_not_move_or_choose() -> void:
 	assert_eq(_closed, 0)
 
 
-func test_ac23_a_real_key_press_is_answered_too() -> void:
+func test_ac23_a_held_key_moves_once_however_many_repeats_follow() -> void:
 	_spawn_menu()
 	_menu.open(_three_entries())
-	_press_key(KEY_UP)  # ui_up and move_up at once: one step, not two.
-	assert_eq(_menu.get_focus_index(), 1)
-	_press_key(KEY_W)
+	_send_key(KEY_UP, true)
+	for _i: int in 4:
+		_send_key(KEY_UP, true, true)
+	_send_key(KEY_UP, false)
+	Input.flush_buffered_events()
+	assert_eq(_menu.get_focus_index(), 1, "the press moved, the repeats did not")
+
+
+func test_ac23_the_helper_keys_match_both_action_families() -> void:
+	# What the next tests stand on: one real key is an event for ui_* and for move_*.
+	assert_true(_key_event(KEY_UP, true).is_action(&"ui_up"))
+	assert_true(_key_event(KEY_UP, true).is_action(&"move_up"))
+	assert_true(_key_event(KEY_DOWN, true).is_action(&"ui_down"))
+	assert_true(_key_event(KEY_DOWN, true).is_action(&"move_down"))
+	assert_true(_key_event(KEY_ENTER, true).is_action(&"ui_accept"))
+	assert_true(_key_event(KEY_SPACE, true).is_action(&"ui_accept"))
+	assert_true(_key_event(KEY_ESCAPE, true).is_action(&"ui_cancel"))
+	assert_true(_key_event(KEY_E, true).is_action(&"interact"))
+
+
+func test_ac23_one_up_arrow_press_moves_one_step_though_it_is_ui_up_and_move_up() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_UP)
+	assert_eq(_menu.get_focus_index(), 1, "one step, not two")
+	_press_key(KEY_UP)
 	assert_eq(_menu.get_focus_index(), 0)
+
+
+func test_ac23_one_down_arrow_press_moves_one_step() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_UP)
+	_press_key(KEY_UP)
+	_press_key(KEY_DOWN)
+	assert_eq(_menu.get_focus_index(), 1)
+
+
+func test_ac23_w_and_s_move_the_focus_too() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_W)
+	assert_eq(_menu.get_focus_index(), 1)
+	_press_key(KEY_S)
+	assert_eq(_menu.get_focus_index(), 2)
+
+
+func test_ac23_a_real_enter_press_chooses_once() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_ENTER)
+	assert_eq(_chosen, [Vector2i(2, 0)] as Array[Vector2i])
+	assert_eq(_closed, 0)
+	assert_false(_menu.is_open())
+
+
+func test_ac23_a_real_space_press_chooses_once() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_SPACE)
+	assert_eq(_chosen, [Vector2i(2, 0)] as Array[Vector2i])
+	assert_eq(_closed, 0)
+	assert_false(_menu.is_open())
+
+
+func test_ac23_a_real_e_press_chooses_once() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_UP)
 	_press_key(KEY_E)
-	assert_eq(_chosen, [Vector2i(1, 0)] as Array[Vector2i])
+	assert_eq(_chosen, [Vector2i(1, 1)] as Array[Vector2i])
+	assert_eq(_closed, 0)
+	assert_false(_menu.is_open())
+
+
+func test_ac23_a_real_escape_press_cancels_once() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_ESCAPE)
+	assert_eq(_closed, 1)
+	assert_eq(_chosen, [] as Array[Vector2i])
+	assert_false(_menu.is_open())
+
+
+func test_ac23_one_stick_push_moves_one_step_however_many_events_it_sends() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, -0.1, 3)  # Inside the deadzone: nothing.
+	assert_eq(_menu.get_focus_index(), 2)
+	_send_stick(JOY_AXIS_LEFT_Y, -0.9, 5)
+	assert_eq(_menu.get_focus_index(), 1, "five events, one push, one step")
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 3)
+	assert_eq(_menu.get_focus_index(), 1, "still the same push")
+	assert_true(_menu.is_open())
+
+
+func test_ac23_one_stick_push_down_moves_one_step() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, 0.9, 5)
+	assert_eq(_menu.get_focus_index(), 3)
+	_send_stick(JOY_AXIS_LEFT_Y, 1.0, 3)
+	assert_eq(_menu.get_focus_index(), 3, "the end of the list, and still one push")
+
+
+func test_ac23_letting_go_of_the_stick_and_pushing_again_moves_a_second_step() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 4)
+	assert_eq(_menu.get_focus_index(), 1)
+	_send_stick(JOY_AXIS_LEFT_Y, 0.0, 1)
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 4)
+	assert_eq(_menu.get_focus_index(), 0, "a second push, a second step")
+
+
+func test_ac23_a_stick_pushed_down_then_up_returns_to_where_it_started() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_UP)
+	assert_eq(_menu.get_focus_index(), 1)
+	_send_stick(JOY_AXIS_LEFT_Y, 1.0, 3)
+	assert_eq(_menu.get_focus_index(), 2)
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 3)  # Straight through, without a stop in the middle.
+	assert_eq(_menu.get_focus_index(), 1)
+
+
+func test_ac23_a_stick_held_while_the_list_opens_does_not_move_the_focus() -> void:
+	_spawn_menu()
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)  # Walking up into the gate with the stick.
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 5)
+	assert_eq(_menu.get_focus_index(), 2, "the focus stays on the last floor entry")
+	_send_stick(JOY_AXIS_LEFT_Y, 0.0, 1)
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)
+	assert_eq(_menu.get_focus_index(), 1, "and the next push is a push")
+
+
+func test_ac23_a_motion_on_the_other_axis_is_not_a_new_push() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)
+	assert_eq(_menu.get_focus_index(), 1)
+	# Another axis moves (the right stick: the left one's X is Godot's own ui_left / ui_right, which
+	# the engine's focus navigation answers by itself). The up push is still the same push.
+	_send_stick(JOY_AXIS_RIGHT_X, 1.0, 2)
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)
+	assert_eq(_menu.get_focus_index(), 1)
+
+
+func test_ac23_left_and_right_keys_leave_the_focus_alone() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_UP)
+	for key: Key in [KEY_LEFT, KEY_RIGHT, KEY_LEFT]:
+		_press_key(key)
+		assert_eq(_menu.get_focus_index(), 1, "the list is one column")
+	assert_true(_buttons()[1].has_focus())
+	_assert_still_open_with_no_outcome()
+
+
+func test_ac23_left_and_right_on_the_stick_leave_the_focus_alone() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	for axis_value: float in [-1.0, 0.0, 1.0, 0.0]:
+		_send_stick(JOY_AXIS_LEFT_X, axis_value, 4)
+		assert_eq(_menu.get_focus_index(), 2)
+	assert_true(_buttons()[2].has_focus())
+	_assert_still_open_with_no_outcome()
+
+
+func test_ac23_left_and_right_do_nothing_on_the_ends_of_the_list_either() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_DOWN)
+	assert_eq(_menu.get_focus_index(), 3)
+	_press_key(KEY_LEFT)
+	_press_key(KEY_RIGHT)
+	assert_eq(_menu.get_focus_index(), 3, "on the stay entry")
+	for _i: int in 3:
+		_press_key(KEY_UP)
+	_press_key(KEY_RIGHT)
+	assert_eq(_menu.get_focus_index(), 0, "on the first entry")
+	_assert_still_open_with_no_outcome()
+
+
+func test_ac23_every_button_is_its_own_left_and_right_neighbour() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	for button: Button in _buttons():
+		assert_eq(button.get_node(button.focus_neighbor_left), button)
+		assert_eq(button.get_node(button.focus_neighbor_right), button)
+
+
+func test_ac23_a_diagonal_stick_push_moves_exactly_one_step_up() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	for _i: int in 3:  # Up and left, a burst of both axes, as a diagonal arrives.
+		_send_stick(JOY_AXIS_LEFT_X, -1.0, 1)
+		_send_stick(JOY_AXIS_LEFT_Y, -1.0, 1)
+	assert_eq(_menu.get_focus_index(), 1, "one step up, and nothing sideways")
+	_assert_still_open_with_no_outcome()
+	_send_stick(JOY_AXIS_LEFT_X, 0.0, 1)
+	_send_stick(JOY_AXIS_LEFT_Y, 0.0, 1)
+	_send_stick(JOY_AXIS_LEFT_X, -1.0, 2)
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)
+	assert_eq(_menu.get_focus_index(), 0, "a second diagonal, a second step")
+
+
+func test_ac23_left_and_right_do_not_reach_what_is_behind_the_menu() -> void:
+	_spawn_menu()
+	var seen: Array[InputEvent] = []
+	var spy: InputSpy = _spy_on_unhandled_input()
+	spy.also_record = seen
+	_menu.open(_three_entries())
+	_press_key(KEY_LEFT)
+	_press_key(KEY_RIGHT)
+	_send_stick(JOY_AXIS_LEFT_X, -1.0, 3)
+	_send_stick(JOY_AXIS_LEFT_X, 1.0, 3)
+	assert_eq(seen.size(), 0, "consumed, press and release alike")
+	_menu.close()
+	_press_key(KEY_LEFT)
+	assert_gt(seen.size(), 0, "a closed menu consumes nothing")
+
+
+func test_ac23_up_and_down_events_are_all_consumed_so_the_engines_navigation_never_sees_them(
+) -> void:
+	_spawn_menu()
+	var seen: Array[InputEvent] = []
+	var spy: InputSpy = _spy_on_unhandled_input()
+	spy.also_record = seen
+	_menu.open(_three_entries())
+	_send_key(KEY_UP, true)
+	for _i: int in 3:
+		_send_key(KEY_UP, true, true)
+	_send_key(KEY_UP, false)
+	_send_key(KEY_DOWN, true, true)  # A repeat on its own, as in a held key.
+	_send_key(KEY_DOWN, false)
+	Input.flush_buffered_events()
+	assert_eq(_menu.get_focus_index(), 1, "one key press up, the repeats added nothing")
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 4)
+	assert_eq(_menu.get_focus_index(), 0, "one push up, one step")
+	_send_stick(JOY_AXIS_LEFT_Y, 1.0, 4)
+	assert_eq(_menu.get_focus_index(), 1, "one push down, one step")
+	assert_eq(seen.size(), 0, "presses, repeats, releases and non-crossing stick events")
+
+
+func test_ac23_stick_motion_never_chooses_or_cancels() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	for axis_value: float in [-1.0, 1.0, 0.0]:
+		_send_stick(JOY_AXIS_LEFT_Y, axis_value, 3)
+		_send_stick(JOY_AXIS_RIGHT_X, axis_value, 3)
+	assert_true(_menu.is_open())
+	assert_eq(_chosen, [] as Array[Vector2i])
+	assert_eq(_closed, 0)
 
 
 func test_ac23_open_again_rebuilds_the_list() -> void:
@@ -311,6 +582,12 @@ func test_ac23_open_again_after_closing_works() -> void:
 	_press(&"ui_accept")
 	assert_eq(_chosen, [Vector2i(2, 0)] as Array[Vector2i])
 	assert_eq(_closed, 1)
+
+
+func _assert_still_open_with_no_outcome() -> void:
+	assert_true(_menu.is_open())
+	assert_eq(_chosen, [] as Array[Vector2i], "nothing chosen")
+	assert_eq(_closed, 0, "nothing cancelled")
 
 
 func _spawn_menu() -> void:
@@ -364,12 +641,40 @@ func _press(action: StringName) -> void:
 	Input.flush_buffered_events()
 
 
-## A press and a release of a physical key, which the project's input map turns into actions.
+## A press and a release of a key, which the input map turns into actions.
 func _press_key(key: Key) -> void:
-	for pressed: bool in [true, false]:
-		var event: InputEventKey = InputEventKey.new()
-		event.physical_keycode = key
-		event.pressed = pressed
+	_send_key(key, true)
+	_send_key(key, false)
+	Input.flush_buffered_events()
+
+
+## One key event through the engine's input path, not flushed. Both `keycode` and
+## `physical_keycode` are set, so it matches the built-in `ui_*` actions and the project's
+## `move_*` / `interact` ones alike.
+func _send_key(key: Key, pressed: bool, echo: bool = false) -> void:
+	if pressed and not _held_keys.has(key):
+		_held_keys.append(key)
+	Input.parse_input_event(_key_event(key, pressed, echo))
+
+
+func _key_event(key: Key, pressed: bool, echo: bool = false) -> InputEventKey:
+	var event: InputEventKey = InputEventKey.new()
+	event.keycode = key
+	event.physical_keycode = key
+	event.pressed = pressed
+	event.echo = echo
+	return event
+
+
+## `count` joypad motion events on `axis` with the same value and one flush: how a stick held past
+## its deadzone arrives.
+func _send_stick(axis: JoyAxis, axis_value: float, count: int) -> void:
+	if not _stick_axes.has(axis):
+		_stick_axes.append(axis)
+	for _i: int in count:
+		var event: InputEventJoypadMotion = InputEventJoypadMotion.new()
+		event.axis = axis
+		event.axis_value = axis_value
 		Input.parse_input_event(event)
 	Input.flush_buffered_events()
 
@@ -384,7 +689,10 @@ func _spy_on_unhandled_input() -> InputSpy:
 class InputSpy:
 	extends Node
 	var seen: Array[StringName] = []
+	## When set, every event that reaches `_unhandled_input` is also put here.
+	var also_record: Array[InputEvent] = []
 
 	func _unhandled_input(event: InputEvent) -> void:
+		also_record.append(event)
 		if event is InputEventAction and (event as InputEventAction).pressed:
 			seen.append((event as InputEventAction).action)
