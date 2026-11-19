@@ -1,8 +1,8 @@
 ---
 id: F-012
 title: The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-011, D-005, D-006, D-010, D-012, D-013]
@@ -529,6 +529,180 @@ branch, none changed, plus 327 new), gdlint clean, gdformat 247 files unchanged,
 ---
 
 ## 9. Code Review  ·  _Auditor_
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 9216679 (as the diff from `a864404`, the tip of F-011)
+
+**Date:** 2026-11-18 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+How this round was done (D-014): a fresh reviewer sub-agent that wrote neither the spec nor
+the code read `AGENTS.md`, this file and the whole diff, and ran scratch probes against the
+real scenes. The lead then checked each finding against the code before recording it here.
+`tools/test` (1462 tests), lint and `tools/check_core_purity` had passed on this tree and were
+not rerun.
+
+One blocking finding, four that should be fixed, one question for Lucas. The core
+(`TowerProgress`, `TowerSession`, `TownGate`, `TowerData`) held up: no state-machine hole was
+found under out-of-order, repeated or misplaced reports, both `from_dict`s are atomic, and the
+scene swap in `Game` is safe. Every problem is at the input boundary of the gate list and of
+the death pause, where the tests only walked and only sent synthetic action events.
+
+### AC evidence
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC1 | ✅ | `tower_tunables.gd:12`, `tunables.gd:66`; `test_tower_tunables.gd:11` |
+| AC2 | ✅ | `room_data.gd:266`; `test_safe_room.gd:15` |
+| AC3 | ✅ | `floor_data.gd:26`; `test_safe_room.gd:106` |
+| AC4 | ✅ | `tower_data.gd:14`; `test_tower_data.gd:12` |
+| AC5 | ✅ | `town_gate.gd:21`; `test_town_gate.gd:20` |
+| AC6 | ✅ | `tower_progress.gd:30`; `test_tower_progress.gd:16` |
+| AC7 | ✅ | `tower_progress.gd:55`; `test_tower_progress.gd:113` |
+| AC8 | ✅ | `tower_progress.gd:88`; `test_tower_progress.gd:162` |
+| AC9 | ✅ | `tower_session.gd:67`; `test_tower_session.gd:25` |
+| AC10 | ✅ | `tower_session.gd:84`; `test_tower_session.gd:116` |
+| AC11 | ✅ | `tower_session.gd:108`; `test_tower_session.gd:215` |
+| AC12 | ✅ | `tower_session.gd:116`; `test_tower_session.gd:279` (30/60/120 Hz at :294) |
+| AC13 | ✅ | `tower_session.gd:138`; `test_tower_session.gd:383`. Met as written, but the round trip loses a flag (CR-5). |
+| AC14 | ✅ | `floor_scene.gd:63`; `test_f012_floor_scene.gd:12` |
+| AC15 | ✅ | `floor_scene.gd:78`, `:157`; `test_f012_floor_scene.gd:98` |
+| AC16 | ✅ | `floor_scene.gd:47`, `:86`; `test_f012_floor_scene.gd:154` |
+| AC17 | ✅ | `health_bar.gd:47`; `test_hud.gd:17` |
+| AC18 | ✅ | `hud.gd:73`; `test_hud.gd:196` |
+| AC19 | ✅ | `hud.gd:63`; `test_hud.gd:221` |
+| AC20 | ✅ | `town_scene.gd:36`, `:112`; `test_f012_town.gd:23` |
+| AC21 | ❌ | `town_scene.gd:59`, `:123`; `test_f012_town.gd:150`. The list opens and holds the right entries, but "never ends more than 1 tile from where the menu opened" is false for a dash (CR-1). The tests only walk. |
+| AC22 | ✅ | `town_scene.gd:128`, `gate_menu.gd:107`; `test_f012_town.gd:263`. By the letter; see CR-2. |
+| AC23 | ✅ | `gate_menu.gd:54`, `:124`; `test_gate_menu.gd:20`. See CR-3 for the stick. |
+| AC24 | ✅ | `town_scene.gd:67`, `:144`; `test_f012_town.gd:413` |
+| AC25 | ✅ | `data/floors/town.tres`, `tower.tres`, `tunables.gd:57`; `test_shipped_tower.gd:30` |
+| AC26 | ✅ | `scenes/main.tscn:10`, `game.gd:43`; `test_f012_main.gd:13`, `test_f012_game.gd:25` |
+| AC27 | ✅ | `test_f012_game.gd:139` (rooms cleared by direct hits, doors walked) |
+| AC28 | ✅ | `game.gd:113`, `:227`; `test_f012_game.gd:230` |
+| AC29 | ✅ | `game.gd:99`, `:198`; `test_f012_game.gd:304` |
+| AC30 | ✅ | `game.gd:64`, `:144`; `test_f012_game.gd:376` (timing as DEV-9) |
+| AC31 | ✅ | `test_f012_main.gd:85` |
+| AC32 | ✅ | `game.gd:48`, `:121`; `test_f012_game.gd:449` |
+
+### Checks
+
+- **Rejected options (§3):** none implemented. No `change_scene_to_file`, no `Area2D` or prompt
+  for the gate, no door per floor; the boss door leads to town; the room restart on death
+  exists only behind the `death_restarts_room` default; `_remove_shown()` is called only from
+  `_ready` and `_physics_process`.
+- **Constraints:** C1, C3, C4, C6, C8, C9, C11–C17, C19 met. C10 violated (CR-1). C2 met for
+  unlocking, entries and entry rules, with two soft spots (CR-7, CR-9). C5 met as written, but
+  it doesn't say the dead player stops (CR-4). C7 met as written (CR-5). G1–G6, G9 ok; G7 see
+  CR-5; G8 needs a ruling (CR-6).
+- **Deviations:** DEV-1 to DEV-10 justified; DEV-9 is correct. One unlogged: the test helper
+  `tests/scenes/f012_game_test.gd` is not in §6's file list for T7 (CR-11). A test helper is
+  not treated as blocking.
+- **Assumptions:** reasonable and reversible, except ASSUMPTION-10 (CR-5). ASSUMPTION-15 is
+  wrong about the shipped file (CR-11). ASSUMPTION-14 and -17 understate what happens (CR-1,
+  CR-4).
+- **F-011 behaviour with the default exports:** unchanged. The one addition is a
+  `floor_exited` emission nobody listens to.
+
+### Findings
+
+**CR-1 🔴 A dash into the gate carries the player out of the room (AC21, C10).** Verified by
+running the real town scene.
+- **Where:** `src/world/town/town_scene.gd:123` (`_open_gate_menu`).
+- **Problem:** opening the list only sets `input_enabled = false`. A dash in progress runs to
+  its end (3 tiles in 0.15 s), the open gate has no collision and nothing lies beyond it.
+  Measured: a dash north from (11.5, 1.6); the list opened at y = 0.93 and the player settled
+  at y = −1.40, that is 2.33 tiles from where it opened and 1.4 tiles outside the room.
+- **Why it matters:** AC21 says "never ends more than 1 tile", C10 says the player doesn't
+  move. Dashing is the normal way to cross the town, so this shows on the first visit.
+- **Suggested fix:** hold the player where the list opened for as long as the gate is engaged
+  (the latch's state belongs in `TownGate`, see CR-9), and add a dash test to AC21.
+
+**CR-2 🟡 "Stay in town" chosen with Space makes the player dodge on the same tick.** Verified
+with Space; gamepad A and a mouse click (which is `attack`) follow from the same mechanism.
+- **Where:** `town_scene.gd:134` (`_on_menu_closed`), `gate_menu.gd:24`,
+  `src/entities/player/player_input.gd:70`.
+- **Problem:** Space is both `ui_accept` and `dodge`. Input is given back inside the input
+  phase, and that tick's `Input.is_action_just_pressed("dodge")` is still true. Measured: the
+  player was put on the return tile, dashed, and the list reopened 4 ticks later.
+- **Why it matters:** the reopened list has its focus on the highest floor, so a second press
+  enters a floor, and a floor can only be left by dying or clearing it (§10 Q1). §10 Q6 names
+  the key overlap but not this consequence.
+- **Suggested fix:** give input back on the next physics tick, after the room's runner has
+  run, not in the handler. Add a test that sends a real key event.
+
+**CR-3 🟡 A gamepad stick moves the focus once per motion event.** Verified with synthetic
+`InputEventJoypadMotion`.
+- **Where:** `src/ui/town/gate_menu.gd:138` (`_is_pressed`).
+- **Problem:** `event.is_action_pressed()` is true for every motion event past the deadzone,
+  not only for the crossing. Five events moved the focus from 5 to 0.
+- **Why it matters:** the player arrives holding the stick up, so the focus lands on "Floor 1
+  — from the start" instead of the last floor entry (AC23).
+- **Suggested fix:** for joypad motion also require `Input.is_action_just_pressed(action)`.
+  Add a test.
+
+**CR-4 🟡 A dead player keeps full control during the death pause, and debug R revives them.**
+Verified by running.
+- **Where:** `src/world/floors/floor_scene.gd:71`, `:86`.
+- **Problem:** nothing turns the player's input off on death, and `PlayerMotor` has no dead
+  state. With "You died" showing and 0 HP the player walked 1.54 tiles in 20 ticks and started
+  an attack. R rebuilt the room at 100 HP while the session stayed in the death pause; the town
+  still came.
+- **Why it matters:** no outcome changes (the session ignores everything in the pause), but it
+  reads as a bug for 1.5 s on every death. C5 doesn't say the dead player stops: a spec gap.
+- **Suggested fix:** when the death is reported, turn the player's input off and ignore the
+  debug keys until the room is rebuilt. Add the rule to C5.
+
+**CR-5 🟡 The session snapshot drops "cleared during this visit" (G7).** From reading.
+- **Where:** `src/core/floors/tower_session.gd:138`; `test_tower_session.gd:444` asserts the
+  loss.
+- **Problem:** `to_dict()` → `from_dict()` gives a session that behaves differently, while
+  `FloorRun`'s own snapshot keeps `floor_cleared`.
+- **Why it matters:** once save/load restores both, a save made in a cleared boss room loads
+  into a soft lock: the run won't report the clear again, the session refuses the exit, and
+  there is nothing left to die to. Nothing writes a snapshot yet, hence 🟡 and not 🔴.
+- **Suggested fix:** put the flag in the snapshot (valid only when the place is `FLOOR`) and
+  change that test.
+
+**CR-6 🟡 G8: entering a floor is a player action with no command object.** From reading.
+- **Where:** `src/world/game.gd:193`.
+- **Problem:** `GateMenu._input` → `choose` → `TownScene` → `Game._on_floor_chosen` →
+  `session.enter_floor()` is one chain from an input handler to a state change. §4 never
+  mentions G8.
+- **Why it matters:** it is one narrow call with two primitives, cheap to wrap later, but the
+  spec should say whether menu choices count as player actions.
+- **Suggested fix:** a §10 question for Lucas / Direction.
+
+**CR-7 🔵 C5's same-tick rule holds by statement order in the glue.** From reading.
+`floor_scene.gd:66` checks HP before the clear; `FloorRun.report_room_cleared(0)` would still
+clear a boss room. Either let core refuse a boss-room clear at 0 HP or note the exception
+under C2.
+
+**CR-8 🔵 `Game` rebuilds only on `place_changed`.** From reading. `game.gd:64`, `:189`: a
+`from_dict()` that keeps the place but changes the floor emits nothing, so the old floor would
+stay on screen. Unreachable until save/load.
+
+**CR-9 🔵 Whether the latch runs depends on a UI node.** From reading. `town_scene.gd:60`:
+"the list is open" lives only in `GateMenu`. Keep an engaged state in `TownGate` (fits CR-1).
+
+**CR-10 🔵 Test hygiene.** Verified by running. `tests/ui/test_gate_menu.gd:260` sends echo
+presses for E, Up and Escape and never releases them, so those actions stay pressed for the
+rest of the run. The key helpers set only `physical_keycode`, so the built-in `ui_*` actions
+never match them: the comment at `:279` ("ui_up and move_up at once") is not what runs, which
+is how CR-2 got through.
+
+**CR-11 🔵 Log accuracy.** `tests/scenes/f012_game_test.gd` needs a DEV entry. ASSUMPTION-15
+says `P` is at (11, 10) and that the shipped town equals the fixture: `data/floors/town.tres`
+has `P` at (12, 10), the fixture at (11, 10).
+
+**CR-12 🔵 Notes.** `game.gd:194` ignores a refused `enter_floor()`, which would leave the town
+without input (can't happen today). Debug keys default to on in `main.tscn`, so R is a free
+full heal: turn them off before a stranger plays (slice 3).
+
+**Not checked in this round:** a rendered run, a real keyboard, mouse or gamepad (CR-2's
+gamepad and mouse variants are reasoned, not run); shipped bosses fighting a dead player for
+the whole pause; five of the data-test files were read by test name and in part, not line by
+line.
 
 ---
 
