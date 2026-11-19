@@ -67,8 +67,8 @@ Checked by tests over the shipped tower, on top of the format rules:
 - In a floor's room `P` is on the west side and the 2-tile `E` on the east border (the town
   has its own layout, below). Free-standing pillars and blocks are at least 2 × 2 and at
   least 2 tiles from a wall or another block.
-- Casters start with no clear line to `P`; the two walking bosses stand 12 to 18 tiles east
-  of `P`; the Hexer's room has exactly four blocks.
+- Casters start behind cover from `P`, or behind the chasers in an open room (2-1); the two
+  walking bosses stand 12 to 18 tiles east of `P`; the Hexer's room has exactly four blocks.
 
 ## The tower loop (F-012)
 - Floor `n` is unlocked when `n` is 1 or floor `n − 1` is cleared.

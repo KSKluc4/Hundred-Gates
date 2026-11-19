@@ -2,7 +2,7 @@
 id: F-013
 title: Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair)
 status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-19
 updated: 2026-11-19
 depends_on: [F-001, F-011, F-012, D-010, D-012, D-014, D-015]
@@ -544,6 +544,8 @@ Gate A: Lucas's go-ahead in chat on the lead's proposal (D-015), so the file goe
 - [x] T8 — 5c7ebb8 (`NavGrid` lazy field and clipped line check; 9 equivalence tests)
 - [x] T9 — final gate on 5c7ebb8 + e90b2d2, results under "How to test"
 - [x] T10 — e90b2d2 (`design/floors.md`, `design/combat.md`, `GLOSSARY.md`)
+- [x] Code review round 1 — CR-5, CR-7 a–c 4f20879; CR-1, CR-2, CR-6 e5800b6; CR-3, CR-4, CR-7 d c60b341.
+- [x] Code review round 2 — CR-8, CR-10 e9fc768; CR-9 with the round's record. Approved with notes.
 
 ### Deviations from plan
 - DEV-1: the two implementers were started on T1 and T2 while plan review round 3 (a
@@ -643,6 +645,7 @@ After code review round 1 (4f20879, e5800b6): the full suite on e5800b6 is 129 s
 tests, all passing (539 s), with no "Orphans" line; lint, format and purity are clean and the
 game boots with no error line. The navigation timings did not move. The block below is the
 first gate's.
+After code review round 2 (e9fc768): 1772 tests, all passing (538 s); the rest as above.
 
 ```
 tools/test                      # 129 scripts, 1751 tests, all passing (510 s)
@@ -835,6 +838,76 @@ table, C11 and every C10 rule.
 **Not checked in this round:** anything rendered (camera feel, jitter, the strips in a shake,
 CR-4 on screen); the full suite in one run; a release build's timings; `RoomData.validate()`'s
 own code; the debug scenes.
+
+<!-- review-round: 2 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** e5800b6 (the diff `5c3553a..e5800b6` under `src`, `tests` and `data`)
+
+**Date:** 2026-11-19 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+The same reviewer, read-only, on fresh copies of `e5800b6`.
+
+**Round 1 findings:**
+- CR-1 ✔ resolved. The 64 × 12 segment is blocked in both grids; the Warden's room at x = 54.3
+  differs in 0 of 20,000 (was 3,339); a new grazing probe of 273,500 checks over nine rooms
+  (up to 5000 × 8 and 30 × 1000, both ends grazing, tilts of 1e-7 to 0.1, ends outside the
+  grid) and a second seed of 95,725 differ in 0, where the round 1 code differs in 78 and 24.
+  The clip never leaves the old box (6,000 traced segments). The row band is the weaker side
+  but only far outside any allowed room: it first differs from the reference in a room
+  40,000 tiles tall; the largest allowed is 46.
+- CR-2 ✔ resolved. With round 1's `nav_grid.gd` put back 4 of the 13 proof tests fail; with
+  only the margin back at 1e-6, 2 fail. The two mutations the implementer reported as still
+  passing (no left slack tile; ends recomputed from `t`, both at a margin of 1e-3) were run
+  through the same 369,000 grazing checks, with a third and all at once: 0 differences each,
+  so they are redundant layers, not a blind spot. One limit: the proof's grazing kind puts an
+  end at a border wall; grazes in mid-segment and at pillar faces are covered only by the
+  reviewer's probe (0 differences).
+- CR-5 ✔ resolved (the three cases, NaN and ±inf; 60 valid round trips unchanged). See CR-10.
+- CR-6 ✔ resolved. The caster at (45, 7) is blocked at radius 0, 0.25 and 0.35 and its routed
+  walk reaches `P`; no existing test in `test_shipped_floors.gd` changed.
+- CR-7 a, b, c ✔ resolved. CR-3, CR-4 and CR-7 d were the lead's and not in the reviewed commit.
+
+### CR-8 🔵 The new clip comment promises more than the row band gives  ·  `src/core/floors/nav_grid.gd:106-108`
+The comment says a tile is left out only when the segment is further from it than the limit
+"by more than CLIP_MARGIN plus a tile". That holds for the columns; a row's band has the
+margin only. Verified by a traced copy over 6,000 segments in an 80 × 46 grid: the nearest
+left-out tile was 0.00147 tiles beyond the limit. Only the wording: the guarantee holds.
+
+> **Builder reply (lead):** fixed in e9fc768, comments only: both comments now say the margin
+> is the rows' slack and the columns have a tile on top, and how far that holds.
+
+### CR-9 🟡 `floors.md` now states a caster rule that room 2-1 breaks  ·  `studio/design/floors.md`, added in c60b341
+Under rules "checked by tests over the shipped tower" it says "Casters start with no clear
+line to `P`". Room 2-1's caster has one (run in round 1; the floor 2 pin exempts that room;
+the C9 table calls it open, with the caster behind the chasers).
+
+> **Builder reply (lead):** fixed in this commit. The line now reads: casters start behind
+> cover from `P`, or behind the chasers in an open room (2-1). It was the lead's own sentence,
+> written after the reviewed commit.
+
+### CR-10 🔵 The restored time left is checked against a number that is not checked  ·  `src/core/player/player_motor.gd:507-513`
+The time left is cut to the latched duration from the same snapshot, which is taken as it
+comes. Verified by running with state `DASH_RECOVERY`: a latched +inf with 5.0 left roots the
+player for 5 s; a latched NaN makes the clock NaN and the state never leaves; a latched −1
+reads −1.0 before the first tick. Only a malformed snapshot reaches it.
+
+> **Builder reply (lead):** fixed in e9fc768. The latched duration is sanitised on restore
+> (not above 0, NaN or infinite → 0) before the time left is bounded by it; the comment says
+> what is guaranteed and that the snapshot's other numbers are still taken as they come. Four
+> `test_cr10_*` tests.
+
+**Tried, found nothing** (the reviewer's list, shortened): the changed and nearby test files
+on `e5800b6`, all passing; lint, format, purity and a headless boot; two new seeds of the
+general fuzz (304,000 line and 78,165 direction comparisons, 0 differences); the motor's 400
+random scripts, 600 coarse-step runs and 200 random-step runs again, 0 differences.
+
+**Not checked in this round:** the full suite (the lead's run); the two doc commits after
+`e5800b6` beyond CR-9; anything rendered; a release build's timings.
+
+**After round 2 (lead):** the full suite on e9fc768 is 129 scripts, 1772 tests, all passing
+(538 s), with no "Orphans" line; lint, format and purity are clean; `main.tscn` boots
+headless with no error line. Nothing in the two rounds was checked with a real keyboard, mouse
+or gamepad, and nobody has watched the camera or the dash on screen: that is Gate B.
 
 ---
 
