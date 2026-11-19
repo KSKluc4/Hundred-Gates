@@ -1,8 +1,8 @@
 ---
 id: F-013
 title: Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair)
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-19
 updated: 2026-11-19
 depends_on: [F-001, F-011, F-012, D-010, D-012, D-014, D-015]
@@ -569,6 +569,8 @@ Gate A: Lucas's go-ahead in chat on the lead's proposal (D-015), so the file goe
 - DEV-7: commit e90b2d2 (T10, docs) also carries `tests/core/player/test_f013_dash_recovery.gd`
   with its line endings normalised (the working copy had CRLF; the committed content was
   already LF). No content change.
+  **Withdrawn (code review CR-3):** e90b2d2 holds only the three `studio/` files. The
+  line-ending change was never part of a commit, because the committed content was already LF.
 - DEV-8: T8's "before" timings were taken from the reference copy in the same run as the
   "after" ones, not from a separate run of the old file. The reference differs from the old
   `nav_grid.gd` in three lines (the class name).
@@ -626,6 +628,9 @@ Gate A: Lucas's go-ahead in chat on the lead's proposal (D-015), so the file goe
   tie-break between equal-cost entries): check that judgement.
 - `has_clear_line()`'s clipping: that no tile the old box scan could have found blocked is
   skipped (`CLIP_MARGIN`).
+  **Correction after code review round 1:** it did skip one (CR-1), and the judgement above
+  that the left column's `- 1` was no result change was wrong: at the old margin it was the
+  only thing keeping the west side right. Fixed in e5800b6.
 - `PlayerMotor._run_phases()`: the freeze is read from the state at the segment's start.
 - Every scene that uses the player scene now has the recovery, the debug scenes included.
 - The camera was checked by numbers and by screenshots, never by a person playing: smoothing
@@ -634,6 +639,9 @@ Gate A: Lucas's go-ahead in chat on the lead's proposal (D-015), so the file goe
 - The suite takes longer: 510 s, from about 450 s.
 
 ### How to test
+After code review round 1 (4f20879, e5800b6): the numbers below changed to 129 scripts and
+1767 tests; the navigation timings did not move.
+
 ```
 tools/test                      # 129 scripts, 1751 tests, all passing (510 s)
 .venv/Scripts/gdlint src tests  # no problems
@@ -742,15 +750,29 @@ radius 0.7, a target at x = 54.3 differs in 3,339 of 20,000 checks; grazing prob
 straight instead of along the field, for a target on one exact float value), but C17 says
 "without changing any result". Suggested: a larger margin or the end coordinates taken from
 `to` itself, and a grazing kind in the proof.
+> **Builder reply (lead):** fixed in e5800b6. The clip now errs on the side of keeping tiles by
+> construction: it takes the segment's own ends where a row did not cut it, has one tile of
+> slack at both ends of a row, and `CLIP_MARGIN` is 1e-3 (about 60 times the worst 32-bit
+> rounding over the largest room). The comment that claimed rounding could not drop a tile
+> is replaced by what is true now. The three reproductions are named tests; on the round 1
+> code they fail (3,063 of 20,000 differ in the Warden's room), on the fix 0 differ. §8's
+> judgement of the left column's `- 1` was wrong and is corrected there. The timings did
+> not move (worst case on room 3-5: median 3.2 ms, max 3.3).
 
 ### CR-2 🟡 The proof's radii are not the bodies' radii, and it cannot see CR-1  ·  `tests/core/floors/test_f013_nav_equivalence.gd:12`
 `RADII` is 0, 0.25, 0.5, 0.6; the brains pass `hurtbox_radius_tiles`, which is 0.35, 0.4, 0.5,
 0.6, 0.7, 0.8 in `data/enemies/`. Every exact graze in the proof lies on quarter-tile or whole
 coordinates, where the float subtraction is exact. Verified by reading; the reviewer's own
 fuzz at all six radii found 0 differences outside CR-1's window.
+> **Builder reply (lead):** fixed in e5800b6. The proof reads its radii from the shipped enemy
+> files (0, 0.25, 0.35, 0.4, 0.5, 0.6, 0.7, 0.8) and has a grazing kind on all four sides:
+> the end, or the start, at a wall face ± (radius + k · 1e-6), half of the segments at least
+> 32 tiles long, 253,440 checks over 15 rooms. 13 tests, 0 differences.
 
 ### CR-3 🔵 DEV-7 describes a change the commit does not contain  ·  §8
 `git show --stat e90b2d2` lists three files, all under `studio/`.
+> **Builder reply (lead):** right. DEV-7 is withdrawn in §8 (the line-ending change never reached a
+> commit: the committed content was already LF).
 
 ### CR-4 🔵 A shake that starts while the camera is trailing makes the view jump  ·  `placeholder_shake.gd:29` with the smoothing set in `room.gd`
 While a shake runs, `_process()` writes `offset` every frame, and in 4.7.2 each write
@@ -759,12 +781,18 @@ re-evaluates the smoothed camera one smoothing step ahead. Verified by a standal
 moved the view 32 px with no physics tick. At the walking lag of 10 px that is about 1.3 px,
 more right after a dash or a knockback; it is hidden inside the shake, and C6 forbids changing
 the shake here. Nobody has looked at it rendered.
+> **Builder reply (lead):** no code change, as suggested. Recorded as a known cost: §10 Q4
+> for Lucas at Gate B, and CX2 / FX9 for Art & Game Feel in `design/floors.md`.
 
 ### CR-5 🔵 `from_dict()` trusts `dash_recovery_remaining`  ·  `src/core/player/player_motor.gd:219, 509-516`
 Verified by running with state `DASH_RECOVERY`: −0.5 left moves the player 2.54 tiles in the
 next 1/30 s tick (a negative segment); 5.0 left with a latched duration of 0 roots the player
 for 5 s; state `IDLE` with 0.5 left keeps the stale value. Only a malformed snapshot reaches
 it; `dash_elapsed` has the same older weakness.
+> **Builder reply (lead):** fixed in 4f20879. On restore the time left is 0 outside a recovery and
+> lies in [0, the latched duration] inside one; `_advance_dash_recovery()` never consumes a
+> negative segment. Five `test_cr5_*` tests (the three cases, NaN, and a valid snapshot
+> restoring exactly as before).
 
 ### CR-6 🔵 Table details no test pins; one caster is barely "behind a block"  ·  `data/floors/floor_3/room_3.tres`; `test_shipped_floors.gd`
 The caster at tile (45, 8) of room 3-3 has a line to `P` that clears a block's corner by 0.13
@@ -772,6 +800,10 @@ tiles (clear at radius 0, blocked at 0.25; ran). Only floor 2's casters have a c
 test pins the Warden and the Juggernaut 12 to 18 tiles east, 1-1's chasers 6 apart, 2-3's five
 blocks and east third, 3-1's wall length, 3-3's brute distance; the kept Hexer test asserts at
 least four blocks, not exactly four. Today's data satisfies all of them.
+> **Builder reply (lead):** fixed in e5800b6. The caster stands on (45, 7): its line to `P` now runs
+> through the block and is blocked at radius 0. Seven `test_c9_*` pins were appended (floor
+> 3's casters, exactly four Hexer blocks, the two bosses 12 to 18 tiles east, 1-1's chasers,
+> 3-3's brute, 3-1's walls, 2-3's blocks and casters); no existing test changed.
 
 ### CR-7 🔵 Comments and a name that mislead
 (a) `room.gd`: the comment says the camera is configured before it enters the tree "so it
@@ -781,6 +813,11 @@ says 80 × 46, and the override in both camera test files is a no-op. (c) `playe
 `_is_in_recovery()` means an attack's recovery phase and is false during `DASH_RECOVERY`.
 (d) `design/floors.md`, "Shipped-room rules", says "`P` is on the west side" under rules
 checked over the shipped tower; the town's `P` is under the north gate.
+> **Builder reply (lead):** (a) no test can tell the order apart (the engine re-reads the limits
+> when they are set), so the comment now says so, and a test reads the camera in the very
+> call that adds the room (4f20879). (b) the override and its comment are gone from both
+> files (4f20879). (c) renamed `_is_in_attack_recovery()` (4f20879). (d) the line now says
+> "in a floor's room" and names the town's own rule (this commit).
 
 **Tried, found nothing** (the reviewer's list, shortened): about 78,000 `direction_toward()`
 comparisons over two seeds on 14 degenerate grids, 120 random rooms up to 70 × 40 and an
@@ -806,6 +843,7 @@ own code; the debug scenes.
 | Q1 | Lead | → Lucas, at Gate B: the starting values. Camera smoothing speed 8 (`data/tunables/camera.tres`), dash recovery 0.12 s (`data/classes/warrior.tres`), room sizes and layouts (C9). In the town you approved the size and the gate on the north wall; where you start (just below the gate, so it is on screen) and the six blocks are the lead's layout (C11). | no | |
 | Q2 | Lead | → Lucas, at Gate B: the Juggernaut's room and the brute rooms now have blocks to charge into, because an open 56 × 32 room leaves no wall within a charge's reach (C10 b). The old Juggernaut room was open with no interior walls. Is that the fight you want? | no | |
 | Q3 | Lead | → Lucas, at Gate B: the Hexer stands at the centre of a 56 × 32 room, so it is not on screen when you enter (the boss bar is). Move it closer, or keep the walk-in? | no | Withdrawn by the lead (plan review PR-16): from the start tile the camera shows 40 columns, so the Hexer at the centre is on screen when you enter. Nothing to decide. |
+| Q4 | Auditor (lead) | → Lucas, at Gate B (code review CR-4): when a hit shakes the screen while the camera is still catching up (right after a dash or a knockback), the view jumps a little toward the player on the shake's first frame (about 13 % of the distance it was behind) and holds for one tick at its end. It is inside the shake and may be invisible; nobody has looked at it on screen. If you see it, the fix belongs to the shake (Art & Game Feel), which this feature may not change (C6). | no | |
 
 ---
 

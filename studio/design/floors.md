@@ -64,8 +64,11 @@ Checked by tests over the shipped tower, on top of the format rules:
   spacing, not a proof that every charge can be baited.
 - **No attack starts off screen.** The longest range at which any enemy starts an attack is
   below 11 tiles (half a screen's height is 11.25; today's longest is 9).
-- `P` is on the west side, the 2-tile `E` on the east border. Free-standing pillars and blocks
-  are at least 2 × 2 and at least 2 tiles from a wall or another block.
+- In a floor's room `P` is on the west side and the 2-tile `E` on the east border (the town
+  has its own layout, below). Free-standing pillars and blocks are at least 2 × 2 and at
+  least 2 tiles from a wall or another block.
+- Casters start with no clear line to `P`; the two walking bosses stand 12 to 18 tiles east
+  of `P`; the Hexer's room has exactly four blocks.
 
 ## The tower loop (F-012)
 - Floor `n` is unlocked when `n` is 1 or floor `n − 1` is cleared.
@@ -132,3 +135,4 @@ Notes:
 | FX6 | → Items & Economy | What does replaying a cleared floor give (F-012 ASSUMPTION-4)? | No |
 | FX7 | → Direction | The floor 3 rooms and the Juggernaut's room now have blocks to charge into (F-013 §10 Q2). Keep, or open them up again? | No |
 | FX8 | → Art & Game Feel | Room detail: a visual-only decoration layer and solid props. The rooms have the space now (F-013); the format has no layer for either yet. | No |
+| FX9 | → Art & Game Feel | A shake that starts while the camera is still catching up makes the view jump a little (F-013 code review CR-4, §10 Q4): the placeholder shake writes the camera's offset every frame, and each write advances the smoothing. To settle when the shake gets its real look (CX2). | No |
