@@ -116,7 +116,8 @@ class Recorder:
 
 	const FAR_AWAY: Vector2 = Vector2(10000, 10000)
 
-	## Per step: step, engaged (alive and aggroed), pending (the director's own list), kills.
+	## Per step: step, woken (placed enemies aggroed or dead), engaged (alive and aggroed),
+	## pending (the director's own list), kills.
 	var samples: Array[Dictionary] = []
 	## Each reinforcement the director started: step, index (in the reserve), id, point (the
 	## pending arrival's point; (-1, -1) for one passed over without a warning).
@@ -126,6 +127,7 @@ class Recorder:
 
 	var _sim_ref: WeakRef
 	var _waves: RoomWaves
+	var _placed: Array[EnemyLogic] = []
 	var _enemies: Array[EnemyLogic] = []
 	var _reserve: Array[EnemyLogic] = []
 	var _last_next: int = 0
@@ -139,6 +141,7 @@ class Recorder:
 		_position = FAR_AWAY
 		_sim_ref = weakref(sim)
 		_waves = waves
+		_placed = placed
 		_enemies.append_array(placed)
 		_enemies.append_array(reserve)
 		_reserve = reserve
@@ -179,17 +182,18 @@ class Recorder:
 					}
 				)
 			_was_waiting[index] = enemy.is_waiting()
-		(
-			samples
-			. append(
-				{
-					"step": step,
-					"engaged": engaged,
-					"pending": pending.size(),
-					"kills": _waves.get_kill_count(),
-				}
-			)
-		)
+		var woken: int = 0
+		for enemy: EnemyLogic in _placed:
+			if enemy.is_aggroed() or (not enemy.is_alive() and not enemy.is_waiting()):
+				woken += 1
+		var sample: Dictionary = {
+			"step": step,
+			"woken": woken,
+			"engaged": engaged,
+			"pending": pending.size(),
+			"kills": _waves.get_kill_count(),
+		}
+		samples.append(sample)
 
 	## The most engaged-plus-pending of any step.
 	func most_on_the_way() -> int:
@@ -307,3 +311,37 @@ static func rig(
 	result.recorder = Recorder.new(result.arena.sim, result.waves, result.placed, result.reserve)
 	result.arena.sim.register(result.recorder)
 	return result
+
+
+## A rig for a shipped room, built as Room will build it (C11): a player at `P`, the placed
+## enemies from get_spawns(), the reserve from get_reinforcement_spawns() held in reserve, the
+## room's nav grid on the sim, and a RoomWaves set up with the room's arrival points and
+## get_max_engaged() under the shipped rules. Enemies move by their logic alone (no walls).
+static func rig_for_room(room: RoomData) -> Rig:
+	var result: Rig = Rig.new()
+	result.rules = Tunables.floors
+	result.player = result.arena.add_player(room.get_player_start_tiles())
+	for spawn: RoomSpawn in room.get_spawns():
+		result.placed.append(_add_enemy(result, spawn))
+	for spawn: RoomSpawn in room.get_reinforcement_spawns():
+		var enemy: EnemyLogic = _add_enemy(result, spawn)
+		enemy.hold_in_reserve()
+		result.reserve.append(enemy)
+	result.points = room.get_arrival_points_tiles()
+	var cap: int = room.get_max_engaged(result.rules)
+	result.waves.setup(result.placed, result.reserve, result.points, cap, result.rules)
+	result.arena.sim.set_nav(NavGrid.from_rows(room.rows))
+	result.arena.sim.set_waves(result.waves)
+	result.recorder = Recorder.new(result.arena.sim, result.waves, result.placed, result.reserve)
+	result.arena.sim.register(result.recorder)
+	return result
+
+
+static func _add_enemy(result: Rig, spawn: RoomSpawn) -> EnemyLogic:
+	var enemy: EnemyLogic = EnemyLogic.new()
+	var step_rate: int = result.arena.rules.combat_step_rate
+	var rules: EnemyCombatTunables = result.arena.enemy_rules
+	enemy.setup(spawn.enemy, rules, step_rate, spawn.position_tiles, spawn.combat_id)
+	result.arena.enemies.append(enemy)
+	result.arena.sim.register(enemy)
+	return enemy
