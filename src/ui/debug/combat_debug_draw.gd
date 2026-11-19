@@ -78,10 +78,9 @@ static func hurtboxes_for(combatants: Array[Combatant], with_director: bool) -> 
 	return hurtboxes
 
 
-## F-014/C11, T3: CombatSim.get_waves() is the director, null when none is attached. Asked by
-## name, so this file needs no change when the sim learns it. Until then: no director.
+## F-014/C11: whether the sim has a director (CombatSim.get_waves() is null when none is attached).
 static func has_director(sim: CombatSim) -> bool:
-	return sim.has_method(&"get_waves") and sim.call(&"get_waves") != null
+	return sim.get_waves() != null
 
 
 ## F-005/C6: every combatant's, projectiles included.

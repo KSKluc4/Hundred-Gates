@@ -312,6 +312,37 @@ func test_ac5_hold_in_reserve_on_an_aggroed_enemy_changes_nothing_and_reports() 
 	assert_false(enemy.is_waiting())
 
 
+## State IDLE alone must not be enough: these two are IDLE with a fresh combat state, and only
+## being aggroed sets them apart from an enemy that was just set up.
+func test_ac5_hold_in_reserve_on_an_idle_enemy_that_just_arrived_is_refused() -> void:
+	var arena: EnemyArena = _reserve_arena(Vector2.ZERO, Vector2(9, 9))
+	var enemy: EnemyLogic = arena.enemies[0]
+	assert_true(enemy.arrive(Vector2(1, 1)))
+	assert_eq(enemy.get_state(), EnemyLogic.State.IDLE)
+	assert_true(enemy.is_aggroed())
+	var before: Dictionary = enemy.to_dict()
+	assert_false(enemy.hold_in_reserve())
+	assert_push_error("hold_in_reserve refused")
+	assert_eq_deep(enemy.to_dict(), before)
+	assert_false(enemy.is_waiting())
+
+
+func test_ac5_hold_in_reserve_on_an_idle_enemy_aggroed_by_a_hit_is_refused() -> void:
+	var arena: EnemyArena = EnemyArena.new()  # No player: nothing for it to chase.
+	var enemy: EnemyLogic = arena.add_chaser(Vector2(5, 5))
+	enemy.apply_hit(_hit_event(1), arena.rules)  # No knockback.
+	arena.ticks(RATE)  # Its hitstop runs out.
+	assert_eq(enemy.get_state(), EnemyLogic.State.IDLE)
+	assert_true(enemy.is_aggroed())
+	assert_false(enemy.get_combat_state().is_in_hitstop())
+	assert_false(enemy.get_combat_state().has_knockback())
+	var before: Dictionary = enemy.to_dict()
+	assert_false(enemy.hold_in_reserve())
+	assert_push_error("hold_in_reserve refused")
+	assert_eq_deep(enemy.to_dict(), before)
+	assert_false(enemy.is_waiting())
+
+
 func test_ac5_hold_in_reserve_on_an_enemy_in_an_attack_changes_nothing_and_reports() -> void:
 	var arena: EnemyArena = EnemyArena.new()
 	arena.add_player(Vector2.ZERO)
