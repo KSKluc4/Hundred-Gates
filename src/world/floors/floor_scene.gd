@@ -186,8 +186,10 @@ func _advance_room(carried_hp: int) -> bool:
 
 
 ## F-012/AC33: positive amounts only; zero (full HP, a boss clear) and below say nothing.
+## F-012/CR-21: nor does a floor whose death was reported: a debug skip then carries 0 HP into the
+## next room, and that refill is not HP gained between fights.
 func _report_healed(amount: int) -> void:
-	if amount > 0:
+	if amount > 0 and not _death_reported:
 		healed.emit(amount)
 
 

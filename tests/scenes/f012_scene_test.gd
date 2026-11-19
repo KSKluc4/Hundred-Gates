@@ -21,9 +21,13 @@ func before_each() -> void:
 	Engine.physics_ticks_per_second = RATE
 
 
+## Keys are let go first. One frame passes before the rest: a node freed at the end of the test's
+## last frame (a room, a scene, a menu's buttons) is queued, not yet gone, and GUT would count it as
+## an orphan (F-011 DEV-13). GUT awaits this hook.
 func after_each() -> void:
-	Engine.physics_ticks_per_second = _ticks_per_second_before
 	release_held_keys()
+	await get_tree().process_frame
+	Engine.physics_ticks_per_second = _ticks_per_second_before
 
 
 ## `progress` null leaves the town to make its own. `prepare` runs before the scene enters the

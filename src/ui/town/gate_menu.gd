@@ -281,7 +281,7 @@ func _add_button(text: String, on_pressed: Callable) -> void:
 func _clear_buttons() -> void:
 	for button: Button in _buttons:
 		_list.remove_child(button)
-		button.free()
+		button.queue_free()  # F-012/CR-22: not free() inside input or a physics tick (F-011 DEV-13).
 	_buttons.clear()
 	_entries.clear()
 

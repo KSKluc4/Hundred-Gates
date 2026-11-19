@@ -26,7 +26,7 @@ func before_each() -> void:
 func after_each() -> void:
 	if _stick_tilted:
 		_send_stick_y(0.0)
-	super.after_each()
+	await super.after_each()
 
 
 # --- AC26: the game starts in the town ---

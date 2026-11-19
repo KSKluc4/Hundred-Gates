@@ -34,7 +34,7 @@ func before_each() -> void:
 func after_each() -> void:
 	Tunables.tower.death_return_delay = _death_delay_before
 	Tunables.tower.banner_duration = _banner_duration_before
-	super.after_each()
+	await super.after_each()
 
 
 ## `prepare` runs before the game enters the tree (set exports, connect signals). The input is off

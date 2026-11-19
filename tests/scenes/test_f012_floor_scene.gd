@@ -19,7 +19,7 @@ var _held_keys: Array[Key] = []
 
 func after_each() -> void:
 	_release_held_keys()
-	super.after_each()
+	await super.after_each()
 
 
 func test_ac14_by_default_a_death_restarts_the_room_and_reports_nothing() -> void:
@@ -347,6 +347,28 @@ func test_ac33_skip_room_into_the_boss_room_at_full_hp_emits_nothing() -> void:
 	_floor.skip_room()
 	assert_true(room().get_room_data().is_boss_room)
 	assert_eq(_healed, [] as Array[int])
+
+
+func test_ac33_a_skip_after_a_reported_death_emits_nothing() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _no_restart_and_connect)
+	hit(player().motor, 1000)
+	await run_ticks(2)
+	assert_eq(_died, 1)
+	_floor.skip_room()  # Public, so it still works after the death (the key does not).
+	assert_true(room().get_room_data().is_boss_room, "the skip did swap the room")
+	assert_eq(hp(), 100, "the new room's player is at the entry HP")
+	await run_ticks(2)
+	assert_eq(_healed, [] as Array[int], "no refill of a dead player is a heal")
+
+
+func test_ac33_after_a_restart_following_a_death_the_refill_is_reported_again() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _no_restart_and_connect)
+	hit(player().motor, 1000)
+	await run_ticks(2)
+	_floor.restart_room()  # The floor lives again.
+	set_hp(60)
+	_floor.skip_room()
+	assert_eq(_healed, [40] as Array[int])
 
 
 func test_ac33_restart_room_emits_nothing_in_a_normal_room_and_in_the_boss_room() -> void:

@@ -52,6 +52,8 @@ func after_each() -> void:
 	Input.flush_buffered_events()
 	for action: StringName in HANDLED_ACTIONS:
 		assert_false(Input.is_action_pressed(action), "%s let go of" % action)
+	# F-012/CR-22: the buttons a second open() replaced are queued, not gone, until the frame ends.
+	await get_tree().process_frame
 
 
 func test_ac23_entry_text_for_a_floor_from_its_start() -> void:

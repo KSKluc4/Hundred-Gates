@@ -30,7 +30,7 @@ func before_each() -> void:
 
 func after_each() -> void:
 	_release_held_pad_buttons()
-	super.after_each()
+	await super.after_each()
 
 
 # --- AC20: the town is built ---
