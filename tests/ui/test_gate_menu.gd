@@ -25,6 +25,7 @@ var _menu: GateMenu
 var _chosen: Array[Vector2i] = []
 var _closed: int = 0
 var _held_keys: Array[Key] = []
+var _held_pad_buttons: Array[JoyButton] = []
 var _stick_axes: Array[JoyAxis] = []
 
 
@@ -32,6 +33,7 @@ func before_each() -> void:
 	_chosen = []
 	_closed = 0
 	_held_keys = []
+	_held_pad_buttons = []
 	_stick_axes = []
 
 
@@ -39,6 +41,8 @@ func before_each() -> void:
 func after_each() -> void:
 	for key: Key in _held_keys:
 		_send_key(key, false)
+	for button: JoyButton in _held_pad_buttons:
+		_send_pad_button(button, false)
 	for axis: JoyAxis in _stick_axes:
 		_send_stick(axis, 0.0, 1)
 	Input.flush_buffered_events()
@@ -469,15 +473,18 @@ func test_ac23_a_ramped_push_down_moves_exactly_one_step() -> void:
 	assert_eq(_menu.get_focus_index(), 1, "crossing 0.2 and then 0.5 is one push")
 
 
-func test_ac23_a_stick_resting_between_the_deadzones_when_the_list_opens_is_not_a_push() -> void:
+func test_ac23_a_stick_resting_short_of_the_larger_deadzone_when_the_list_opens_has_not_pushed(
+) -> void:
+	# Past move_up's 0.2, short of ui_up's 0.5: a push starts at the larger one (CR-16), so
+	# this stick is not yet pushing, and the push that follows is one.
 	_spawn_menu()
-	_send_stick(JOY_AXIS_LEFT_Y, -0.4, 1)  # Past move_up's 0.2, short of ui_up's 0.5.
+	_send_stick(JOY_AXIS_LEFT_Y, -0.4, 1)
 	_menu.open(_three_entries())
+	assert_eq(_menu.get_focus_index(), 2)
 	_send_stick(JOY_AXIS_LEFT_Y, -0.9, 1)
-	assert_eq(_menu.get_focus_index(), 2, "it was already held up")
-	_send_stick(JOY_AXIS_LEFT_Y, 0.0, 1)
-	_send_stick(JOY_AXIS_LEFT_Y, -0.9, 1)
-	assert_eq(_menu.get_focus_index(), 1, "after a full release a push is a push")
+	assert_eq(_menu.get_focus_index(), 1, "the push that crosses 0.5 is the push")
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)
+	assert_eq(_menu.get_focus_index(), 1)
 
 
 func test_ac23_a_stick_easing_off_and_back_without_letting_go_is_not_a_new_push() -> void:
@@ -524,6 +531,166 @@ func test_ac23_a_ramped_diagonal_push_moves_exactly_one_step_up() -> void:
 		_send_stick(JOY_AXIS_LEFT_Y, -strength, 1)
 	assert_eq(_menu.get_focus_index(), 1, "one step up, and nothing sideways")
 	_assert_still_open_with_no_outcome()
+
+
+func test_ac23_a_key_held_when_the_list_opens_and_then_released_costs_no_stick_push() -> void:
+	_spawn_menu()
+	_send_key(KEY_W, true)
+	Input.flush_buffered_events()
+	_menu.open(_three_entries())
+	_send_key(KEY_W, false)
+	Input.flush_buffered_events()
+	_send_stick(JOY_AXIS_LEFT_Y, -0.9, 2)  # Straight from rest, as a flick.
+	assert_eq(_menu.get_focus_index(), 1, "the first push counts")
+
+
+func test_ac23_the_dpad_held_when_the_list_opens_and_then_released_costs_no_stick_push() -> void:
+	_spawn_menu()
+	_send_pad_button(JOY_BUTTON_DPAD_UP, true)
+	_menu.open(_three_entries())
+	_send_pad_button(JOY_BUTTON_DPAD_UP, false)
+	_send_stick(JOY_AXIS_LEFT_Y, -0.9, 2)  # Straight from rest, as a flick.
+	assert_eq(_menu.get_focus_index(), 1, "the first push counts")
+
+
+func test_ac23_a_key_and_a_stick_push_are_two_presses() -> void:
+	# The rule: each source is its own press. A held W gives one step (repeats are not presses)
+	# and a stick push on top of it gives another; neither blocks the other.
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_send_key(KEY_W, true)
+	Input.flush_buffered_events()
+	assert_eq(_menu.get_focus_index(), 1)
+	for strength: float in RAMP:
+		_send_stick(JOY_AXIS_LEFT_Y, -strength, 1)
+	assert_eq(_menu.get_focus_index(), 0, "the stick pushed too")
+
+
+func test_ac23_a_stick_held_down_does_not_block_a_key_or_the_dpad() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_UP)
+	assert_eq(_menu.get_focus_index(), 1)
+	_send_stick(JOY_AXIS_LEFT_Y, 1.0, 1)
+	assert_eq(_menu.get_focus_index(), 2)
+	_press_key(KEY_UP)
+	assert_eq(_menu.get_focus_index(), 1, "a key while the stick holds down")
+	_press_pad_button(JOY_BUTTON_DPAD_DOWN)
+	assert_eq(_menu.get_focus_index(), 2, "the d-pad too")
+
+
+func test_ac23_a_release_that_overshoots_the_centre_is_not_a_push_back() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	for value: float in [-1.0, -0.5, 0.1, 0.25, 0.1, 0.0]:
+		_send_stick(JOY_AXIS_LEFT_Y, value, 1)
+	assert_eq(_menu.get_focus_index(), 1, "one step up and none back down")
+
+
+func test_ac23_a_stick_jittering_around_the_smaller_deadzone_never_pushes() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	for value: float in [-0.25, -0.15, -0.25, -0.15, -0.25]:
+		_send_stick(JOY_AXIS_LEFT_Y, value, 1)
+	assert_eq(_menu.get_focus_index(), 2, "a push starts at 0.5, not at 0.2")
+	for value: float in [0.25, 0.15, 0.25, 0.15, 0.25]:
+		_send_stick(JOY_AXIS_LEFT_Y, value, 1)
+	assert_eq(_menu.get_focus_index(), 2)
+
+
+func test_ac23_a_stick_jittering_between_the_deadzones_after_a_push_stays_one_push() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	for value: float in [-1.0, -0.4, -0.25, -0.45, -0.25, -0.6, -0.3]:
+		_send_stick(JOY_AXIS_LEFT_Y, value, 1)
+	assert_eq(_menu.get_focus_index(), 1, "it never came back inside 0.2")
+
+
+func test_ac23_a_stick_past_the_larger_deadzone_when_the_list_opens_is_not_a_push() -> void:
+	_spawn_menu()
+	_send_stick(JOY_AXIS_LEFT_Y, -0.6, 1)
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, -0.8, 2)
+	assert_eq(_menu.get_focus_index(), 2, "it was already pushing")
+	_send_stick(JOY_AXIS_LEFT_Y, 0.0, 1)
+	_send_stick(JOY_AXIS_LEFT_Y, -0.8, 1)
+	assert_eq(_menu.get_focus_index(), 1, "after a full release a push is a push")
+
+
+func test_ac23_a_stick_pushed_while_the_list_was_closed_and_still_held_is_not_a_push() -> void:
+	_spawn_menu()
+	for strength: float in RAMP:  # The player walks up to the gate with the stick.
+		_send_stick(JOY_AXIS_LEFT_Y, -strength, 1)
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 3)
+	assert_eq(_menu.get_focus_index(), 2, "the push began before the list did")
+
+
+func test_ac23_a_stick_pushed_and_let_go_while_the_list_was_closed_leaves_no_trace() -> void:
+	_spawn_menu()
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)
+	_send_stick(JOY_AXIS_LEFT_Y, 0.0, 1)
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)
+	assert_eq(_menu.get_focus_index(), 1)
+
+
+func test_ac23_a_real_pad_a_press_chooses_the_focused_entry_once() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_pad_button(JOY_BUTTON_A)
+	assert_eq(_chosen, [Vector2i(2, 0)] as Array[Vector2i], "once")
+	assert_eq(_closed, 0)
+	assert_false(_menu.is_open())
+
+
+func test_ac23_a_real_pad_a_press_on_the_stay_entry_cancels_once() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_DOWN)
+	_press_pad_button(JOY_BUTTON_A)
+	assert_eq(_closed, 1)
+	assert_eq(_chosen, [] as Array[Vector2i])
+
+
+func test_ac23_a_real_pad_b_press_cancels_once() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_pad_button(JOY_BUTTON_B)
+	assert_eq(_closed, 1)
+	assert_eq(_chosen, [] as Array[Vector2i])
+	assert_false(_menu.is_open())
+
+
+func test_ac23_pad_x_does_nothing_and_pad_y_chooses() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_pad_button(JOY_BUTTON_X)
+	assert_true(_menu.is_open())
+	assert_eq(_menu.get_focus_index(), 2)
+	assert_eq(_chosen, [] as Array[Vector2i])
+	assert_eq(_closed, 0)
+	_press_pad_button(JOY_BUTTON_Y)  # interact
+	assert_eq(_chosen, [Vector2i(2, 0)] as Array[Vector2i])
+	assert_false(_menu.is_open())
+
+
+func test_ac23_no_single_press_matches_two_of_the_choose_actions() -> void:
+	# What keeps a choice from firing twice: one real press, one choose action.
+	var presses: Array[InputEvent] = [
+		_key_event(KEY_ENTER, true),
+		_key_event(KEY_KP_ENTER, true),
+		_key_event(KEY_SPACE, true),
+		_key_event(KEY_E, true),
+		_pad_button_event(JOY_BUTTON_A, true),
+		_pad_button_event(JOY_BUTTON_Y, true),
+	]
+	for press: InputEvent in presses:
+		var matched: int = 0
+		for action: StringName in GateMenu.CHOOSE_ACTIONS:
+			if press.is_action(action):
+				matched += 1
+		assert_eq(matched, 1, str(press))
 
 
 func test_ac23_left_and_right_keys_leave_the_focus_alone() -> void:
@@ -742,6 +909,27 @@ func _key_event(key: Key, pressed: bool, echo: bool = false) -> InputEventKey:
 	event.physical_keycode = key
 	event.pressed = pressed
 	event.echo = echo
+	return event
+
+
+## A press and a release of a pad button, as a tap. Pad A is `ui_accept` and `dodge`, B `ui_cancel`,
+## X `attack`, Y `interact`.
+func _press_pad_button(button: JoyButton) -> void:
+	_send_pad_button(button, true)
+	_send_pad_button(button, false)
+
+
+func _send_pad_button(button: JoyButton, pressed: bool) -> void:
+	if pressed and not _held_pad_buttons.has(button):
+		_held_pad_buttons.append(button)
+	Input.parse_input_event(_pad_button_event(button, pressed))
+	Input.flush_buffered_events()
+
+
+func _pad_button_event(button: JoyButton, pressed: bool) -> InputEventJoypadButton:
+	var event: InputEventJoypadButton = InputEventJoypadButton.new()
+	event.button_index = button
+	event.pressed = pressed
 	return event
 
 

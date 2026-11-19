@@ -18,12 +18,19 @@ const DASH_TICKS: int = 22
 
 var _chosen: Array[Vector2i] = []
 var _dashes: int = 0
+var _held_pad_buttons: Array[JoyButton] = []
 
 
 func before_each() -> void:
 	super.before_each()
 	_chosen = []
 	_dashes = 0
+	_held_pad_buttons = []
+
+
+func after_each() -> void:
+	_release_held_pad_buttons()
+	super.after_each()
 
 
 # --- AC20: the town is built ---
@@ -523,6 +530,41 @@ func test_ac22_stay_chosen_with_a_real_space_press_does_not_make_the_player_dodg
 	assert_true(player().input_enabled, "the input is back")
 
 
+## F-012/CR-17: the pad twin of the Space test. Pad A is `ui_accept` and `dodge` at once.
+func test_ac22_stay_chosen_with_a_real_pad_a_press_does_not_make_the_player_dodge() -> void:
+	await spawn_town(TowerFixtures.town_room(), _progress(3), _input_on_and_connect)
+	await _hold_w_into_the_gate()
+	await run_ticks(WALK_TICKS)
+	player().motor.dash_started.connect(_count_a_dash)
+	press_key(KEY_DOWN)  # A real ui_down: from floor 1 to the stay entry.
+	assert_eq(menu().get_focus_index(), menu().get_entry_count(), "on 'Stay in town'")
+	await _hold_pad_button_between_ticks(JOY_BUTTON_A)  # ui_accept and dodge at once.
+	assert_false(menu().is_open(), "the list closed")
+	assert_false(player().input_enabled, "and the input is not back in the same input phase")
+	var off_the_tile: int = 0
+	for _i: int in 30:
+		await run_ticks(1)
+		if _position_tiles() != NORTH_RETURN_TILES:
+			off_the_tile += 1
+	assert_eq(_dashes, 0, "no dash was started")
+	assert_eq(off_the_tile, 0, "the player stood on the return tile throughout")
+	assert_eq(player().motor.get_velocity_tiles(), Vector2.ZERO)
+	assert_false(menu().is_open(), "the list did not reopen")
+	assert_eq(_chosen, [] as Array[Vector2i], "and nothing was chosen")
+	assert_true(player().input_enabled, "the input is back")
+
+
+## What the test above stands on: the player's own input reads a real pad A press as a dodge.
+func test_ac22_the_players_own_input_reads_a_real_pad_a_press_as_a_dodge() -> void:
+	await spawn_town(TowerFixtures.town_room(), _progress(3), _input_on_and_connect)
+	hold_key(KEY_W)
+	await run_ticks(2)
+	player().motor.dash_started.connect(_count_a_dash)
+	await _hold_pad_button_between_ticks(JOY_BUTTON_A)
+	await run_ticks(3)
+	assert_eq(_dashes, 1, "pad A is a dodge outside the list")
+
+
 func test_ac22_a_floor_chosen_with_a_real_space_press_does_not_make_the_player_dodge() -> void:
 	await spawn_town(TowerFixtures.town_room(), _progress(3), _input_on_and_connect)
 	await _hold_w_into_the_gate()
@@ -739,6 +781,29 @@ func _hold_w_into_the_gate() -> void:
 	var opened: Callable = func() -> bool: return menu().is_open()
 	assert_true(await run_until(opened, 400), "the player's own input walked it to the gate")
 	release_held_keys()
+
+
+## F-012/CR-17: like hold_key_between_ticks(), for a pad button. It stays down, for Input's polling
+## (`dodge` reads `is_action_just_pressed`), until _release_held_pad_buttons(), which after_each()
+## calls.
+func _hold_pad_button_between_ticks(button: JoyButton) -> void:
+	await get_tree().process_frame
+	var event: InputEventJoypadButton = InputEventJoypadButton.new()
+	event.button_index = button
+	event.pressed = true
+	Input.parse_input_event(event)
+	Input.flush_buffered_events()
+	_held_pad_buttons.append(button)
+
+
+func _release_held_pad_buttons() -> void:
+	for button: JoyButton in _held_pad_buttons:
+		var event: InputEventJoypadButton = InputEventJoypadButton.new()
+		event.button_index = button
+		event.pressed = false
+		Input.parse_input_event(event)
+	Input.flush_buffered_events()
+	_held_pad_buttons.clear()
 
 
 ## Runs `ticks` ticks (no commands) and counts those that ended anywhere but exactly on `held`,

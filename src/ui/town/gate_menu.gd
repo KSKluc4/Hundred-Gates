@@ -36,10 +36,15 @@ var _entries: Array[TowerEntry] = []
 var _buttons: Array[Button] = []
 var _focus_index: int = 0
 var _is_open: bool = false
-## F-012/CR-3: per direction (up, down), whether the stick held it when the last joypad motion event
-## came in; the key is the family's first action. A direction is held while any action of its family
-## is, so a push that crosses the 0.2 deadzone of `move_*` and later the 0.5 of `ui_*` is one push.
-var _stick_held: Dictionary[StringName, bool] = {}
+## F-012/CR-3, CR-15, CR-16: what the stick does, from its own joypad motion events alone (keys and
+## the d-pad never touch it), tracked while the list is closed too. Per action: does the stick press
+## it now. Per direction (up, down; the key is the family's first action): is a push going on. A
+## push starts when every action of the direction is pressed (past the larger deadzone, 0.5) and
+## ends when none is (back inside the smaller, 0.2); the band between is the hysteresis.
+var _stick_pressed: Dictionary[StringName, bool] = {}
+var _stick_pushing: Dictionary[StringName, bool] = {}
+## The directions the event being handled started a push in.
+var _fresh_pushes: Array[StringName] = []
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _list: VBoxContainer = $Panel/List
@@ -60,10 +65,10 @@ func _ready() -> void:
 ## While open and nothing else has used the event, the keys are the menu's alone (AC23). Every
 ## outcome goes through choose() or cancel(), the same two a click on a button reaches.
 func _input(event: InputEvent) -> void:
+	_track_stick(event)
 	if not _is_open:
 		return
 	var action: Callable = _action_for(event)
-	_track_stick(event)
 	if action.is_valid():
 		get_viewport().set_input_as_handled()
 		action.call()
@@ -89,7 +94,6 @@ func open(entries: Array[TowerEntry]) -> void:
 	_add_button(STAY_TEXT, cancel)
 	_is_open = true
 	visible = true
-	_track_stick_directions()  # A stick held now, even only a little, is not a push.
 	_set_focus(maxi(_entries.size() - 1, 0))
 
 
@@ -145,11 +149,10 @@ func _action_for(event: InputEvent) -> Callable:
 
 
 ## Key repeat is not a press (is_action_pressed ignores echoes): a key held while walking into the
-## gate does not choose. A stick is a press only on the event that takes its direction from not
-## held to held (CR-3).
+## gate does not choose. A stick event is a press only when it starts a push (CR-3, CR-16).
 func _is_pressed(event: InputEvent, actions: Array[StringName]) -> bool:
-	if event is InputEventJoypadMotion and _stick_held.get(actions[0], false):
-		return false
+	if event is InputEventJoypadMotion:
+		return _fresh_pushes.has(actions[0])
 	for action: StringName in actions:
 		if event.is_action_pressed(action):
 			return true
@@ -165,22 +168,39 @@ func _is_navigation(event: InputEvent) -> bool:
 	return false
 
 
-## After the event is answered: which directions the stick holds now. Every joypad motion event
-## past a deadzone says "pressed", not only the first, and Input.is_action_just_pressed is no help:
-## it is true for every event of the same frame. The engine has already taken the event into its
-## own action state, and that state also covers a motion on the other axis, which says nothing
-## about this direction.
+## Every joypad motion event past a deadzone says "pressed", not only the first, and
+## Input.is_action_just_pressed is no help: it is true for every event of the same frame. So the
+## stick's state is kept here, from the motion events, and `_fresh_pushes` says which directions
+## this event started a push in. A motion event only speaks for the axes an action is bound to: one
+## on another axis changes nothing, and one on the same axis pointing the other way releases.
 func _track_stick(event: InputEvent) -> void:
-	if event is InputEventJoypadMotion:
-		_track_stick_directions()
-
-
-func _track_stick_directions() -> void:
+	_fresh_pushes.clear()
+	var motion: InputEventJoypadMotion = event as InputEventJoypadMotion
+	if motion == null:
+		return
 	for actions: Array[StringName] in [PREVIOUS_ACTIONS, NEXT_ACTIONS]:
-		var held: bool = false
+		var any: bool = false
+		var every: bool = true
 		for action: StringName in actions:
-			held = held or Input.is_action_pressed(action)
-		_stick_held[actions[0]] = held
+			if _is_bound_to_axis(action, motion.axis):
+				_stick_pressed[action] = motion.is_action_pressed(action)
+			var pressed: bool = _stick_pressed.get(action, false)
+			any = any or pressed
+			every = every and pressed
+		var direction: StringName = actions[0]
+		var pushing: bool = _stick_pushing.get(direction, false)
+		if pushing and not any:
+			_stick_pushing[direction] = false
+		elif not pushing and every:
+			_stick_pushing[direction] = true
+			_fresh_pushes.append(direction)
+
+
+func _is_bound_to_axis(action: StringName, axis: JoyAxis) -> bool:
+	for bound: InputEvent in InputMap.action_get_events(action):
+		if bound is InputEventJoypadMotion and (bound as InputEventJoypadMotion).axis == axis:
+			return true
+	return false
 
 
 ## Clamped: the list doesn't wrap.
