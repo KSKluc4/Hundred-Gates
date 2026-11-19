@@ -18,7 +18,7 @@
 | F-009 | Floor 3 boss (Juggernaut) | DONE | — | — |
 | F-010 | Studio queue — chained features, auto-drafted specs, opt-in automatic Gate A | PLAN_REVIEW | Auditor | — |
 | F-011 | Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox | CODE_CHANGES | Builder | — |
-| F-012 | The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene | CODE_REVIEW | Lucas | F-011 (stacked on its branch, D-013; merge F-011 first) |
+| F-012 | The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene | CODE_CHANGES | Builder | F-011 (stacked on its branch, D-013; merge F-011 first) |
 
 ## Open questions waiting on Lucas
 - **Gate B for F-011 and F-012** (both reviewed under D-014, both `CODE_REVIEW` / Lucas). Play `scenes/main.tscn` (F5), with a keyboard and with a gamepad: no review round used a real device.

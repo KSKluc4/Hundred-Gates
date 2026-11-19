@@ -1,8 +1,8 @@
 ---
 id: F-012
 title: The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-011, D-005, D-006, D-010, D-012, D-013]
@@ -190,6 +190,7 @@ the F5 reload in debug scenes, snapshots.
 - [ ] AC30: No scene is freed inside its own signal: the swap happens in `Game._physics_process` on the tick after the report (a test checks the old scene is still valid inside the handler of `floor_exited` and `player_died`, and gone one tick later).
 - [ ] AC31: With the shipped tower: every floor can be entered from the start and at the boss (after the debug unlock), with no setup errors, and each boss room's exit returns to town after the boss is killed.
 - [ ] AC32: An invalid `TowerData` builds nothing and logs each error; `get_setup_errors()` returns them.
+- [ ] AC33 (Gate B, §10 Q10): Whenever the player's HP rises between fights the HUD says by how much: `+30 HP` when a cleared room heals (the amount really healed, so `+10 HP` at 90/100 and nothing at full HP), and `+N HP` on entering a room with more HP than was carried (the boss room's refill). `FloorScene` reports it with `healed(amount)`; the amounts come from core (`CombatState.heal()`'s result, `FloorRun`'s entry HP). A room skipped with the debug key reports only what entering the next room gives.
 
 **Gates for every task (the lead runs them before committing):**
 1. The task's new tests pass.
@@ -298,6 +299,7 @@ func from_dict(snapshot: Dictionary) -> bool
 # src/world/floors/floor_scene.gd  (added; defaults keep F-011's behaviour, C11)
 signal player_died
 signal floor_exited(floor_number: int)
+signal healed(amount: int)                                # AC33 (Gate B): HP gained between fights
 @export var death_restarts_room: bool = true
 @export var debug_keys_enabled: bool = true
 @export var debug_label_visible: bool = true
@@ -439,6 +441,10 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   pad A is also `dodge`, covered by a town test. The override binds the keys to all devices
   where the built-ins bind one device: a superset. No game action was added or changed, and
   `tests/test_input_map.gd` is untouched; a new `tests/test_ui_input_map.gd` pins the two.
+- DEV-15: after Lucas's Gate B playtest the lead added AC33 and the `FloorScene.healed` signal
+  (§10 Q10). — **Why:** the heal rule was working and invisible, and read as inconsistent. —
+  **Impact:** one more signal on `FloorScene` (nobody listens to it in F-011's debug scenes) and
+  one more banner; the rule itself is unchanged.
 - DEV-10: one sentence of F-011's README paragraph was reworded (the floor debug scenes are no
   longer "placeholders until the loop is wired"). — **Why:** it became false. — **Impact:** none.
 - DEV-5: `# gdlint:disable=max-public-methods` on six long test files
@@ -1014,6 +1020,11 @@ a pad in hand. These are for Gate B.
 | Q6 | Lead | → Lucas (Gate B): `dodge` (Space) is also `ui_accept`, so a second Space press right after dashing into the gate chooses the focused entry (the highest floor). Annoying or fine? | no | |
 | Q7 | Lead | → Direction / F-011's review: the boss bar label in `src/world/floors/room.gd` sets its size before the font override and ends up 23 px tall (found in T7's layout tests). Harmless today; fix with F-011's review changes or a later feature? | no | |
 | Q8 | Auditor (lead) | → Lucas / Direction (review CR-6): G8 says player actions go through a command layer. Entering a floor goes from the gate list straight to `TowerSession.enter_floor(floor, at_boss)`: one call with two plain values, no command object. Does a menu choice count as a player action under G8? The lead's view: treat that one call as the command boundary for now and wrap it in a command when co-op needs it (phase 3). | no | |
+| Q9 | Lucas (Gate B playtest, 2026-11-18) | "like the photo some rooms are not moving around and it stays on the conner like that one" | yes | A bug in F-011's `FloorScene` (rooms entered by walking through the exit had no current camera). Diagnosis and fix: F-011 §10 Q6, DEV-13; merged into this branch. |
+| Q10 | Lucas (Gate B playtest, 2026-11-18) | "the HP for the player on the begining every room you go it would make your life go to 100 but after it would only raise the player HP on the boss room check that" | yes | **Checked by the lead in the real game:** the rule works as written (F-011/C12): a cleared room gives +30 HP capped at max (40 → 70, 90 → 100), only the boss room refills. One hit (18–20) per room is fully healed, two or more are not, and a room skipped with N is not cleared, so it gives nothing. Nothing on screen says any of this: that is the defect. Fix: AC33 (the HUD says how much was healed). Whether the rule itself should change is asked of Lucas in chat. |
+| Q11 | Lucas (Gate B playtest, 2026-11-18) | "the enimies I belive they can be spaming them on the room … enough for the space on the room … so they would appear until the player reach a certain amount that he killed, what you think? develop something around that idea" | no | A new feature (waves with a kill target), proposed by the lead in chat; waits for Lucas's answer and for the full-screen rooms. Not part of F-012. |
+| Q12 | Lucas (Gate B playtest, 2026-11-18) | "The dash that the player has need to have a recovery" | no | → Combat. Today: 0.35 s cooldown, no end-lag. Options put to Lucas in chat (longer cooldown, or end-lag plus cooldown). Not part of F-012. |
+| Q13 | Lucas (Gate B playtest, 2026-11-18) | "the map of the game I actually want to be in the whole screen"; "in the future I wanna add more design for the room etc so that's why I wanna the room to be full screen" | no | → Floors. The lead proposed: every room and the town exactly one screen (40 × 22 tiles), fixed camera. Waits for Lucas's answer. Not part of F-012. |
 
 ---
 
