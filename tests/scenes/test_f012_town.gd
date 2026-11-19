@@ -153,6 +153,70 @@ func test_ac20_the_debug_key_and_the_gate_do_nothing_without_a_town() -> void:
 	assert_false(menu().is_open())
 
 
+func test_ac20_a_town_scene_moved_off_the_world_origin_is_refused() -> void:
+	await spawn_town(
+		TowerFixtures.town_room(),
+		null,
+		func(scene: TownScene) -> void: scene.position = Vector2(160, 64)
+	)
+	_expect_origin_refused()
+	assert_string_contains(town().get_setup_errors()[0], "(160.0, 64.0)", "says where it is")
+
+
+func test_ac20_a_town_scene_under_a_moved_parent_is_refused() -> void:
+	var parent: Node2D = Node2D.new()
+	parent.position = Vector2(32, 0)
+	await _spawn_under(parent)
+	_expect_origin_refused()
+
+
+func test_ac20_a_town_scene_under_a_scaled_parent_is_refused() -> void:
+	var parent: Node2D = Node2D.new()
+	parent.scale = Vector2(2, 2)
+	await _spawn_under(parent)
+	_expect_origin_refused()
+
+
+func test_ac20_a_scaled_town_scene_is_refused() -> void:
+	await spawn_town(
+		TowerFixtures.town_room(), null, func(scene: TownScene) -> void: scene.scale = Vector2(2, 2)
+	)
+	_expect_origin_refused()
+
+
+func test_ac20_a_rotated_town_scene_is_refused() -> void:
+	await spawn_town(
+		TowerFixtures.town_room(), null, func(scene: TownScene) -> void: scene.rotation = 0.5
+	)
+	_expect_origin_refused()
+
+
+func test_ac20_a_town_scene_at_the_origin_builds_with_or_without_a_parent() -> void:
+	await spawn_town(TowerFixtures.town_room())
+	assert_eq(town().get_setup_errors(), PackedStringArray())
+	assert_not_null(town().get_room())
+	var parent: Node2D = Node2D.new()
+	await _spawn_under(parent)
+	assert_eq(town().get_setup_errors(), PackedStringArray())
+	assert_not_null(town().get_room(), "built under a parent at the origin")
+	put_player_at_gate()
+	var opened: Callable = func() -> bool: return menu().is_open()
+	assert_true(await run_until(opened, 400, gate_outward()), "and the gate latch works there")
+
+
+func test_ac20_a_town_scene_off_the_origin_keeps_its_key_and_gate_off() -> void:
+	await spawn_town(
+		TowerFixtures.town_room(),
+		null,
+		func(scene: TownScene) -> void: scene.position = Vector2(160, 64)
+	)
+	assert_push_error("origin: the town scene must sit at the world origin")
+	assert_false(town().is_processing_unhandled_input(), "the debug key is off")
+	press_key(KEY_N)
+	assert_null(town().get_room())
+	assert_false(menu().is_open())
+
+
 # --- AC21: walking onto the gate opens the list ---
 
 
@@ -706,6 +770,25 @@ func _button_texts() -> Array[String]:
 	for child: Node in menu().get_node("Panel/List").get_children():
 		texts.append((child as Button).text)
 	return texts
+
+
+## A fresh town scene as the child of `parent`, which joins the tree with it.
+func _spawn_under(parent: Node2D) -> void:
+	_town = (load(TOWN_SCENE_PATH) as PackedScene).instantiate()
+	_town.town_room = TowerFixtures.town_room()
+	_town.player_input_enabled = false
+	parent.add_child(_town)
+	add_child_autofree(parent)
+	await get_tree().physics_frame
+
+
+## F-012/C9: the one setup error is about the origin, and nothing was built or runs.
+func _expect_origin_refused() -> void:
+	var errors: PackedStringArray = town().get_setup_errors()
+	assert_eq(errors.size(), 1, str(errors))
+	assert_string_contains(errors[0], "origin: the town scene must sit at the world origin")
+	assert_push_error("origin: the town scene must sit at the world origin")
+	_assert_nothing_built()
 
 
 func _assert_nothing_built() -> void:

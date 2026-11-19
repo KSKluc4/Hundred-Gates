@@ -111,6 +111,14 @@ func get_setup_errors() -> PackedStringArray:
 
 func _collect_setup_errors() -> PackedStringArray:
 	var errors: PackedStringArray = []
+	# F-012/C9, F-011/C6: the gate latch reads the player's logic position, which comes from
+	# global_position, against the room's own tiles; they only agree at the world origin.
+	if not global_transform.is_equal_approx(Transform2D.IDENTITY):
+		var message: String = (
+			"origin: the town scene must sit at the world origin with no rotation or scale, "
+			+ "is at %s (rotation %s, scale %s)"
+		)
+		errors.append(message % [global_position, global_rotation, global_scale])
 	for error: String in Tunables.floors.validate():
 		errors.append("floor tunables: %s" % error)
 	if town_room == null:
