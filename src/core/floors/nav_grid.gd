@@ -31,10 +31,13 @@ const COST_EPSILON: float = 1e-9
 ## answer. So it must err on the side of keeping, and by more than every rounding it can meet:
 ## Vector2 holds 32-bit floats, a coordinate of 64 has steps of 7.6e-6, a difference of two such
 ## coordinates is off by up to 1.5e-5, and the distance test it feeds is off by about as much.
-## The largest room is 80 x 46. 1e-3 is some 60 times the worst of that, and costs at most an
-## extra tile at each end of a row.
+## The largest room is 80 x 46. 1e-3 is some 60 times the worst of that, so the rounding of 32-bit
+## coordinates stays far below it for any allowed room, and well beyond. It is the slack of the
+## row band (a row is skipped only when the segment is further than the limit by more than this);
+## the columns of a visited row have CLIP_TILES on top. It costs at most an extra tile per row.
 const CLIP_MARGIN: float = 1e-3
-## The whole tiles added at each end of a row's columns, on top of CLIP_MARGIN.
+## The whole tiles added at each end of a row's columns, on top of CLIP_MARGIN. Columns only: the
+## rows have no such tile.
 const CLIP_TILES: int = 1
 ## `_settled` values: 0 not yet taken off the queue, 1 settled (its cost is final), 2 not yet
 ## settled and wanted by the question being answered (it stays 2 only when no path reaches it).
@@ -104,8 +107,10 @@ func tile_of(position_tiles: Vector2) -> Vector2i:
 ## F-013/C17 (c): the tests are the same ones, on tiles of that same box, but a row of the box
 ## only visits the columns the segment passes near, so a long diagonal no longer tests the whole
 ## rectangle. A tile is left out only when the segment is further from it than the limit by more
-## than CLIP_MARGIN plus a tile, which float rounding cannot bridge, so no tile that could have
-## made the line blocked is ever left out. The clip never goes beyond the old box either.
+## than CLIP_MARGIN: by that much for the tiles of a skipped row, and by a whole tile more for the
+## columns left out of a visited row. Rounding of 32-bit coordinates stays far below that margin
+## for rooms up to the allowed 80 x 46, and well beyond, so no tile that could have made the line
+## blocked is ever left out. The clip never goes beyond the old box either.
 func has_clear_line(from: Vector2, to: Vector2, radius_tiles: float) -> bool:
 	var limit: float = radius_tiles + Geometry.DISTANCE_EPSILON
 	var reach: Vector2 = Vector2.ONE * limit  # A tile that only touches the box counts too.

@@ -215,7 +215,7 @@ func from_dict(snapshot: Dictionary) -> void:
 	_dash_distance = snapshot["dash_distance"]
 	_dash_duration = snapshot["dash_duration"]
 	_dash_iframe_duration = snapshot["dash_iframe_duration"]
-	_dash_recovery_duration = snapshot["dash_recovery_duration"]
+	_dash_recovery_duration = _restored_recovery_duration(snapshot["dash_recovery_duration"])
 	_dash_recovery_remaining = _restored_recovery_remaining(snapshot["dash_recovery_remaining"])
 	_cooldown_remaining = snapshot["cooldown_remaining"]
 	_has_buffered_dash = snapshot["has_buffered_dash"]
@@ -504,9 +504,17 @@ func _end_dash(ran_full_length: bool) -> void:
 	dash_ended.emit()
 
 
-## F-013/CR-5: a snapshot is trusted for its shape, not its numbers. The time left belongs to a
-## recovery only: in any other state it is 0, and in a recovery it lies in [0, the latched
-## duration] (NaN counts as 0). Valid snapshots are unchanged.
+## F-013/CR-5, CR-10: what a restore guarantees about the dash recovery, and no more. The latched
+## duration is a finite number above 0, or 0 (negative, NaN and infinity become 0). The time left
+## is 0 unless the restored state is DASH_RECOVERY, and then it lies in [0, that duration] (NaN
+## counts as 0). A valid snapshot is unchanged. Every other number of the snapshot (`time`,
+## `dash_elapsed`, ...) is still taken as it comes.
+func _restored_recovery_duration(duration: float) -> float:
+	if not duration > 0.0 or is_inf(duration):
+		return 0.0
+	return duration
+
+
 func _restored_recovery_remaining(remaining: float) -> float:
 	if _state != State.DASH_RECOVERY or not remaining > 0.0:
 		return 0.0

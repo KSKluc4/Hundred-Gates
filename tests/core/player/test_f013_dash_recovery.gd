@@ -606,6 +606,42 @@ func test_cr5_a_time_left_outside_a_recovery_is_cleared_on_restore() -> void:
 		assert_eq(restored.to_dict()["dash_recovery_remaining"], 0.0, "state %s" % state)
 
 
+func test_cr10_an_infinite_latched_duration_becomes_zero_and_roots_nobody() -> void:
+	_assert_latched_duration_read_as_zero(INF)
+
+
+func test_cr10_a_nan_latched_duration_becomes_zero_and_keeps_the_clock_clean() -> void:
+	_assert_latched_duration_read_as_zero(NAN)
+
+
+func test_cr10_a_negative_latched_duration_becomes_zero() -> void:
+	_assert_latched_duration_read_as_zero(-1.0)
+
+
+func _assert_latched_duration_read_as_zero(bad: float) -> void:
+	for left: float in [5.0, 0.05]:
+		var snapshot: Dictionary = _recovery_snapshot()
+		snapshot["dash_recovery_duration"] = bad
+		snapshot["dash_recovery_remaining"] = left
+		var restored: PlayerMotor = _restored(snapshot)
+		var label: String = "latched %s, %s left" % [bad, left]
+		assert_eq(restored.to_dict()["dash_recovery_duration"], 0.0, "read as 0: %s" % label)
+		assert_eq(restored.to_dict()["dash_recovery_remaining"], 0.0, "nothing left: %s" % label)
+		var before: float = _time_of(restored)
+		_play(restored, 60, 1.0 / 60.0, [], [], Vector2.RIGHT)
+		assert_almost_eq(_time_of(restored), before + 1.0 / 60.0, NEAR, "a clean clock: %s" % label)
+		assert_ne(restored.get_state(), RECOVERY, "not rooted: %s" % label)
+
+
+func test_cr10_a_finite_positive_latched_duration_is_kept_as_it_is() -> void:
+	var snapshot: Dictionary = _recovery_snapshot()
+	snapshot["dash_recovery_duration"] = 0.3
+	snapshot["dash_recovery_remaining"] = 0.2
+	var restored: PlayerMotor = _restored(snapshot)
+	assert_almost_eq(restored.to_dict()["dash_recovery_duration"], 0.3, NEAR)
+	assert_almost_eq(restored.to_dict()["dash_recovery_remaining"], 0.2, NEAR)
+
+
 func test_cr5_a_valid_snapshot_restores_exactly_as_before() -> void:
 	var snapshot: Dictionary = _recovery_snapshot()
 	var restored: PlayerMotor = _restored(snapshot)
