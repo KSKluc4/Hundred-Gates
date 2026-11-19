@@ -1,8 +1,8 @@
 ---
 id: F-012
 title: The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-011, D-005, D-006, D-010, D-012, D-013]
@@ -380,6 +380,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 - [x] T5 — 641fc54
 - [x] T6 — d768146
 - [x] T7 — 9216679
+- [x] Review round 1 fixes — CR-1/CR-2/CR-9 add2f1b, CR-3/CR-10 6472012, CR-5 8de6c4c, CR-4 996fc6e, town origin ec5b964; F-011's round 1 fixes merged in 7f71ab5 (replies in §9)
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -458,8 +459,9 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   emits `place_changed` only if the place differs. A town snapshot must have floor 0, start
   room 0 and no time left.
 - ASSUMPTION-11 (T3): with `death_restarts_room` on, `player_died` is not emitted (F-011's
-  behaviour exactly). `skip_room()` (debug N) is not blocked after a reported death; the
-  session ignores room reports during the death pause, so it changes nothing.
+  behaviour exactly). Since review round 1 (CR-4) the debug keys do nothing after a reported
+  death; `skip_room()` called directly still works, and the session ignores room reports
+  during the death pause.
 - ASSUMPTION-12 (T4): the health bar draws its back rect with no player (an empty bar); the
   banner counts down only while visible; the location label starts empty and `Game` sets it.
   HUD placement: bar 96 × 10 px top left, location top right, banner top centre at y = 24.
@@ -479,8 +481,8 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   the last floor always says "no floor above yet", also on a replay. In a floor the location
   counts combat rooms only (`Room 1 / 3`, then `Boss`).
 - ASSUMPTION-17 (T7): on a setup error `Game` keeps only the HUD (empty bar, no location) and
-  its getters return null. A debug skip (N) during the death pause still makes `FloorScene`
-  build the next room; the session ignores it and the HUD location doesn't change.
+  its getters return null. (The debug skip during the death pause this entry first described
+  no longer exists: review round 1, CR-4.)
 
 ### Things the Auditor should look at closely
 - **Read this branch as the diff from `a864404`** (the tip of `feature/F-011-floor-structure`).
@@ -498,8 +500,12 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   top, but `skip_room()` and `restart_room()` still work (ASSUMPTION-11, -17).
 - **`RoomData.validate()` changed for safe rooms only** (`_check_spawns` branches on
   `is_safe_room` first). F-011's room tests are untouched.
-- **Session snapshot.** "Cleared during this visit" is deliberately not saved
-  (ASSUMPTION-10); nothing writes a snapshot to disk yet, so this only matters to slice 4.
+- **Session snapshot.** "Cleared during this visit" is saved since review round 1 (CR-5;
+  ASSUMPTION-10 is superseded). Still open for slice 4: `Game` rebuilds only on
+  `place_changed`, so a restore that keeps the place but changes the floor would leave the
+  old floor on screen (CR-8).
+- **Same-tick death and boss kill (C5)** holds by the order of checks in
+  `FloorScene._physics_process`, not by a rule in `FloorRun` (CR-7).
 - **Input in the gate list.** `GateMenu._input` consumes `ui_*`, `move_up/down` and `interact`
   while open. `dodge` (Space) is also `ui_accept` (§10 Q6). If `Game` ever refused a choice
   the town would leave the player without input; it can't today because the list is exactly
@@ -531,6 +537,9 @@ All of this feature's scene tests: `-gdir=res://tests/scenes -gselect=f012`.
 By hand (Gate B): open the project and press F5. See §5 "How to verify manually". `N` skips a
 room in a floor and unlocks the next floor in the town; `R` restarts a room; `F3` hides the
 debug overlay.
+
+After the review round 1 fixes and the merge of F-011's (`ec5b964`): 1542/1542 tests, gdlint clean,
+gdformat 247 files unchanged, core purity ok.
 
 Final gate run by the lead on the tree committed as `9216679`: 1462/1462 tests (1135 from the F-011
 branch, none changed, plus 327 new), gdlint clean, gdformat 247 files unchanged, core purity ok
@@ -628,6 +637,8 @@ running the real town scene.
 - **Suggested fix:** hold the player where the list opened for as long as the gate is engaged
   (the latch's state belongs in `TownGate`, see CR-9), and add a dash test to AC21.
 
+> **Builder reply (lead):** fixed in `add2f1b`. `TownGate` has an engaged state: the check that fires records the player's position, and `TownScene` puts the player back on it every tick while the gate is engaged, a dash included. AC21 now tests a walk-in and a dash-in for 60 ticks, exact position, never outside the grid; with the hold removed six of those tests fail. C10 and AC21 were amended (`8be0759`).
+
 **CR-2 🟡 "Stay in town" chosen with Space makes the player dodge on the same tick.** Verified
 with Space; gamepad A and a mouse click (which is `attack`) follow from the same mechanism.
 - **Where:** `town_scene.gd:134` (`_on_menu_closed`), `gate_menu.gd:24`,
@@ -641,6 +652,8 @@ with Space; gamepad A and a mouse click (which is `attack`) follow from the same
 - **Suggested fix:** give input back on the next physics tick, after the room's runner has
   run, not in the handler. Add a test that sends a real key event.
 
+> **Builder reply (lead):** fixed in `add2f1b`. Closing the list only releases the gate; input comes back in `TownScene._physics_process`, after that tick's runner has run with input off, and not before a running or buffered dash has ended (a cancel during a dash would otherwise carry the player back through the gate). A test closes the list with a real, held Space key: it fails on the old code (one dash) and passes now. Not tested: a mouse click on "Stay in town". Buttons fire on release, when `attack` is no longer "just pressed", so a click can't act on that tick.
+
 **CR-3 🟡 A gamepad stick moves the focus once per motion event.** Verified with synthetic
 `InputEventJoypadMotion`.
 - **Where:** `src/ui/town/gate_menu.gd:138` (`_is_pressed`).
@@ -650,6 +663,8 @@ with Space; gamepad A and a mouse click (which is `attack`) follow from the same
   — from the start" instead of the last floor entry (AC23).
 - **Suggested fix:** for joypad motion also require `Input.is_action_just_pressed(action)`.
   Add a test.
+
+> **Builder reply (lead):** fixed in `6472012`. A stick counts as a press only when it crosses the deadzone, tracked per action, because `Input.is_action_just_pressed` turned out to be true for every motion event of a frame. A stick already held when the list opens is not a push. The follow-up in the same commit: left and right do nothing in the list (each button is its own left and right neighbour, and `ui_left`/`ui_right` are consumed), so a diagonal push moves exactly one step.
 
 **CR-4 🟡 A dead player keeps full control during the death pause, and debug R revives them.**
 Verified by running.
@@ -663,6 +678,8 @@ Verified by running.
 - **Suggested fix:** when the death is reported, turn the player's input off and ignore the
   debug keys until the room is rebuilt. Add the rule to C5.
 
+> **Builder reply (lead):** fixed in `996fc6e`. With `death_restarts_room` off, the reported death turns the player's input off and N and R do nothing until the room is rebuilt; `skip_room()` and `restart_room()` called directly still work. Measured in the real game with W, J and Space held for the 1.5 s pause: the player stays on the same spot, idle, at 0 HP. C5 says so (`8be0759`). The same fix round made `TownScene` refuse any origin but the world's (`ec5b964`), the town's version of F-011's CR-4.
+
 **CR-5 🟡 The session snapshot drops "cleared during this visit" (G7).** From reading.
 - **Where:** `src/core/floors/tower_session.gd:138`; `test_tower_session.gd:444` asserts the
   loss.
@@ -674,6 +691,8 @@ Verified by running.
 - **Suggested fix:** put the flag in the snapshot (valid only when the place is `FLOOR`) and
   change that test.
 
+> **Builder reply (lead):** fixed in `8de6c4c`. The snapshot has `cleared_in_run`; it may be true only on a floor that the progress says is cleared, and anything else is refused. A restored cleared floor lets the player out and doesn't report the clear twice. C7 says so (`8be0759`).
+
 **CR-6 🟡 G8: entering a floor is a player action with no command object.** From reading.
 - **Where:** `src/world/game.gd:193`.
 - **Problem:** `GateMenu._input` → `choose` → `TownScene` → `Game._on_floor_chosen` →
@@ -683,17 +702,25 @@ Verified by running.
   spec should say whether menu choices count as player actions.
 - **Suggested fix:** a §10 question for Lucas / Direction.
 
+> **Builder reply (lead):** no code change. §10 Q8 asks Lucas / Direction whether a menu choice is a player action under G8; the lead's view is in the question.
+
 **CR-7 🔵 C5's same-tick rule holds by statement order in the glue.** From reading.
 `floor_scene.gd:66` checks HP before the clear; `FloorRun.report_room_cleared(0)` would still
 clear a boss room. Either let core refuse a boss-room clear at 0 HP or note the exception
 under C2.
 
+> **Builder reply (lead):** not changed. `FloorRun` is F-011's, and its ASSUMPTION-5 says a clear with a dead player still clears. For this one case the rule holds by the order in `FloorScene._physics_process` (HP first), which AC16's same-tick test pins. Noted under "Things the Auditor should look at closely".
+
 **CR-8 🔵 `Game` rebuilds only on `place_changed`.** From reading. `game.gd:64`, `:189`: a
 `from_dict()` that keeps the place but changes the floor emits nothing, so the old floor would
 stay on screen. Unreachable until save/load.
 
+> **Builder reply (lead):** not changed. Unreachable until something restores a session; noted in §8 for the save/load feature (slice 4).
+
 **CR-9 🔵 Whether the latch runs depends on a UI node.** From reading. `town_scene.gd:60`:
 "the list is open" lives only in `GateMenu`. Keep an engaged state in `TownGate` (fits CR-1).
+
+> **Builder reply (lead):** fixed in `add2f1b` with CR-1: `TownScene` asks `TownGate.is_engaged()`, not whether the list is open.
 
 **CR-10 🔵 Test hygiene.** Verified by running. `tests/ui/test_gate_menu.gd:260` sends echo
 presses for E, Up and Escape and never releases them, so those actions stay pressed for the
@@ -701,13 +728,19 @@ rest of the run. The key helpers set only `physical_keycode`, so the built-in `u
 never match them: the comment at `:279` ("ui_up and move_up at once") is not what runs, which
 is how CR-2 got through.
 
+> **Builder reply (lead):** fixed in `6472012`: the menu tests release every key and axis in `after_each` and assert nothing is left pressed, and their key events now set `keycode` as well as `physical_keycode`, so they really match `ui_*`. `F012SceneTest`'s key helpers got the same change in `add2f1b`.
+
 **CR-11 🔵 Log accuracy.** `tests/scenes/f012_game_test.gd` needs a DEV entry. ASSUMPTION-15
 says `P` is at (11, 10) and that the shipped town equals the fixture: `data/floors/town.tres`
 has `P` at (12, 10), the fixture at (11, 10).
 
+> **Builder reply (lead):** fixed in `8be0759`: DEV-11 logs the helper file; ASSUMPTION-15 now says `P` is at (12, 10) and that the fixture town differs.
+
 **CR-12 🔵 Notes.** `game.gd:194` ignores a refused `enter_floor()`, which would leave the town
 without input (can't happen today). Debug keys default to on in `main.tscn`, so R is a free
 full heal: turn them off before a stranger plays (slice 3).
+
+> **Builder reply (lead):** noted, no change. Debug keys stay on while nothing is saved (ASSUMPTION-5); turning them off belongs to the build a stranger plays (slice 3).
 
 **Not checked in this round:** a rendered run, a real keyboard, mouse or gamepad (CR-2's
 gamepad and mouse variants are reasoned, not run); shipped bosses fighting a dead player for
