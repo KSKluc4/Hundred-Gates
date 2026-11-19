@@ -129,9 +129,10 @@ func _collect_setup_errors() -> PackedStringArray:
 func _build_room() -> void:
 	if _room != null:
 		remove_child(_room)
-		# F-011 DEV-13: not free(). This runs inside _physics_process, and a node freed during a
-		# processing pass can have its address reused by the new room's nodes, which the engine's
-		# group call then skips: the new camera never became current (room drawn in the corner).
+		# F-011 DEV-13: not free(). This runs inside a processing pass (_physics_process) or an
+		# input callback (N, R), and a node freed there can have its address reused by the new
+		# room's nodes, which the engine's group call then skips: the new camera never became
+		# current (room drawn in the corner).
 		_room.queue_free()
 	_room = Room.new()
 	_room.name = ROOM_NAME

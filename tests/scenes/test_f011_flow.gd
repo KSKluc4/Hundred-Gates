@@ -1,3 +1,4 @@
+# gdlint:disable=max-public-methods
 extends F011SceneTest
 ## F-011 T5 (AC17-AC20): the door, the heal, the room swap, the boss room and the death rule, in
 ## the real floor scene.
@@ -212,16 +213,43 @@ func test_dev13_a_room_rebuilt_after_death_has_the_current_camera() -> void:
 	await _assert_current_camera("rebuilt after death")
 
 
-func test_dev13_a_skipped_room_has_the_current_camera() -> void:
+func test_dev13_twelve_walk_throughs_in_a_row_keep_the_camera() -> void:
+	# One walk loses the camera only some of the time (it depends on where the allocator puts the
+	# new nodes); twelve in a row make the symptom reliable without the fix.
+	var walks: int = 12
+	await spawn_floor(_floor_of_solo_rooms(walks))
+	for walk: int in walks:
+		await _walk_to_next_room()
+		assert_eq(_floor.get_run().get_room_index(), walk + 1)
+		await _assert_current_camera("walk %d" % (walk + 1))
+
+
+## The N and R keys go through the real input path (an input callback, where the engine keeps the
+## same list of removed nodes as in a processing pass).
+func test_dev13_a_room_skipped_with_the_n_key_has_the_current_camera() -> void:
+	await spawn_floor(_floor_of_solo_rooms(2))
+	press_key(KEY_N)
+	assert_eq(_floor.get_run().get_room_index(), 1)
+	await _assert_current_camera("room 2, N key")
+
+
+func test_dev13_a_room_restarted_with_the_r_key_has_the_current_camera() -> void:
+	await spawn_floor(_floor_of_solo_rooms(2))
+	press_key(KEY_R)
+	await _assert_current_camera("room 1, R key")
+
+
+## Guards: skip_room() and restart_room() called directly, between ticks.
+func test_dev13_a_room_skipped_by_a_direct_call_has_the_current_camera() -> void:
 	await spawn_floor(_floor_of_solo_rooms(2))
 	_floor.skip_room()
-	await _assert_current_camera("room 2, skipped")
+	await _assert_current_camera("room 2, skip_room()")
 
 
-func test_dev13_a_restarted_room_has_the_current_camera() -> void:
+func test_dev13_a_room_restarted_by_a_direct_call_has_the_current_camera() -> void:
 	await spawn_floor(_floor_of_solo_rooms(2))
 	_floor.restart_room()
-	await _assert_current_camera("room 1, restarted")
+	await _assert_current_camera("room 1, restart_room()")
 
 
 ## F-011 DEV-13: records, in the tick the room is swapped (room_entered fires inside it), what
