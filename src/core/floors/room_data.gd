@@ -76,6 +76,7 @@ func validate(rules: FloorTunables) -> PackedStringArray:
 	_check_exit(rules, errors)
 	_check_reachable(errors)
 	_check_corridors(errors)
+	_check_pinches(errors)
 	_check_thin_walls(errors)
 	_check_spawns(rules, errors)
 	return errors
@@ -233,6 +234,32 @@ func _check_corridors(errors: PackedStringArray) -> void:
 				)
 
 
+## F-011/C16 (CR-2): two walkable tiles side by side must share a fully walkable 2x2 block, or two
+## wall corners one tile apart leave a 1-tile opening that a 1.2-tile body enters and never leaves.
+## Each pair is reported once, top or left tile first. A tile already refused by `corridor` is
+## skipped, so a 1-tile corridor is one fault and not two; every room this rule refuses still fails.
+func _check_pinches(errors: PackedStringArray) -> void:
+	var size: Vector2i = get_size()
+	for y: int in size.y:
+		for x: int in size.x:
+			var tile: Vector2i = Vector2i(x, y)
+			if not is_walkable(tile) or not _in_block(tile, is_walkable):
+				continue
+			for step: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN]:
+				var other: Vector2i = tile + step
+				if (
+					is_walkable(other)
+					and _in_block(other, is_walkable)
+					and not _share_block(tile, other)
+				):
+					errors.append(
+						(
+							"pinch: floor tiles %s and %s share no 2x2 block of floor"
+							% [_name(tile.x, tile.y), _name(other.x, other.y)]
+						)
+					)
+
+
 ## C16: melee can't reach through a wall, and a wall tile alone would be an easy dodge. Only
 ## interior walls are checked, but the block may borrow the border.
 func _check_thin_walls(errors: PackedStringArray) -> void:
@@ -280,6 +307,27 @@ func _in_block(tile: Vector2i, test: Callable) -> bool:
 			and test.call(corner + Vector2i.RIGHT)
 			and test.call(corner + Vector2i.DOWN)
 			and test.call(corner + Vector2i.ONE)
+		):
+			return true
+	return false
+
+
+## True when one fully walkable 2x2 block holds both tiles (which touch along an edge).
+func _share_block(first: Vector2i, second: Vector2i) -> bool:
+	for origin: Vector2i in BLOCK_ORIGINS:
+		var corner: Vector2i = first + origin
+		var covers_second: bool = (
+			second.x >= corner.x
+			and second.x <= corner.x + 1
+			and second.y >= corner.y
+			and second.y <= corner.y + 1
+		)
+		if (
+			covers_second
+			and is_walkable(corner)
+			and is_walkable(corner + Vector2i.RIGHT)
+			and is_walkable(corner + Vector2i.DOWN)
+			and is_walkable(corner + Vector2i.ONE)
 		):
 			return true
 	return false
