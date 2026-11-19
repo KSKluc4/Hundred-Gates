@@ -31,12 +31,15 @@ const ENCOUNTERS: Dictionary = {
 
 const BOSSES: Dictionary = {1: &"warden", 2: &"hexer", 3: &"juggernaut"}
 
-## floors.md sizes in tiles, borders included. A shipped room may differ by SIZE_TOLERANCE.
+## The C9 table of studio/features/F-013-camera-rooms-dash.md: sizes in tiles, borders included,
+## and a shipped room has exactly this size. Floor 1 is redrawn (F-013 T2). Floors 2 and 3 still
+## hold their old sizes (the design table of floors.md): F-013 T3 and T4 replace them with the C9
+## table's when those floors are redrawn.
 const SIZES: Dictionary = {
-	&"f1_r1": Vector2i(20, 12),
-	&"f1_r2": Vector2i(24, 14),
-	&"f1_r3": Vector2i(28, 14),
-	&"f1_boss": Vector2i(22, 14),
+	&"f1_r1": Vector2i(48, 28),
+	&"f1_r2": Vector2i(52, 28),
+	&"f1_r3": Vector2i(56, 30),
+	&"f1_boss": Vector2i(56, 32),
 	&"f2_r1": Vector2i(22, 12),
 	&"f2_r2": Vector2i(26, 14),
 	&"f2_r3": Vector2i(32, 12),
@@ -49,7 +52,13 @@ const SIZES: Dictionary = {
 	&"f3_r5": Vector2i(32, 16),
 	&"f3_boss": Vector2i(26, 16),
 }
-const SIZE_TOLERANCE: int = 2
+## F-013/C10 (a): a combat room has a spawn this near `P` at the start, centre to centre.
+const NEAR_SPAWN_MAX_TILES: Vector2 = Vector2(18.0, 9.0)
+## F-013 T2: the floors that C10 (a) is checked on. T3 and T4 add floors 2 and 3 when they are
+## redrawn; their old rooms would fail the rule.
+const C10A_FLOORS: Array[int] = [1]
+## F-013/C10 (d): no shipped attack starts further away than this (half a screen is 11.25).
+const ATTACK_START_LIMIT_TILES: float = 11.0
 
 ## A body in these tests: the biggest regular enemy hurtbox is a brute's 0.6, a bolt is 0.25.
 const BOLT_RADIUS_TILES: float = 0.25
@@ -57,7 +66,7 @@ const MIN_SPAWN_GAP_TILES: float = 1.5
 ## floors.md: floor 1 room 3's pairs are more than this far apart.
 const PAIRS_APART_TILES: float = 7.0
 ## F1 room 3's dividing wall is the columns DIVIDER_X and DIVIDER_X + 1.
-const DIVIDER_X: int = 14
+const DIVIDER_X: int = 27
 ## floors.md: the Juggernaut's room has at least this much open floor, borders excluded.
 const JUGGERNAUT_MIN_OPEN: Vector2i = Vector2i(20, 12)
 const HEXER_BLOCK_COUNT: int = 4
@@ -372,19 +381,58 @@ func test_pin_floor_3_brute_rooms_keep_a_long_straight_lane() -> void:
 		assert_gte(best, BRUTE_LANE_TILES, "%s: longest straight walkable row" % room.id)
 
 
-func test_pin_every_room_is_within_two_tiles_of_the_design_table() -> void:
+func test_pin_every_room_has_exactly_the_c9_table_size() -> void:
 	for room: RoomData in _all_rooms():
-		var size: Vector2i = room.get_size()
-		var wanted: Vector2i = SIZES[room.id]
-		assert_lte(absi(size.x - wanted.x), SIZE_TOLERANCE, "%s width %d" % [room.id, size.x])
-		assert_lte(absi(size.y - wanted.y), SIZE_TOLERANCE, "%s height %d" % [room.id, size.y])
+		assert_eq(room.get_size(), SIZES[room.id], "%s size" % room.id)
 
 
-func test_pin_every_room_fits_one_screen() -> void:
+## F-013/C10 (a): the first target is close. Combat rooms only: a boss room names its own spawn.
+func test_c10a_a_combat_room_has_a_spawn_near_the_player_start() -> void:
+	var checked: int = 0
+	for number: int in C10A_FLOORS:
+		for room: RoomData in _load_floor(number).rooms:
+			if room.is_boss_room:
+				continue
+			checked += 1
+			var start: Vector2 = room.get_player_start_tiles()
+			var nearest: Vector2 = Vector2(INF, INF)
+			var found: bool = false
+			for spawn: RoomSpawn in room.get_spawns():
+				var away: Vector2 = (spawn.position_tiles - start).abs()
+				if away.x <= NEAR_SPAWN_MAX_TILES.x and away.y <= NEAR_SPAWN_MAX_TILES.y:
+					found = true
+				if away.length() < nearest.length():
+					nearest = away
+			assert_true(
+				found,
+				(
+					"%s: no spawn within %s of P (nearest %s)"
+					% [room.id, NEAR_SPAWN_MAX_TILES, nearest]
+				)
+			)
+	assert_gt(checked, 0, "the rule was checked on at least one room")
+
+
+## F-013/C10 (d): no attack starts off screen. Every attack of every enemy of every shipped room:
+## its list, each stage's list, and every follow-up reached from those.
+func test_c10d_no_shipped_attack_starts_further_than_the_limit() -> void:
+	var seen: Array[EnemyAttackData] = []
+	var longest: float = 0.0
 	for room: RoomData in _all_rooms():
-		var size: Vector2i = room.get_size()
-		assert_lte(size.x, 40, "%s width" % room.id)
-		assert_lte(size.y, 22, "%s height" % room.id)
+		for enemy: EnemyData in room.enemies:
+			var attacks: Array[EnemyAttackData] = enemy.attacks.duplicate()
+			for stage: EnemyStageData in enemy.stages:
+				attacks.append_array(stage.attacks)
+			_collect_attacks(attacks, seen)
+	assert_gt(seen.size(), 0, "the walk found attacks")
+	for attack: EnemyAttackData in seen:
+		longest = maxf(longest, attack.trigger_max_tiles)
+		assert_lt(
+			attack.trigger_max_tiles,
+			ATTACK_START_LIMIT_TILES,
+			"%s starts at up to %s tiles" % [attack.resource_path, attack.trigger_max_tiles]
+		)
+	gut.p("%d attacks checked, longest trigger range %s tiles" % [seen.size(), longest])
 
 
 # --- helpers ---
@@ -412,6 +460,16 @@ func _room(room_id: StringName) -> RoomData:
 			return room
 	fail_test("no shipped room %s" % room_id)
 	return RoomData.new()
+
+
+## `attacks` and every follow-up chain reached from them, each attack once, into `into`.
+func _collect_attacks(attacks: Array[EnemyAttackData], into: Array[EnemyAttackData]) -> void:
+	for attack: EnemyAttackData in attacks:
+		if attack == null or into.has(attack):
+			continue
+		into.append(attack)
+		if attack.follow_up != null:
+			_collect_attacks([attack.follow_up] as Array[EnemyAttackData], into)
 
 
 ## Enemy id -> spawn count, as a StringName-keyed dictionary like ENCOUNTERS.
