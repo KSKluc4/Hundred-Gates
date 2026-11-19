@@ -544,7 +544,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 ### How to test
 ```sh
 export GODOT_BIN=/path/to/Godot_v4.7.2-stable
-tools/test                      # 123 scripts, 1579 tests, all passing (about 7.5 min)
+tools/test                      # 123 scripts, 1578 tests, all passing (about 7.5 min)
 tools/lint                      # on Windows: .venv/Scripts/gdlint src tests && .venv/Scripts/gdformat --check src tests
 tools/check_core_purity
 ```
@@ -555,7 +555,7 @@ By hand (Gate B): open the project and press F5. See §5 "How to verify manually
 room in a floor and unlocks the next floor in the town; `R` restarts a room; `F3` hides the
 debug overlay.
 
-After the round 4 fix (`983846b`): 1579/1579 tests, gdlint clean, gdformat 248 files unchanged, core
+After the round 4 fix (`983846b`): 1578/1578 tests, gdlint clean, gdformat 248 files unchanged, core
 purity ok, and `main.tscn` boots headless with no error.
 
 After the round 3 notes (`2f5cb54`): 1572/1572 tests, gdlint clean, gdformat 248 files unchanged,
