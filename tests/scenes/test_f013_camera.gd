@@ -301,6 +301,79 @@ func _assert_view_inside_at_corners_and_centre() -> void:
 		assert_true(camera().is_current(), "%s: the camera is current" % spot)
 
 
+## AC2, the shipped pass (T6): the view stays inside the room on the smallest and on the largest
+## room of the shipped tower, the town included. Found from the data, by area; every room that
+## ties for it is checked.
+func test_ac2_on_the_smallest_shipped_room_the_view_stays_inside() -> void:
+	for data: RoomData in _shipped_rooms_by_area(true):
+		await build_room(data)
+		_assert_view_inside_at_walkable_corners_and_centre()
+		_built.queue_free()
+		await get_tree().physics_frame
+
+
+func test_ac2_on_the_largest_shipped_room_the_view_stays_inside() -> void:
+	for data: RoomData in _shipped_rooms_by_area(false):
+		await build_room(data)
+		_assert_view_inside_at_walkable_corners_and_centre()
+		_built.queue_free()
+		await get_tree().physics_frame
+
+
+## The town and every floor room of the shipped tower whose area is the smallest (or the largest).
+func _shipped_rooms_by_area(smallest: bool) -> Array[RoomData]:
+	var tower: TowerData = load(Tunables.TOWER_PATH) as TowerData
+	var all: Array[RoomData] = [tower.town]
+	for floor_data: FloorData in tower.floors:
+		all.append_array(floor_data.rooms)
+	var best: int = -1
+	for data: RoomData in all:
+		var area: int = data.get_size().x * data.get_size().y
+		if best < 0 or (area < best if smallest else area > best):
+			best = area
+	var found: Array[RoomData] = []
+	for data: RoomData in all:
+		if data.get_size().x * data.get_size().y == best:
+			found.append(data)
+	assert_gt(found.size(), 0, "a shipped room was found")
+	return found
+
+
+## As _assert_view_inside_at_corners_and_centre(), where the player stands on floor: the corners
+## are the walkable tiles next to the border corners, the centre is the walkable tile nearest the
+## middle (a shipped room may have a block there).
+func _assert_view_inside_at_walkable_corners_and_centre() -> void:
+	var data: RoomData = room().get_room_data()
+	var size: Vector2i = data.get_size()
+	var outer: Rect2 = room_rect_px().grow(0.001)
+	var middle: Vector2 = Vector2(size) / 2.0
+	var centre: Vector2i = Vector2i(1, 1)
+	for y: int in range(1, size.y - 1):
+		for x: int in range(1, size.x - 1):
+			var tile: Vector2i = Vector2i(x, y)
+			var better: bool = (
+				(Vector2(tile) + Vector2(0.5, 0.5)).distance_to(middle)
+				< ((Vector2(centre) + Vector2(0.5, 0.5)).distance_to(middle))
+			)
+			if data.is_walkable(tile) and (better or not data.is_walkable(centre)):
+				centre = tile
+	var spots: Dictionary = {
+		"north-west": Vector2i(1, 1),
+		"north-east": Vector2i(size.x - 2, 1),
+		"south-west": Vector2i(1, size.y - 2),
+		"south-east": Vector2i(size.x - 2, size.y - 2),
+		"centre": centre,
+	}
+	for spot: String in spots:
+		var tile: Vector2i = spots[spot]
+		assert_true(data.is_walkable(tile), "%s %s: %s is floor" % [data.id, spot, tile])
+		stand_and_settle(Vector2(tile) + Vector2(0.5, 0.5))
+		assert_true(
+			outer.encloses(visible_rect_px()), "%s %s: %s" % [data.id, spot, visible_rect_px()]
+		)
+		assert_true(camera().is_current(), "%s %s: the camera is current" % [data.id, spot])
+
+
 func test_ac3_in_a_48_by_28_room_the_camera_is_on_the_player_when_far_from_every_wall() -> void:
 	await build_room(empty_room(MEDIUM))
 	# Half a view is 20 x 11.25 tiles: the room allows x in 20..28 and y in 11.25..16.75.

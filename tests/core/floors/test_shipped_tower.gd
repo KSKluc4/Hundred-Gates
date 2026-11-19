@@ -24,6 +24,8 @@ const FLOOR_PATHS: Array[String] = [
 	Tunables.FLOOR_1_PATH, Tunables.FLOOR_2_PATH, Tunables.FLOOR_3_PATH
 ]
 const BIG_BLOCK_SIZE: Vector2i = Vector2i(3, 3)
+## F-013/C7: the shipped value, rounded up from the 640 x 360 view in 16 px tiles.
+const SHIPPED_SCREEN_TILES: Vector2i = Vector2i(40, 23)
 ## A walk toward the gate moves this far per step, and gives up after this many steps.
 const WALK_STEP_TILES: float = 0.25
 const WALK_MAX_STEPS: int = 400
@@ -303,6 +305,42 @@ func test_ac25_the_town_is_not_a_room_of_any_floor() -> void:
 
 func test_ac25_shipped_tower_tunables_validate() -> void:
 	assert_eq(Tunables.tower.validate(), PackedStringArray())
+
+
+# --- F-013 AC9: the one-screen rule on the shipped tower ---
+
+
+func test_ac9_the_shipped_tower_is_valid_with_the_one_screen_rule_on() -> void:
+	var tower: TowerData = _tower()
+	assert_ne(tower.screen_size_tiles, Vector2i.ZERO, "the rule is on")
+	assert_eq(tower.validate(_rules), PackedStringArray())
+
+
+func test_ac9_the_shipped_screen_size_is_40_by_23_tiles() -> void:
+	assert_eq(_tower().screen_size_tiles, SHIPPED_SCREEN_TILES)
+
+
+func test_ac9_the_shipped_screen_size_covers_the_project_viewport() -> void:
+	var view: Vector2i = Vector2i(
+		int(ProjectSettings.get_setting("display/window/size/viewport_width")),
+		int(ProjectSettings.get_setting("display/window/size/viewport_height"))
+	)
+	var needed: Vector2i = Vector2i(
+		ceili(float(view.x) / Units.TILE_SIZE_PX), ceili(float(view.y) / Units.TILE_SIZE_PX)
+	)
+	assert_eq(_tower().screen_size_tiles, needed, "the viewport %s, rounded up in tiles" % view)
+
+
+func test_ac9_every_shipped_room_and_the_town_is_at_least_one_screen() -> void:
+	var tower: TowerData = _tower()
+	var rooms: Array[RoomData] = [tower.town]
+	for floor_data: FloorData in tower.floors:
+		rooms.append_array(floor_data.rooms)
+	assert_eq(rooms.size(), 16, "the town and the 15 floor rooms")
+	for room: RoomData in rooms:
+		var size: Vector2i = room.get_size()
+		assert_gte(size.x, tower.screen_size_tiles.x, "%s width" % room.id)
+		assert_gte(size.y, tower.screen_size_tiles.y, "%s height" % room.id)
 
 
 # --- helpers ---
