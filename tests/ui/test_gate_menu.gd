@@ -744,7 +744,8 @@ func test_ac23_a_stick_held_up_at_open_and_flipped_straight_down_pushes_down() -
 	assert_eq(_menu.get_focus_index(), 3, "the other direction was never held")
 
 
-func test_ac23_a_menu_born_while_a_key_and_the_stick_are_held_knows_only_the_stick() -> void:
+func test_ac23_a_key_held_before_the_menu_exists_and_released_then_a_stick_push_is_one_step(
+) -> void:
 	_send_key(KEY_W, true)
 	Input.flush_buffered_events()
 	_spawn_menu()
@@ -753,6 +754,27 @@ func test_ac23_a_menu_born_while_a_key_and_the_stick_are_held_knows_only_the_sti
 	Input.flush_buffered_events()
 	_send_stick(JOY_AXIS_LEFT_Y, -0.9, 2)
 	assert_eq(_menu.get_focus_index(), 1, "no stick was held, so this is a push")
+
+
+func test_ac23_a_menu_born_while_a_key_and_the_stick_are_both_held_knows_only_the_stick() -> void:
+	_send_key(KEY_W, true)
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 3)
+	_spawn_menu()
+	_menu.open(_three_entries())
+	assert_eq(_menu.get_focus_index(), 2, "opening is not a push")
+	_send_key(KEY_W, false)
+	Input.flush_buffered_events()
+	assert_eq(_menu.get_focus_index(), 2, "letting go of the key moves nothing")
+	for strength: float in RELEASE:
+		_send_stick(JOY_AXIS_LEFT_Y, -strength, 1)
+		assert_eq(
+			_menu.get_focus_index(), 2, "letting go of the stick moves nothing (%s)" % strength
+		)
+	for strength: float in RAMP:
+		_send_stick(JOY_AXIS_LEFT_Y, -strength, 1)
+	assert_eq(_menu.get_focus_index(), 1, "a new stick push is one step")
+	_press_key(KEY_W)
+	assert_eq(_menu.get_focus_index(), 0, "and a key press on top of it is one more")
 
 
 func test_ac23_left_and_right_keys_leave_the_focus_alone() -> void:
