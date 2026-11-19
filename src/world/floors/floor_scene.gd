@@ -12,6 +12,8 @@ signal floor_cleared(floor_number: int)
 signal player_died
 ## F-012: the cleared boss room's exit was reached, once. Emitted with either death rule.
 signal floor_exited(floor_number: int)
+## F-012/AC33: HP gained between fights, positive only.
+signal healed(amount: int)
 
 const RESET_ACTION: StringName = &"debug_reset"
 const NEXT_ROOM_ACTION: StringName = &"debug_next_room"
@@ -76,12 +78,11 @@ func _physics_process(_delta: float) -> void:
 		return
 	if _room.is_cleared() and not _run.is_room_cleared():
 		var heal: int = _run.report_room_cleared(_player_hp())
-		_room.get_player().motor.get_combat_state().heal(heal)
+		var healed_now: int = _room.get_player().motor.get_combat_state().heal(heal)
 		_room.open_door()
+		_report_healed(healed_now)  # F-012/AC33: what heal() really did.
 	if _run.is_exit_reached(_room.get_player().motor.get_position_tiles()):
-		if _run.advance(_player_hp()):
-			_build_room()
-		elif _is_boss_exit_reached() and not _exit_reported:
+		if not _advance_room(_player_hp()) and _is_boss_exit_reached() and not _exit_reported:
 			_exit_reported = true  # F-012/AC15: once, however long the player stands there.
 			floor_exited.emit(floor_data.floor_number)
 
@@ -126,8 +127,7 @@ func skip_room() -> void:
 		return
 	var hp: int = _player_hp()
 	_run.report_room_cleared(hp)  # The heal it returns is dropped on purpose.
-	if _run.advance(hp):
-		_build_room()
+	_advance_room(hp)
 
 
 func _collect_setup_errors() -> PackedStringArray:
@@ -171,6 +171,23 @@ func _build_room() -> void:
 	_room.setup(_run.get_room(), _run.get_entry_hp(), class_data)
 	add_child(_room)
 	room_entered.emit(_run.get_room_index())
+
+
+## Moves the run on with the HP the player carries and builds the room it lands in. F-012/AC33: a
+## room entered with more HP than was carried (the boss room's refill, FloorRun's entry HP) reports
+## the difference, once the new room stands.
+func _advance_room(carried_hp: int) -> bool:
+	if not _run.advance(carried_hp):
+		return false
+	_build_room()
+	_report_healed(_run.get_entry_hp() - carried_hp)
+	return true
+
+
+## F-012/AC33: positive amounts only; zero (full HP, a boss clear) and below say nothing.
+func _report_healed(amount: int) -> void:
+	if amount > 0:
+		healed.emit(amount)
 
 
 ## F-012/AC15: the last room, cleared, with the player on an exit tile. The FloorRun already

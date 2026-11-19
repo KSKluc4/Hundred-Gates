@@ -10,6 +10,9 @@ const WALK_TICKS: int = 60
 var _died: int = 0
 var _exited: Array[int] = []
 var _cleared: Array[int] = []
+var _healed: Array[int] = []
+## What a listener of `healed` saw at the moment of the signal: the room, the HP, the room's kind.
+var _healed_seen: Array[Dictionary] = []
 var _input_at_death: bool = true
 var _held_keys: Array[Key] = []
 
@@ -224,6 +227,171 @@ func test_ac16_the_player_and_the_boss_dying_in_one_tick_is_a_death() -> void:
 	assert_eq(_exited, [] as Array[int])
 
 
+# --- AC33 (Gate B, Q10): the HP gained between fights is reported, never anything else ---
+
+
+func test_ac33_clearing_a_room_at_40_of_100_emits_healed_30_once() -> void:
+	await spawn_floor(_floor_of_solo_rooms(2), 0, _connect_signals)
+	set_hp(40)
+	kill_all()
+	await run_ticks(2)
+	assert_eq(hp(), 70)
+	assert_eq(_healed, [30] as Array[int])
+	await run_ticks(WALK_TICKS)
+	assert_eq(
+		_healed, [30] as Array[int], "once, however long the player stays in the cleared room"
+	)
+
+
+func test_ac33_the_amount_is_what_was_really_healed_90_of_100_gives_10() -> void:
+	await spawn_floor(_floor_of_solo_rooms(2), 0, _connect_signals)
+	set_hp(90)
+	kill_all()
+	await run_ticks(2)
+	assert_eq(hp(), 100)
+	assert_eq(_healed, [10] as Array[int])
+
+
+func test_ac33_clearing_a_room_at_full_hp_emits_nothing() -> void:
+	await spawn_floor(_floor_of_solo_rooms(2), 0, _connect_signals)
+	kill_all()
+	await run_ticks(2)
+	assert_true(room().is_door_open(), "the room was cleared")
+	assert_eq(hp(), 100)
+	assert_eq(_healed, [] as Array[int])
+
+
+func test_ac33_clearing_the_boss_room_emits_nothing_even_when_hurt() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 1, _connect_signals)
+	set_hp(50)
+	kill_all()
+	await run_ticks(2)
+	assert_true(_floor.get_run().is_floor_cleared())
+	assert_eq(hp(), 50, "a boss room clear heals nothing")
+	assert_eq(_healed, [] as Array[int])
+
+
+func test_ac33_a_dead_player_clearing_a_room_emits_nothing() -> void:
+	await spawn_floor(_floor_of_solo_rooms(2), 0, _no_restart_and_connect)
+	hit(player().motor, 1000)
+	await run_ticks(2)
+	kill_all()
+	await run_ticks(5)
+	assert_eq(_healed, [] as Array[int])
+
+
+func test_ac33_walking_into_the_boss_room_with_55_hp_emits_the_refill_after_the_swap() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _connect_signals)
+	kill_all()
+	await run_ticks(2)
+	assert_eq(_healed, [] as Array[int], "full HP: the clear healed nothing")
+	var combat_room_id: int = room().get_instance_id()
+	set_hp(55)
+	await _walk_out_of_the_cleared_room()
+	assert_true(room().get_room_data().is_boss_room, "in the boss room")
+	assert_eq(hp(), 100, "refilled")
+	assert_eq(_healed, [45] as Array[int])
+	var seen: Dictionary = _healed_seen[0]
+	assert_true(seen["is_boss_room"], "the listener saw the new room")
+	assert_ne(seen["room_id"], combat_room_id, "not the old one")
+	assert_eq(seen["hp"], 100, "and its player, already at full HP")
+
+
+func test_ac33_the_clear_heal_and_the_boss_refill_are_two_reports_with_their_own_amounts() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _connect_signals)
+	set_hp(40)
+	kill_all()
+	await run_ticks(2)
+	assert_eq(_healed, [30] as Array[int], "40 + 30 = 70")
+	await _walk_out_of_the_cleared_room()
+	assert_eq(_healed, [30, 30] as Array[int], "then 70 -> 100")
+
+
+func test_ac33_walking_into_a_normal_room_emits_nothing() -> void:
+	await spawn_floor(_floor_of_solo_rooms(2), 0, _connect_signals)
+	set_hp(40)
+	kill_all()
+	await run_ticks(2)
+	assert_eq(_healed, [30] as Array[int], "the clear's own heal")
+	await _walk_out_of_the_cleared_room()
+	assert_eq(_floor.get_run().get_room_index(), 1)
+	assert_false(room().get_room_data().is_boss_room)
+	assert_eq(hp(), 70, "the HP was carried on")
+	await run_ticks(WALK_TICKS)
+	assert_eq(_healed, [30] as Array[int], "entering a normal room added nothing")
+
+
+func test_ac33_skip_room_into_a_normal_room_emits_nothing() -> void:
+	await spawn_floor(_floor_of_solo_rooms(2), 0, _connect_signals)
+	set_hp(40)
+	_floor.skip_room()
+	assert_eq(_floor.get_run().get_room_index(), 1)
+	assert_eq(hp(), 40, "the skip healed nothing")
+	await run_ticks(WALK_TICKS)
+	assert_eq(_healed, [] as Array[int])
+
+
+func test_ac33_skip_room_into_the_boss_room_emits_the_refill_after_the_swap() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _connect_signals)
+	set_hp(60)
+	_floor.skip_room()
+	assert_true(room().get_room_data().is_boss_room)
+	assert_eq(hp(), 100)
+	assert_eq(_healed, [40] as Array[int], "the skip healed nothing, entering the boss room did")
+	assert_true(_healed_seen[0]["is_boss_room"], "reported once the new room stood")
+	assert_eq(_healed_seen[0]["hp"], 100)
+
+
+func test_ac33_skip_room_into_the_boss_room_at_full_hp_emits_nothing() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _connect_signals)
+	_floor.skip_room()
+	assert_true(room().get_room_data().is_boss_room)
+	assert_eq(_healed, [] as Array[int])
+
+
+func test_ac33_restart_room_emits_nothing_in_a_normal_room_and_in_the_boss_room() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _connect_signals)
+	set_hp(30)
+	_floor.restart_room()
+	assert_eq(hp(), 100, "the restart refills, as before")
+	_floor.skip_room()
+	set_hp(30)
+	_floor.restart_room()
+	assert_true(room().get_room_data().is_boss_room)
+	assert_eq(hp(), 100)
+	await run_ticks(2)
+	assert_eq(_healed, [] as Array[int], "a restart is not a heal")
+
+
+func test_ac33_a_death_restart_emits_nothing() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _connect_signals)
+	hit(player().motor, 1000)
+	await run_ticks(2)
+	assert_eq(hp(), 100, "F-011's rule: the room starts again at full HP")
+	assert_eq(_healed, [] as Array[int])
+
+
+func test_ac33_a_floor_started_in_the_boss_room_emits_nothing() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 1, _connect_signals)
+	assert_true(room().get_room_data().is_boss_room)
+	await run_ticks(WALK_TICKS)
+	assert_eq(_healed, [] as Array[int])
+
+
+func test_ac33_a_floor_started_in_the_first_room_emits_nothing() -> void:
+	await spawn_floor(_floor_of_solo_rooms(1), 0, _connect_signals)
+	await run_ticks(WALK_TICKS)
+	assert_eq(_healed, [] as Array[int])
+
+
+## Stands at the cleared room's door and walks out of it until the run is in the next room.
+func _walk_out_of_the_cleared_room() -> void:
+	var index: int = _floor.get_run().get_room_index()
+	put_player_at_door()
+	var moved: Callable = func() -> bool: return _floor.get_run().get_room_index() != index
+	assert_true(await run_until(moved, WALK_TICKS * 5, door_outward()), "the next room")
+
+
 # --- CR-4: a dead player takes no input and the debug keys do nothing, until a rebuild ---
 
 
@@ -334,7 +502,10 @@ func _connect_signals(scene: FloorScene) -> void:
 	_died = 0
 	_exited = []
 	_cleared = []
+	_healed = []
+	_healed_seen = []
 	_input_at_death = true
+	scene.healed.connect(_on_healed)
 	scene.player_died.connect(_on_player_died)
 	scene.floor_exited.connect(func(number: int) -> void: _exited.append(number))
 	scene.floor_cleared.connect(func(number: int) -> void: _cleared.append(number))
@@ -395,6 +566,21 @@ func _send_key(key: Key, pressed: bool) -> void:
 	event.pressed = pressed
 	Input.parse_input_event(event)
 	Input.flush_buffered_events()
+
+
+func _on_healed(amount: int) -> void:
+	_healed.append(amount)
+	(
+		_healed_seen
+		. append(
+			{
+				"room_index": _floor.get_run().get_room_index(),
+				"is_boss_room": room().get_room_data().is_boss_room,
+				"hp": hp(),
+				"room_id": room().get_instance_id(),
+			}
+		)
+	)
 
 
 func _on_player_died() -> void:

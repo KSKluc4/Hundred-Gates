@@ -20,6 +20,8 @@ const DEATH_BANNER: String = "You died"
 const CLEARED_UNLOCKED_FORMAT: String = "Floor %d cleared — floor %d unlocked"
 const CLEARED_LAST_FORMAT: String = "Floor %d cleared — no floor above yet"
 const CLEARED_REPLAY_FORMAT: String = "Floor %d cleared"
+## F-012/AC33: HP that came back between fights.
+const HEALED_FORMAT: String = "+%d HP"
 
 ## Null loads Tunables.TOWER_PATH.
 @export var tower_data: TowerData
@@ -181,6 +183,7 @@ func _show_floor() -> void:
 	scene.room_entered.connect(_on_room_entered)
 	scene.floor_cleared.connect(_on_floor_cleared)
 	scene.floor_exited.connect(_on_floor_exited)
+	scene.healed.connect(_on_healed)  # F-012/AC33
 	scene.player_died.connect(_on_player_died)
 	_floor = scene
 	add_child(scene)
@@ -221,6 +224,15 @@ func _on_floor_exited(_floor_number: int) -> void:
 
 func _on_player_died() -> void:
 	_session.report_player_died()
+
+
+## F-012/AC33: only says how much came back; the amount is the floor scene's, from core. Not shown
+## unless the session says the player is on the floor: a debug skip during the death pause also
+## "heals" a dead player into the boss room, and that must not hide "You died".
+func _on_healed(amount: int) -> void:
+	if _session.get_place() != TowerSession.Place.FLOOR:
+		return
+	_hud.show_banner(HEALED_FORMAT % amount, Tunables.tower.banner_duration)
 
 
 ## What the session says about a clear; the banner is only how it is shown (AC28).

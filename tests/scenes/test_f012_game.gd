@@ -1,4 +1,4 @@
-# gdlint:disable=max-public-methods
+# gdlint:disable=max-public-methods,max-file-lines
 extends F012GameTest
 ## F-012 T7 (AC26-AC30, AC32 and C5, C6, C17): the game node on a fixture tower. The shipped tower
 ## is in test_f012_main.
@@ -349,6 +349,7 @@ func test_ac29_the_health_bar_shows_the_current_rooms_player_after_every_swap() 
 	hit(player().motor, 30)
 	assert_eq(hud().get_health_bar().get_label_text(), "HP %d / %d" % [max_hp() - 30, max_hp()])
 	floor_scene().skip_room()
+	await run_ticks(1)  # The old room is freed at the end of the frame (F-011 DEV-13), not at once.
 	assert_false(is_instance_valid(first_player), "the first room's player is gone")
 	_assert_the_bar_shows(player())
 	assert_eq(hp(), max_hp() - 30, "a skip carries the HP on")
@@ -756,7 +757,171 @@ func test_c17_with_the_debug_keys_on_n_in_a_floor_skips_exactly_one_room_and_r_r
 	assert_eq(session().get_place(), TowerSession.Place.FLOOR)
 
 
+# --- AC33 (Gate B, Q10): the HUD says how much HP came back ---
+
+
+func test_ac33_a_cleared_room_shows_the_heal_and_the_bar_shows_the_healed_value() -> void:
+	await spawn_game(TowerFixtures.tower_of(2, 2))
+	await enter_floor_through_gate(1)
+	set_hp(40)
+	kill_all()
+	await run_ticks(2)
+	assert_true(hud().is_banner_visible())
+	assert_eq(hud().get_banner_text(), "+30 HP")
+	assert_eq(hp(), 70)
+	assert_eq(hud().get_health_bar().get_label_text(), "HP 70 / 100", "the bar shows the new value")
+	assert_almost_eq(hud().get_health_bar().get_fill_fraction(), 0.7, 0.001)
+
+
+func test_ac33_the_banner_says_what_was_really_healed() -> void:
+	await spawn_game(TowerFixtures.tower_of(2, 2))
+	await enter_floor_through_gate(1)
+	set_hp(90)
+	kill_all()
+	await run_ticks(2)
+	assert_eq(hud().get_banner_text(), "+10 HP", "capped at max")
+	assert_eq(hp(), 100)
+
+
+func test_ac33_the_text_is_one_constant_with_a_format() -> void:
+	assert_eq(Game.HEALED_FORMAT, "+%d HP")
+	assert_eq(Game.HEALED_FORMAT % 30, "+30 HP")
+
+
+func test_ac33_clearing_a_room_at_full_hp_shows_no_heal_banner() -> void:
+	await spawn_game(TowerFixtures.tower_of(2, 2))
+	await enter_floor_through_gate(1)
+	kill_all()
+	await run_ticks(2)
+	assert_true(room().is_door_open(), "the room was cleared")
+	assert_false(hud().is_banner_visible())
+	assert_eq(hud().get_banner_text(), "")
+
+
+func test_ac33_a_heal_banner_goes_after_the_banner_duration() -> void:
+	Tunables.tower.banner_duration = 0.25
+	await spawn_game(TowerFixtures.tower_of(2, 2))
+	await enter_floor_through_gate(1)
+	set_hp(40)
+	kill_all()
+	await run_ticks(2)
+	assert_true(hud().is_banner_visible())
+	await run_ticks(PAUSE_TICKS * 2)
+	assert_false(hud().is_banner_visible())
+
+
+func test_ac33_entering_the_boss_room_below_max_shows_the_refill() -> void:
+	await spawn_game(TowerFixtures.tower_of(2, 1))
+	await enter_floor_through_gate(1)
+	kill_all()
+	await run_ticks(2)
+	assert_false(hud().is_banner_visible(), "full HP: the clear healed nothing")
+	set_hp(55)
+	await _walk_into_the_next_room()
+	assert_true(room().get_room_data().is_boss_room)
+	assert_eq(hp(), 100)
+	assert_eq(hud().get_banner_text(), "+45 HP")
+	assert_eq(hud().get_health_bar().get_label_text(), "HP 100 / 100")
+	assert_eq(location(), BOSS_TEXT)
+
+
+func test_ac33_the_boss_refill_replaces_the_clears_own_heal_banner() -> void:
+	await spawn_game(TowerFixtures.tower_of(2, 1))
+	await enter_floor_through_gate(1)
+	set_hp(40)
+	kill_all()
+	await run_ticks(2)
+	assert_eq(hud().get_banner_text(), "+30 HP")
+	set_hp(55)  # Hurt again before the door.
+	await _walk_into_the_next_room()
+	assert_eq(hud().get_banner_text(), "+45 HP", "the newer heal is the one shown")
+
+
+func test_ac33_skipping_into_the_boss_room_shows_the_refill_only() -> void:
+	await spawn_game(TowerFixtures.tower_of(2, 2))
+	await enter_floor_through_gate(1)
+	set_hp(60)
+	floor_scene().skip_room()
+	assert_false(hud().is_banner_visible(), "the skip healed nothing, and the next room is normal")
+	floor_scene().skip_room()
+	assert_true(room().get_room_data().is_boss_room)
+	assert_eq(hud().get_banner_text(), "+40 HP")
+	assert_eq(hp(), 100)
+
+
+func test_ac33_a_debug_restart_shows_no_heal_banner() -> void:
+	await spawn_game(TowerFixtures.tower_of(2, 2))
+	await enter_floor_through_gate(1)
+	set_hp(30)
+	floor_scene().restart_room()
+	assert_eq(hp(), 100)
+	assert_false(hud().is_banner_visible())
+
+
+func test_ac33_the_floor_cleared_banner_is_what_shows_after_the_boss_dies() -> void:
+	await spawn_game(TowerFixtures.tower_of(2, 1))
+	await enter_floor_through_gate(1)
+	set_hp(60)
+	floor_scene().skip_room()
+	assert_eq(hud().get_banner_text(), "+40 HP", "the refill is still up when the boss dies")
+	set_hp(50)
+	kill_boss()
+	await run_ticks(2)
+	assert_eq(hud().get_banner_text(), "Floor 1 cleared — floor 2 unlocked")
+	assert_eq(hp(), 50, "a boss clear heals nothing, so no heal banner followed")
+	await run_ticks(PAUSE_TICKS)
+	assert_eq(hud().get_banner_text(), "Floor 1 cleared — floor 2 unlocked")
+
+
+func test_ac33_the_boss_dying_with_no_heal_banner_before_shows_the_cleared_text() -> void:
+	await spawn_game(TowerFixtures.tower_of(2, 1))
+	await enter_floor_through_gate(1)
+	floor_scene().skip_room()  # Full HP: the refill is 0, nothing is shown.
+	assert_false(hud().is_banner_visible())
+	kill_boss()
+	await run_ticks(2)
+	assert_eq(hud().get_banner_text(), "Floor 1 cleared — floor 2 unlocked")
+
+
+func test_ac33_a_heal_banner_does_not_replace_you_died() -> void:
+	set_death_delay(DEATH_PAUSE_SECONDS)
+	await spawn_game(TowerFixtures.tower_of(2, 1))
+	await enter_floor_through_gate(1)
+	kill_player()
+	await run_ticks(2)
+	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
+	assert_eq(hud().get_banner_text(), Game.DEATH_BANNER)
+	# A debug skip during the pause enters the boss room: the player carries 0 HP there and the
+	# room's entry HP is full, which is a heal to the floor scene but not to the person watching.
+	floor_scene().skip_room()
+	assert_true(room().get_room_data().is_boss_room, "the skip did swap the room")
+	await run_ticks(2)
+	assert_eq(hud().get_banner_text(), Game.DEATH_BANNER, "still You died")
+	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
+
+
+func test_ac33_dying_after_a_heal_replaces_the_heal_banner_with_you_died() -> void:
+	set_death_delay(DEATH_PAUSE_SECONDS)
+	await spawn_game(TowerFixtures.tower_of(2, 2))
+	await enter_floor_through_gate(1)
+	set_hp(40)
+	kill_all()
+	await run_ticks(2)
+	assert_eq(hud().get_banner_text(), "+30 HP")
+	kill_player()
+	await run_ticks(2)
+	assert_eq(hud().get_banner_text(), Game.DEATH_BANNER)
+
+
 # --- helpers ---
+
+
+## Stands at the cleared room's door and walks out of it until the run is in the next room.
+func _walk_into_the_next_room() -> void:
+	var index: int = floor_scene().get_run().get_room_index()
+	put_player_at_door()
+	var moved: Callable = func() -> bool: return floor_scene().get_run().get_room_index() != index
+	assert_true(await run_until(moved, WALK_LIMIT_TICKS, door_outward()), "the next room")
 
 
 func leave_by_exit_without_waiting() -> void:
