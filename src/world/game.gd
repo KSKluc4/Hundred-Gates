@@ -136,8 +136,10 @@ func _collect_setup_errors() -> PackedStringArray:
 ## F-014/C13: what the HUD's kills line says, read from the shown room every physics frame (and
 ## when a room is entered, so it follows the location text): a combat room of a floor shows its
 ## count and target, the town and a boss room show nothing. The counts are the room's; nothing
-## about waves is decided here.
+## about waves is decided here. In the death pause it is left as it was (CR-4).
 func _feed_kills() -> void:
+	if _session.get_place() == TowerSession.Place.DEATH_PAUSE:
+		return  # CR-4: the pause keeps what the line last said, as the location text does.
 	if is_instance_valid(_floor):
 		var shown: Room = _floor.get_room()
 		if is_instance_valid(shown) and not shown.get_room_data().is_boss_room:
@@ -214,7 +216,7 @@ func _on_floor_chosen(floor_number: int, at_boss: bool) -> void:
 func _on_room_entered(room_index: int) -> void:
 	_session.report_room_entered(room_index)
 	if _session.get_place() != TowerSession.Place.FLOOR:
-		return  # A debug skip after a death: the session ignored it, so the HUD does too.
+		return  # A debug skip after a death: the session ignored it, and so do the HUD's two lines.
 	var floor_data: FloorData = _session.get_floor_data()
 	var room: RoomData = floor_data.rooms[room_index]
 	_hud.set_location(

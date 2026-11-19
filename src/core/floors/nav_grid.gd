@@ -180,6 +180,26 @@ func direction_toward(from: Vector2, to: Vector2) -> Vector2:
 	return from.direction_to(_centre_of(start + NEIGHBOURS[best_k]))
 
 
+## F-014/C8 (CR-1): the length in tiles of the shortest path from `from`'s tile to `to`'s tile,
+## under the same steps and costs as direction_toward() (orthogonal 1, diagonal sqrt 2, no corner
+## cutting): the cost the flow field to `to` holds at `from`'s tile. 0 when both positions are on
+## one tile, INF when no path joins them or the grid has no walkable tile. A position inside a
+## wall counts as the nearest walkable tile, as in direction_toward(). The field is the one
+## direction_toward() uses, settled as far as the asker's own tile needs, so asking changes no
+## answer of direction_toward() or has_clear_line().
+func walk_distance(from: Vector2, to: Vector2) -> float:
+	var goal: Vector2i = _nearest_walkable_tile(to)
+	var start: Vector2i = _nearest_walkable_tile(from)
+	if goal.x < 0 or start.x < 0:
+		return INF
+	if start == goal:
+		return 0.0
+	_ensure_field(goal)
+	var start_index: int = start.y * _width + start.x
+	_settle_around(start_index, 0, true)
+	return _field[start_index]
+
+
 ## F-011 AC8: how many distance fields were built. Only a new target tile builds one.
 func get_field_builds() -> int:
 	return _builds
@@ -281,7 +301,9 @@ func _ensure_field(goal: Vector2i) -> void:
 ## leave there. When the queue empties, every cost is final, INF included. A later call for
 ## the same goal carries on from the queue as it was left. The heap is written in place on local
 ## copies of the arrays, which this function owns while it runs.
-func _settle_around(tile_index: int, mask: int) -> void:
+## F-014 (CR-1): with `include_self` the tile itself is wanted as well, which is how walk_distance()
+## reads a cost: a mask of 0 and the tile's own settling.
+func _settle_around(tile_index: int, mask: int, include_self: bool = false) -> void:
 	# Moved out of the members while this runs, so every write below is in place and not a copy.
 	var settled: PackedByteArray = _settled
 	var field: PackedFloat64Array = _field
@@ -296,6 +318,9 @@ func _settle_around(tile_index: int, mask: int) -> void:
 	var step_delta: PackedInt32Array = _step_delta
 	var step_cost: PackedFloat64Array = _step_cost_of
 	var wanted: int = 0
+	if include_self and settled[tile_index] == UNSETTLED:
+		settled[tile_index] = WANTED
+		wanted += 1
 	for k: int in 8:
 		if mask & (1 << k) == 0:
 			continue

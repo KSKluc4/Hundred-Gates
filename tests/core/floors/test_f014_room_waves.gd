@@ -246,7 +246,22 @@ func _choose(
 	taken: PackedByteArray = PackedByteArray(),
 	enemies: Array[Vector2] = []
 ) -> int:
-	return RoomWaves.choose_point(points, taken, players, enemies, _rules)
+	var plain: int = RoomWaves.choose_point(points, taken, players, enemies, _rules)
+	# CR-1: no walks given means every walk is short, so a list of short walks changes nothing.
+	var short_walks: PackedFloat64Array = PackedFloat64Array()
+	short_walks.resize(points.size())
+	assert_eq(
+		RoomWaves.choose_point(points, taken, players, enemies, _rules, short_walks),
+		plain,
+		"short walks everywhere are the answer with none given"
+	)
+	return plain
+
+
+func _choose_walking(points: Array[Vector2], players: Array[Vector2], walks: Array[float]) -> int:
+	return RoomWaves.choose_point(
+		points, PackedByteArray(), players, [] as Array[Vector2], _rules, PackedFloat64Array(walks)
+	)
 
 
 func test_ac10_the_nearest_point_that_is_far_enough_wins() -> void:
@@ -656,3 +671,144 @@ func test_c9_the_arrival_stands_on_its_point() -> void:
 func test_c9_a_room_with_no_placed_enemy_holds_nothing_back() -> void:
 	var rig: WaveFixtures.Rig = _rig(0, 2, 2)
 	assert_eq(rig.waves.get_released_count(), 2)
+	# CR-5: and the fight starts at once, so the reserve really comes.
+	assert_false(rig.waves.has_started())
+	rig.tick()
+	assert_true(rig.waves.has_started(), "nobody to wait for")
+	rig.run(5.0)
+	assert_eq(_starts(rig), [1, 1 + INTERVAL_STEPS] as Array[int])
+	assert_eq(rig.recorder.arrivals.size(), 2, "both reinforcements arrived")
+	for enemy: EnemyLogic in rig.reserve:
+		assert_false(enemy.is_waiting())
+
+
+# --- AC10 (CR-1): the walk tier -------------------------------------------------------------
+
+
+func test_ac10_a_boxed_point_with_a_short_walk_beats_a_nearer_boxed_one_with_a_long_walk() -> void:
+	var player: Array[Vector2] = [Vector2.ZERO]
+	var points: Array[Vector2] = [Vector2(7, 0), Vector2(12, 0)]
+	assert_eq(_choose_walking(points, player, [30.0, 10.0]), 1, "7 away by 30, 12 away by 10")
+	assert_eq(
+		_choose_walking(points, player, [10.0, 10.0]), 0, "the control: both short, the nearer"
+	)
+	assert_eq(_choose_walking(points, player, [10.0, 30.0]), 0)
+
+
+func test_ac10_the_only_boxed_point_wins_over_an_unboxed_one_even_with_a_long_walk() -> void:
+	var player: Array[Vector2] = [Vector2.ZERO]
+	var points: Array[Vector2] = [Vector2(7, 0), Vector2(0, 11.5)]  # The second is above the box.
+	assert_eq(
+		_choose_walking(points, player, [30.0, 5.0]), 0, "boxed with a long walk beats unboxed"
+	)
+	assert_eq(_choose_walking(points, player, [5.0, 5.0]), 0)
+
+
+func test_ac10_when_every_walk_is_long_the_nearest_boxed_point_wins() -> void:
+	var player: Array[Vector2] = [Vector2.ZERO]
+	var points: Array[Vector2] = [Vector2(12, 0), Vector2(7, 0), Vector2(9, 0)]
+	assert_eq(_choose_walking(points, player, [30.0, 30.0, 30.0]), 1)
+	assert_eq(_choose_walking(points, player, [INF, INF, INF]), 1, "no way at all is long too")
+
+
+func test_ac10_a_walk_of_exactly_the_maximum_is_short() -> void:
+	var player: Array[Vector2] = [Vector2.ZERO]
+	var points: Array[Vector2] = [Vector2(12, 0), Vector2(7, 0)]
+	assert_eq(_rules.wave_max_walk_tiles, 18.0)
+	assert_eq(_choose_walking(points, player, [18.0, 18.5]), 0, "18.0 is short, 18.5 is not")
+	assert_eq(_choose_walking(points, player, [18.5, 18.0]), 1)
+	_rules.wave_max_walk_tiles = 5.0
+	assert_eq(_choose_walking(points, player, [4.0, 6.0]), 0, "the maximum is the tunable")
+
+
+func test_ac10_an_infinite_walk_is_never_short() -> void:
+	var player: Array[Vector2] = [Vector2.ZERO]
+	var points: Array[Vector2] = [Vector2(7, 0), Vector2(12, 0)]
+	assert_eq(_choose_walking(points, player, [INF, 10.0]), 1)
+
+
+func test_ac10_the_walk_only_ranks_points_that_are_far_enough_and_boxed() -> void:
+	var player: Array[Vector2] = [Vector2.ZERO]
+	# A point too near with a short walk loses to a far one with a long walk.
+	var near_and_far: Array[Vector2] = [Vector2(3, 0), Vector2(12, 0)]
+	assert_eq(_choose_walking(near_and_far, player, [1.0, 30.0]), 1)
+	# With none far enough the farthest wins, whatever the walks say.
+	var all_near: Array[Vector2] = [Vector2(2, 0), Vector2(5, 0)]
+	assert_eq(_choose_walking(all_near, player, [1.0, 99.0]), 1)
+	assert_eq(_choose_walking(all_near, player, [99.0, 1.0]), 1)
+
+
+func test_ac10_a_walk_missing_from_a_short_list_counts_as_short() -> void:
+	var player: Array[Vector2] = [Vector2.ZERO]
+	var points: Array[Vector2] = [Vector2(7, 0), Vector2(12, 0)]
+	assert_eq(_choose_walking(points, player, [30.0]), 1, "the second has no walk: short")
+
+
+func test_ac10_equal_distance_players_resolve_to_the_earlier_registered_one() -> void:
+	# The point (0, 0) is 11 from both players. With the first player (-11, 0) it is boxed; with
+	# the second one (0, 11) it is not, because the box is 10 high.
+	var points: Array[Vector2] = [Vector2.ZERO, Vector2(-11, 10.5)]
+	var west: Vector2 = Vector2(-11, 0)
+	var north: Vector2 = Vector2(0, 11)
+	assert_eq(_choose(points, [west, north] as Array[Vector2]), 0, "the west one is first")
+	assert_eq(_choose(points, [north, west] as Array[Vector2]), 1, "the north one is first")
+
+
+# --- AC27 (CR-1): the director asks the room's walls -----------------------------------------
+
+
+## 40 x 22: a wall 2 thick at x = 19..20 from y = 1 to 17, with a gap below it (y = 18..20).
+func _walled_rows() -> PackedStringArray:
+	var rows: PackedStringArray = PackedStringArray()
+	for y: int in 22:
+		var row: String = "#" + ".".repeat(38) + "#"
+		if y == 0 or y == 21:
+			row = "#".repeat(40)
+		elif y <= 17:
+			row = row.substr(0, 19) + "##" + row.substr(21)
+		rows.append(row)
+	return rows
+
+
+## A walled rig: the player east of the wall at (22.5, 5.5), a point behind the wall at (14.5, 5.5)
+## 8 tiles away and a point on the player side at (31.5, 5.5) 9 away.
+func _walled_rig(with_nav: bool) -> WaveFixtures.Rig:
+	var points: Array[Vector2] = [Vector2(14.5, 5.5), Vector2(31.5, 5.5)]
+	var placed_at: Array[Vector2] = [Vector2(36.5, 19.5)]
+	var rig: WaveFixtures.Rig = WaveFixtures.rig(
+		placed_at, 2, 3, _rules, points, 0.01, Vector2(22.5, 5.5)
+	)
+	if with_nav:
+		rig.arena.sim.set_nav(NavGrid.from_rows(_walled_rows()))
+	return rig
+
+
+func test_ac27_with_a_wall_in_the_way_the_arrival_goes_to_the_point_with_a_short_walk() -> void:
+	var rig: WaveFixtures.Rig = _walled_rig(true)
+	var nav: NavGrid = rig.arena.sim.get_nav()
+	assert_gt(nav.walk_distance(Vector2(14.5, 5.5), Vector2(22.5, 5.5)), 18.0, "behind the wall")
+	assert_lt(nav.walk_distance(Vector2(31.5, 5.5), Vector2(22.5, 5.5)), 18.0, "on this side")
+	rig.wake(rig.placed[0])
+	rig.tick()
+	assert_eq(rig.recorder.starts.size(), 1)
+	assert_eq(rig.recorder.starts[0]["point"], Vector2(31.5, 5.5), "boxed, with a short walk")
+
+
+func test_ac27_the_same_rig_without_a_nav_grid_chooses_the_straight_line_nearest() -> void:
+	var rig: WaveFixtures.Rig = _walled_rig(false)
+	assert_null(rig.arena.sim.get_nav())
+	rig.wake(rig.placed[0])
+	rig.tick()
+	assert_eq(rig.recorder.starts.size(), 1)
+	assert_eq(rig.recorder.starts[0]["point"], Vector2(14.5, 5.5), "as before the walk tier")
+
+
+func test_ac27_the_director_asks_the_nav_grid_only_when_it_is_about_to_choose() -> void:
+	var rig: WaveFixtures.Rig = _walled_rig(true)
+	var nav: NavGrid = rig.arena.sim.get_nav()
+	rig.run(2.0)
+	assert_false(rig.waves.has_started())
+	assert_eq(nav.get_field_builds(), 0, "nobody woke: no field was built for nothing")
+	rig.wake(rig.placed[0])
+	rig.tick()
+	assert_gt(nav.get_field_builds(), 0, "a choice was made")

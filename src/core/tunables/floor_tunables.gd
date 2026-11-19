@@ -30,6 +30,9 @@ extends Resource
 @export var max_kill_target: int = 30
 ## F-014/C4: how far from the player, horizontally and vertically, an arrival is preferred.
 @export var wave_arrival_box_tiles: Vector2 = Vector2(19, 10)
+## F-014/C4 (CR-1): the longest walk, in tiles, from an arrival point to the player that still
+## counts as near in C8's first tier.
+@export var wave_max_walk_tiles: float = 18.0
 
 
 ## F-011/C9. Empty result means valid.
@@ -71,3 +74,5 @@ func _validate_waves(errors: PackedStringArray) -> void:
 		errors.append("max_kill_target must be >= 1")
 	if not (wave_arrival_box_tiles.x > 0.0 and wave_arrival_box_tiles.y > 0.0):
 		errors.append("wave_arrival_box_tiles must be > 0 on both axes")
+	if not wave_max_walk_tiles >= 0.0:
+		errors.append("wave_max_walk_tiles must be >= 0")

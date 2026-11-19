@@ -8,6 +8,11 @@ extends RefCounted
 const TIME_EPSILON: float = CombatTiming.TIME_EPSILON
 const SNAPSHOT_KEYS: Array[String] = ["started", "next_index", "since_last", "pending"]
 const PENDING_KEYS: Array[String] = ["index", "point", "left", "total"]
+## F-014/C8: the tiers of choose_point(), best first.
+const TIER_NEAR: int = 0
+const TIER_IN_BOX: int = 1
+const TIER_FAR_ENOUGH: int = 2
+const TIER_FARTHEST: int = 3
 
 
 ## F-014/C9: one reinforcement on its way, as the glue draws it.
@@ -61,7 +66,8 @@ func setup(
 ## sensed from: the players come from it, the room's enemies from their own logic as it is now.
 func step(duration: float, view: CombatView) -> void:
 	_advance_pending(duration)  # (1)
-	if not _started and _any_aggroed_or_dead():  # (2)
+	# (2) A room with no placed enemy has nobody to wait for: it starts at once (CR-5).
+	if not _started and (_placed.is_empty() or _any_aggroed_or_dead()):
 		_started = true
 	_since_last += duration  # (3)
 	_send_while_allowed(view)  # (4), with (3b) in get_released_count()
@@ -102,7 +108,7 @@ func has_started() -> bool:
 ## Computed from the enemies on every call.
 func get_released_count() -> int:
 	if _placed.is_empty():
-		return _reserve.size()  # Nobody to wait for: a room with no placed enemy holds back nothing.
+		return _reserve.size()  # Nobody to wait for: nothing is held back, and the fight starts at once.
 	var woken: int = 0
 	for enemy: EnemyLogic in _placed:
 		if enemy.is_aggroed() or _is_dead(enemy):
@@ -122,22 +128,26 @@ func get_next_index() -> int:
 ## order; `taken` flags (non-zero) the ones with a pending arrival on them (empty: none).
 ## Candidates are the points not taken with no living enemy strictly nearer than
 ## `wave_spawn_gap_tiles`; a point's distance is to the nearest of `players` (living ones). Among
-## candidates at least `wave_min_spawn_distance_tiles` away and inside the arrival box the
-## nearest wins; failing that the nearest that is far enough; failing that the farthest. A later
-## point replaces an earlier one only when better by more than Geometry.DISTANCE_EPSILON.
+## candidates at least `wave_min_spawn_distance_tiles` away, inside the arrival box and with a
+## walk of at most `wave_max_walk_tiles` the nearest wins; failing that the nearest far enough and
+## inside the box; failing that the nearest far enough; failing that the farthest. A later point
+## replaces an earlier one only when better by more than Geometry.DISTANCE_EPSILON.
+## `walks` (F-014/C8, CR-1) is one walk per point, from that point to its nearest living player
+## (NavGrid.walk_distance()); empty means none are known and every walk counts as short.
 ## Side-effect free, and the same call the director makes.
 static func choose_point(
 	points: Array[Vector2],
 	taken: PackedByteArray,
 	players: Array[Vector2],
 	enemies: Array[Vector2],
-	rules: FloorTunables
+	rules: FloorTunables,
+	walks: PackedFloat64Array = PackedFloat64Array()
 ) -> int:
 	if players.is_empty():
 		return -1
 	var eps: float = Geometry.DISTANCE_EPSILON
 	var best: int = -1
-	var best_tier: int = 3
+	var best_tier: int = TIER_FARTHEST + 1
 	var best_distance: float = 0.0
 	for index: int in points.size():
 		if index < taken.size() and taken[index] != 0:
@@ -146,14 +156,17 @@ static func choose_point(
 			continue
 		var player: Vector2 = _nearest_of(points[index], players)
 		var distance: float = points[index].distance_to(player)
-		var tier: int = _tier_of(points[index], player, distance, rules)
+		var walk: float = walks[index] if index < walks.size() else 0.0
+		var tier: int = _tier_of(points[index], player, distance, walk, rules)
 		if best < 0 or tier < best_tier:
 			best = index
 			best_tier = tier
 			best_distance = distance
 		elif tier == best_tier:
-			# Tiers 0 and 1 want the nearest, tier 2 the farthest.
-			var gain: float = best_distance - distance if tier < 2 else distance - best_distance
+			# The first three tiers want the nearest, the last the farthest.
+			var gain: float = (
+				best_distance - distance if tier < TIER_FARTHEST else distance - best_distance
+			)
 			if gain > eps:
 				best = index
 				best_distance = distance
@@ -264,7 +277,9 @@ func _send_while_allowed(view: CombatView) -> void:
 		if _since_last + TIME_EPSILON < _rules.wave_spawn_interval:
 			return
 		var taken: PackedByteArray = _taken_flags()
-		var index: int = choose_point(_points, taken, players, _living_enemy_positions(), _rules)
+		var enemies: Array[Vector2] = _living_enemy_positions()
+		var walks: PackedFloat64Array = _walks_to_players(view.nav, taken, players, enemies)
+		var index: int = choose_point(_points, taken, players, enemies, _rules, walks)
 		if index < 0:
 			return
 		var entry: Pending = Pending.new()
@@ -277,6 +292,25 @@ func _send_while_allowed(view: CombatView) -> void:
 		_pending.append(entry)
 		_next_index += 1
 		_since_last = 0.0
+
+
+## F-014/C6, C8 (CR-1): one walk per candidate point, from the point to its nearest living player,
+## by the room's nav grid. Empty without a grid. Only the points choose_point() may pick are asked
+## (a taken point or one with an enemy on it gets 0 and is never read).
+func _walks_to_players(
+	nav: NavGrid, taken: PackedByteArray, players: Array[Vector2], enemies: Array[Vector2]
+) -> PackedFloat64Array:
+	var walks: PackedFloat64Array = PackedFloat64Array()
+	if nav == null:
+		return walks
+	walks.resize(_points.size())
+	for index: int in _points.size():
+		if taken[index] != 0:
+			continue
+		if _has_enemy_nearer_than(_points[index], enemies, _rules.wave_spawn_gap_tiles):
+			continue
+		walks[index] = nav.walk_distance(_points[index], _nearest_of(_points[index], players))
+	return walks
 
 
 func _all_enemies() -> Array[EnemyLogic]:
@@ -390,15 +424,20 @@ static func _nearest_of(point: Vector2, others: Array[Vector2]) -> Vector2:
 	return nearest
 
 
-## 0: far enough and inside the arrival box; 1: far enough; 2: neither. Boundaries count as
-## inside, within Geometry.DISTANCE_EPSILON, so a tick rate can't move them.
-static func _tier_of(point: Vector2, player: Vector2, distance: float, rules: FloorTunables) -> int:
+## 0: far enough, inside the arrival box and a short walk; 1: far enough and inside the box;
+## 2: far enough; 3: none of them. Boundaries count as inside, within Geometry.DISTANCE_EPSILON,
+## so a tick rate can't move them.
+static func _tier_of(
+	point: Vector2, player: Vector2, distance: float, walk: float, rules: FloorTunables
+) -> int:
 	var eps: float = Geometry.DISTANCE_EPSILON
 	if distance < rules.wave_min_spawn_distance_tiles - eps:
-		return 2
+		return TIER_FARTHEST
 	var offset: Vector2 = (point - player).abs()
 	var inside: bool = (
 		offset.x <= rules.wave_arrival_box_tiles.x + eps
 		and offset.y <= rules.wave_arrival_box_tiles.y + eps
 	)
-	return 0 if inside else 1
+	if not inside:
+		return TIER_FAR_ENOUGH
+	return TIER_NEAR if walk <= rules.wave_max_walk_tiles + eps else TIER_IN_BOX

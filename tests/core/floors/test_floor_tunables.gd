@@ -1,3 +1,4 @@
+# gdlint:disable=max-public-methods
 extends GutTest
 ## F-011 T1 (AC4): FloorTunables refuses numbers that make no sense.
 
@@ -31,6 +32,7 @@ func test_shipped_file_is_valid_and_matches_the_design() -> void:
 	assert_eq(Tunables.floors.wave_min_arrival_points, 2)
 	assert_eq(Tunables.floors.max_kill_target, 30)
 	assert_eq(Tunables.floors.wave_arrival_box_tiles, Vector2(19, 10))
+	assert_almost_eq(Tunables.floors.wave_max_walk_tiles, 18.0, 0.0001)  # F-014/C4 (CR-1)
 
 
 func test_ac4_rejects_a_heal_fraction_outside_zero_to_one() -> void:
@@ -142,6 +144,18 @@ func test_ac3_rejects_an_arrival_box_that_is_not_positive_on_both_axes() -> void
 	_tunables.wave_arrival_box_tiles = Vector2(19.0, -1.0)
 	_assert_one_error("wave_arrival_box_tiles must be > 0")
 	_tunables.wave_arrival_box_tiles = Vector2(0.5, 0.5)
+	assert_eq(_tunables.validate(), PackedStringArray())
+
+
+func test_ac3_rejects_a_negative_max_walk_and_accepts_zero_and_nan_fails() -> void:
+	assert_almost_eq(_tunables.wave_max_walk_tiles, 18.0, 0.0001, "the default")
+	_tunables.wave_max_walk_tiles = -0.5
+	_assert_one_error("wave_max_walk_tiles must be >= 0")
+	_tunables.wave_max_walk_tiles = NAN
+	_assert_one_error("wave_max_walk_tiles")
+	_tunables.wave_max_walk_tiles = 0.0
+	assert_eq(_tunables.validate(), PackedStringArray())
+	_tunables.wave_max_walk_tiles = 18.0
 	assert_eq(_tunables.validate(), PackedStringArray())
 
 

@@ -361,3 +361,23 @@ static func wave_tower(wave_rooms: int = 2) -> TowerData:
 	data.town = TowerFixtures.town_room()
 	data.floors = [floor_data] as Array[FloorData]
 	return data
+
+
+## F-014/C14 (CR-1): the walk, by the room's nav grid, between every arrival point and every tile:
+## `result[point][y * width + x]` is the walk from that tile's centre to the point (INF for a tile
+## that is not walkable or has no way). One field per point; every step costs the same both ways, so
+## it is also the walk the director asks from the point to a player standing on the tile.
+static func walk_table(room: RoomData) -> Array[PackedFloat64Array]:
+	var nav: NavGrid = NavGrid.from_rows(room.rows)
+	var size: Vector2i = room.get_size()
+	var table: Array[PackedFloat64Array] = []
+	for point: Vector2 in room.get_arrival_points_tiles():
+		var walks: PackedFloat64Array = PackedFloat64Array()
+		walks.resize(size.x * size.y)
+		walks.fill(INF)
+		for y: int in size.y:
+			for x: int in size.x:
+				if room.is_walkable(Vector2i(x, y)):
+					walks[y * size.x + x] = nav.walk_distance(Vector2(x + 0.5, y + 0.5), point)
+		table.append(walks)
+	return table

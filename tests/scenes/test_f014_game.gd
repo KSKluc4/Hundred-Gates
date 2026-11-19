@@ -181,3 +181,25 @@ func test_ac20_after_a_death_and_the_town_the_same_room_starts_its_waves_again()
 	await run_ticks(60)
 	assert_true(waves.get_pending().is_empty(), "and nothing starts by itself")
 	assert_eq(hud().get_kills_text(), KILLS_0_OF_5)
+
+
+# --- CR-4: the two lines of the HUD agree through the death pause -------------------------------
+
+
+func test_cr4_in_the_death_pause_a_debug_skip_changes_neither_the_location_nor_the_count() -> void:
+	set_death_delay(5.0)
+	await _enter_first_room()
+	kill(room().get_enemies()[0])
+	await run_ticks(1)
+	assert_eq(hud().get_kills_text(), "Kills 1 / 5")
+	kill_player()
+	await run_ticks(2)
+	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
+	assert_eq(hud().get_kills_text(), "Kills 1 / 5", "the pause keeps the count it last showed")
+	floor_scene().skip_room()  # What N does: the session ignores it.
+	assert_eq(location(), FIRST_ROOM_TEXT, "the session ignored the skip, so does the location")
+	assert_eq(hud().get_kills_text(), "Kills 1 / 5", "and so does the count, at once")
+	await run_ticks(5)
+	assert_eq(location(), FIRST_ROOM_TEXT)
+	assert_eq(hud().get_kills_text(), "Kills 1 / 5", "and a few ticks later")
+	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)

@@ -150,6 +150,7 @@ func test_c14b_the_first_three_choices_from_every_tile_lie_inside_the_arrival_bo
 		var room: RoomData = _room(room_id)
 		var points: Array[Vector2] = room.get_arrival_points_tiles()
 		var size: Vector2i = room.get_size()
+		var table: Array[PackedFloat64Array] = WaveFixtures.walk_table(room)
 		var worst: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
 		var tiles: int = 0
 		var failures: int = 0
@@ -162,9 +163,16 @@ func test_c14b_the_first_three_choices_from_every_tile_lie_inside_the_arrival_bo
 				var taken: PackedByteArray = PackedByteArray()
 				taken.resize(points.size())
 				var chosen: Array[int] = []
+				# CR-1: the choices are the director's, so they take the room's walks into account.
+				var walks: PackedFloat64Array = _walks_at(table, y * size.x + x)
 				for rank: int in 3:
 					var index: int = RoomWaves.choose_point(
-						points, taken, [player] as Array[Vector2], [] as Array[Vector2], rules
+						points,
+						taken,
+						[player] as Array[Vector2],
+						[] as Array[Vector2],
+						rules,
+						walks
 					)
 					chosen.append(index)
 					if index < 0:
@@ -209,6 +217,91 @@ func test_c14b_the_first_three_choices_from_every_tile_lie_inside_the_arrival_bo
 			)
 		)
 	gut.p("C14 (b) took %d ms" % (Time.get_ticks_msec() - started))
+
+
+# --- C14 (d): a short walk (CR-1) -----------------------------------------------------------------
+
+
+func test_c14d_the_arrival_from_every_tile_is_a_short_walk_away() -> void:
+	var rules: FloorTunables = Tunables.floors
+	var started: int = Time.get_ticks_msec()
+	var failing_rooms: Array[String] = []
+	for room_id: StringName in ROOM_IDS:
+		var room: RoomData = _room(room_id)
+		var points: Array[Vector2] = room.get_arrival_points_tiles()
+		var size: Vector2i = room.get_size()
+		var table: Array[PackedFloat64Array] = WaveFixtures.walk_table(room)
+		var tiles: int = 0
+		var failures: int = 0
+		var worst_walk: float = 0.0
+		var worst_tile: Vector2i = Vector2i.ZERO
+		var first_failure: String = ""
+		for y: int in size.y:
+			for x: int in size.x:
+				if not room.is_walkable(Vector2i(x, y)):
+					continue
+				tiles += 1
+				var player: Vector2 = Vector2(x + 0.5, y + 0.5)
+				var walks: PackedFloat64Array = _walks_at(table, y * size.x + x)
+				var index: int = RoomWaves.choose_point(
+					points,
+					PackedByteArray(),
+					[player] as Array[Vector2],
+					[] as Array[Vector2],
+					rules,
+					walks
+				)
+				var walk: float = walks[index] if index >= 0 else INF
+				if walk > worst_walk:
+					worst_walk = walk
+					worst_tile = Vector2i(x, y)
+				if walk > rules.wave_max_walk_tiles + EPSILON:
+					failures += 1
+					if first_failure.is_empty():
+						first_failure = (
+							"from tile (%d, %d) the point %s is a walk of %.1f"
+							% [x, y, points[index] if index >= 0 else Vector2(-1, -1), walk]
+						)
+		gut.p(
+			(
+				"%s: worst walk %.1f (from tile %s), %d of %d tiles over %.1f"
+				% [room_id, worst_walk, worst_tile, failures, tiles, rules.wave_max_walk_tiles]
+			)
+		)
+		if failures > 0:
+			failing_rooms.append(
+				"%s: %d of %d tiles, e.g. %s" % [room_id, failures, tiles, first_failure]
+			)
+	gut.p("C14 (d) took %d ms" % (Time.get_ticks_msec() - started))
+	assert_true(
+		failing_rooms.is_empty(),
+		"rooms with an arrival that is a long walk away: %s" % " | ".join(failing_rooms)
+	)
+
+
+## The director asks from the point to the player, the table from the tile to the point: the same
+## number, because every step costs the same both ways. Checked here on a sample of tiles.
+func test_c14d_the_table_is_what_the_director_would_ask() -> void:
+	var random: RandomNumberGenerator = RandomNumberGenerator.new()
+	random.seed = 14
+	for room_id: StringName in ROOM_IDS:
+		var room: RoomData = _room(room_id)
+		var points: Array[Vector2] = room.get_arrival_points_tiles()
+		var size: Vector2i = room.get_size()
+		var table: Array[PackedFloat64Array] = WaveFixtures.walk_table(room)
+		var nav: NavGrid = NavGrid.from_rows(room.rows)
+		var checked: int = 0
+		while checked < 40:
+			var tile: Vector2i = Vector2i(
+				random.randi_range(0, size.x - 1), random.randi_range(0, size.y - 1)
+			)
+			if not room.is_walkable(tile):
+				continue
+			checked += 1
+			var player: Vector2 = Vector2(tile.x + 0.5, tile.y + 0.5)
+			for index: int in points.size():
+				var asked: float = nav.walk_distance(points[index], player)
+				assert_almost_eq(asked, table[index][tile.y * size.x + tile.x], 1e-9, room_id)
 
 
 # --- C14 (c): the shares and the cap --------------------------------------------------------------
@@ -575,3 +668,12 @@ func _room(room_id: StringName) -> RoomData:
 			return room
 	fail_test("no shipped room %s" % room_id)
 	return RoomData.new()
+
+
+## The walks of the arrival points for one tile: `table[point][tile_index]` for every point.
+func _walks_at(table: Array[PackedFloat64Array], tile_index: int) -> PackedFloat64Array:
+	var walks: PackedFloat64Array = PackedFloat64Array()
+	walks.resize(table.size())
+	for index: int in table.size():
+		walks[index] = table[index][tile_index]
+	return walks

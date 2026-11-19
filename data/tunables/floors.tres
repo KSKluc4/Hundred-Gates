@@ -19,3 +19,4 @@ wave_spawn_gap_tiles = 1.5
 wave_min_arrival_points = 2
 max_kill_target = 30
 wave_arrival_box_tiles = Vector2(19, 10)
+wave_max_walk_tiles = 18.0
