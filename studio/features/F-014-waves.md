@@ -1,8 +1,8 @@
 ---
 id: F-014
 title: Waves — reinforcements arrive in a room until its kill target is reached (Gate B playtest, third fix)
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-19
 updated: 2026-11-19
 depends_on: [F-004, F-011, F-012, F-013, D-007, D-010, D-012, D-014, D-015]
@@ -205,17 +205,17 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 | C1 | **Room data.** `RoomData` gains `reinforcements: PackedInt32Array` (each value is 1-based, like a spawn digit: `enemies[value − 1]`; in arrival order; empty by default) and `max_engaged: int` (0 by default, which means `FloorTunables.wave_max_engaged`). The legend gains `S`, an **arrival point**: a walkable floor tile like `.` for every existing rule, the nav grid and the walls. | G9 |
 | C2 | **Derived values on `RoomData`.** `get_kill_target()` is the number of spawns plus the number of reinforcements. `get_reinforcement_spawns() -> Array[RoomSpawn]`: one per reinforcement, in order, with ids that continue the numbering of `get_spawns()` (`<EnemyData.id>_<n>`, n counting on from the last spawn), `position_tiles` the first arrival point's centre, and a new `RoomSpawn.is_reinforcement` true. `get_spawns()` is unchanged. `get_arrival_points_tiles() -> Array[Vector2]`: the centres of the `S` tiles, row-major. `get_max_engaged(rules)` resolves the 0. | One place for the numbers |
 | C3 | **Validation**, each a named error like the existing ones (`waves: …`): a reinforcement value outside 1..`enemies.size()`; reinforcements in a boss room or a safe room; an `S` in a boss room or a safe room; reinforcements with fewer than `wave_min_arrival_points` `S` tiles; `S` tiles without reinforcements; an `S` nearer than `min_spawn_distance_tiles` to `P`; two `S` tiles nearer than `wave_spawn_gap_tiles` to each other, or an `S` that near a spawn tile (centre to centre); `max_engaged` negative; a kill target above `max_kill_target`. A room with no reinforcements and no `S` validates exactly as before. `max_enemies_per_room` still counts the spawn tiles only (F-011/C16's "1–6 enemies per combat room" now reads "placed enemies"). | F-011/C16 style: all errors, with the tile |
-| C4 | **Tunables** in `FloorTunables` / `data/tunables/floors.tres`, each checked by `validate()`: `wave_max_engaged` (3, ≥ 1), `wave_spawn_warning_duration` (0.8 s, ≥ 0), `wave_spawn_interval` (1.5 s, ≥ 0), `wave_min_spawn_distance_tiles` (6.0, ≥ 0), `wave_spawn_gap_tiles` (1.5, ≥ 0), `wave_min_arrival_points` (2, ≥ 1), `max_kill_target` (30, ≥ 1), `wave_arrival_box_tiles` (`Vector2(19, 10)`, both > 0). No wave number is hardcoded. | G2 |
+| C4 | **Tunables** in `FloorTunables` / `data/tunables/floors.tres`, each checked by `validate()`: `wave_max_engaged` (3, ≥ 1), `wave_spawn_warning_duration` (0.8 s, ≥ 0), `wave_spawn_interval` (1.5 s, ≥ 0), `wave_min_spawn_distance_tiles` (6.0, ≥ 0), `wave_spawn_gap_tiles` (1.5, ≥ 0), `wave_min_arrival_points` (2, ≥ 1), `max_kill_target` (30, ≥ 1), `wave_arrival_box_tiles` (`Vector2(19, 10)`, both > 0), `wave_max_walk_tiles` (18.0, ≥ 0; added after code review round 1, CR-1). No wave number is hardcoded. | G2 |
 | C5 | **Waiting.** `EnemyLogic.State.WAITING` is appended after `STAGE_SHIFT`. `hold_in_reserve()` puts a freshly set-up enemy in it (state `IDLE`, not aggroed, nothing running); called at any other moment it changes nothing and reports an error. While waiting: `is_alive()` is false; it cannot be hit; `apply_hit()` changes nothing (no damage, no aggro, no state change); `sense()` decides nothing and `step()` returns before advancing anything (no cooldown, no phase time, no movement, and its displacement for the step is zero, so the runner never moves its hidden body); it has no hitbox and launches nothing; `is_waiting()` is true. `arrive(position_tiles)` puts it at that position in state `IDLE`, aggroed, with a fresh combat state (full HP, no hitstop, no knockback), and emits a new signal `arrived`; it senses for the first time at the next step start. `arrive()` on an enemy that is not waiting changes nothing and reports an error. The state is part of the snapshot. A waiting enemy that is killed anyway (only a test can do that, by putting damage straight on its `CombatState`) is `DEAD` and counts as a kill. `setup()` (the debug reset) leaves an enemy not waiting, so `CombatRunner.reset()` refuses, with an error and no change, when its sim has a director; `Room` rebuilds a room instead of resetting it. | The sim's roster stays fixed; plan review PR-3, PR-5, PR-10 |
-| C6 | **Director.** `RoomWaves` (core, `RefCounted`, `src/core/floors/room_waves.gd`) holds the room's enemies in registration order (the ones placed at the start, then the reserve in arrival order), the arrival points, the resolved `max_engaged` and the rules. `CombatSim.set_waves()` attaches it; in `tick()` the sim calls `step(duration, view)` once per step, after every combatant's `step()` and the sim clock's advance and before `fire_due_actions()`. The director reads players from that step's `view` and reads its enemies from their logic as it is at that moment (the view was captured before they stepped). With no director attached the sim behaves exactly as before. | G6; D-007; plan review PR-5 |
+| C6 | **Director.** `RoomWaves` (core, `RefCounted`, `src/core/floors/room_waves.gd`) holds the room's enemies in registration order (the ones placed at the start, then the reserve in arrival order), the arrival points, the resolved `max_engaged` and the rules. `CombatSim.set_waves()` attaches it; in `tick()` the sim calls `step(duration, view)` once per step, after every combatant's `step()` and the sim clock's advance and before `fire_due_actions()`. The director reads players and the room's nav grid (`view.nav`, null when the sim has none) from that step's `view` and reads its enemies from their logic as it is at that moment (the view was captured before they stepped). With no director attached the sim behaves exactly as before. | G6; D-007; plan review PR-5 |
 | C7 | **Director rules**, per step, in this order. Time comparisons use `CombatTiming.TIME_EPSILON`. (1) Every pending arrival's time goes down by the step; one that has run out arrives (`arrive()` on its enemy, at its point), so an arrival lands at the first step end at or after its start plus the warning, and a warning of 0 arrives in the step after it started. A pending arrival whose enemy is no longer waiting is dropped silently. Nothing is rechecked at the point when it lands. (2) The fight **starts** the first time any of the room's enemies is aggroed or dead when the director looks; it never un-starts. (An enemy that notices the player by range is seen in that step; a hit or a death happens at the step's contact, after the director, and is seen in the next step.) (3) The time since the last arrival was started goes up by the step; it begins at `wave_spawn_interval`, so before any arrival the interval has passed. (3b) **Release.** The reserve is split into as many shares as the room has placed enemies: each share has `reserve / placed` enemies (whole division) and the first `reserve mod placed` shares one more. The number of **released** reinforcements is the sum of the first k shares, where k is how many placed enemies are aggroed or dead when the director looks; it is computed from the enemies every step, never stored. (4) Repeat while all of these hold: the fight has started; the index of the next reserve enemy (which is what "arrivals started" means, and what the snapshot stores) is below the released count; a reserve enemy that is still waiting is left (one that is not waiting is skipped silently and never sent; the index moves past it, so it uses a slot of its share); a living player exists; the **engaged** enemies (alive and aggroed) plus the pending arrivals are fewer than `max_engaged`; at least `wave_spawn_interval` has passed since the last arrival was started; and C8 finds a point. Each repeat makes the next waiting reserve enemy a pending arrival at that point with `wave_spawn_warning_duration` to go and sets the time since the last start to 0 (so with an interval of 0 several can start in one step, each at its own point). | The pace is the cap, not a clock; plan review PR-1, PR-2, PR-4, PR-5 |
-| C8 | **Choosing a point**, a static, side-effect-free function on `RoomWaves` that the director and the tests share. Candidates are the arrival points with no pending arrival on them and no living enemy nearer than `wave_spawn_gap_tiles` (strictly nearer). A point's distance is to the nearest living player. Among candidates at least `wave_min_spawn_distance_tiles` away and inside the **arrival box** (no further than `wave_arrival_box_tiles.x` horizontally and `.y` vertically from that player) the nearest wins; if there is none, the nearest among those at least that distance away; if none is that far, the farthest candidate wins; a later point in row-major order replaces an earlier one only if it is better by more than `Geometry.DISTANCE_EPSILON`. No candidate: no arrival this step. | Near the fight, never on the player |
+| C8 | **Choosing a point**, a static, side-effect-free function on `RoomWaves` that the director and the tests share. Candidates are the arrival points with no pending arrival on them and no living enemy nearer than `wave_spawn_gap_tiles` (strictly nearer). A point's distance is to the nearest living player. Among candidates at least `wave_min_spawn_distance_tiles` away, inside the **arrival box** (no further than `wave_arrival_box_tiles.x` horizontally and `.y` vertically from that player) and with a **walk** to that player of at most `wave_max_walk_tiles` the nearest wins; if there is none, the nearest among those far enough and inside the box; if there is none, the nearest among those far enough; if none is that far, the farthest candidate wins. (The walk tier was added after code review round 1, CR-1: a point 8 tiles away through a wall can be a 60-tile walk. The walk is the length of the nav grid's shortest path, `NavGrid.walk_distance()`; the function takes the walks as an input, one per point, and with none given every walk counts as short, so a sim without a nav grid chooses as before.) a later point in row-major order replaces an earlier one only if it is better by more than `Geometry.DISTANCE_EPSILON`. No candidate: no arrival this step. | Near the fight, never on the player |
 | C9 | **Counts.** `RoomWaves.get_kill_target()` is the number of the room's enemies; `get_kill_count()` is how many of them are neither alive nor waiting. Both are computed from the enemies on every call, never stored. `get_pending()` lists the pending arrivals whose enemy is still waiting (point, time left, total warning, enemy id) for the glue to draw. `has_started()`. `get_released_count()`. | F-011/C11: nothing that can go stale |
 | C10 | **Snapshot.** With a director attached, `CombatSim.to_dict()` carries a `waves` entry (started, the index of the next reserve enemy, the time since the last start, the pending arrivals) and `from_dict()` refuses a snapshot without it or with values out of range, before anything changes. Without a director the snapshot is exactly today's. A room restored in the middle of a warning continues it to the same instant. | G7 |
 | C11 | **Glue.** `Room` builds the reserve enemies after the placed ones, lists all of them in the runner's `combatant_paths` (player, placed enemies in spawn order, reserve in arrival order), and attaches a `RoomWaves` only when the room has reinforcements. `Room.get_enemies()` returns every enemy, the reserve included; `get_reserve_enemies()` only those. `is_cleared()` is "no enemy alive and none waiting". `get_kill_count()` and `get_kill_target()` work in every room (a room without waves: its dead enemies and its enemy count). `Enemy` gains `starts_in_reserve` (false by default; set by `Room` before the node enters the tree, so `_ready()` sets the logic up, holds it in reserve and then syncs the body). The `Enemy` node derives "is it there" from its logic's state every time it syncs its body, never from a signal alone, so a restore in either direction is right: while `WAITING` it has no body collision and nothing of it is drawn (no shape, bar or label); on `arrived` its body is put on the logic's position. `Enemy` gains an export `hide_when_dead` (false by default, so the debug scenes and every fixture room are unchanged); `Room` sets it on every enemy of a room that has reinforcements, and such an enemy's shape, bar and label are not drawn once dead (its damage numbers still are, so the killing hit shows its number). `CombatDebugDraw` draws no ring for a waiting enemy, and none for a dead enemy in a sim that has a director. | Views follow the logic; plan review PR-7, PR-8, PR-9 |
 | C12 | **Markers.** A node of its own under `Room` draws one marker per pending arrival at its point, from `RoomWaves.get_pending()`, read every frame: a ring of the arriving enemy's body radius that fills as the warning runs out (a total warning of 0 draws it full). Colours and line width are exports on the marker node (placeholder, → Art & Game Feel). Presentation only: no collision, nothing in core reads it. | Pillar 2: readable; G6 |
 | C13 | **HUD.** In a combat room of a floor the HUD shows `Kills <count> / <target>` under the location text; in the town and in a boss room it shows nothing there. The text comes from one constant or static function (F-012/C16). `Game` feeds it from the shown room every physics frame; no rule moves into `Game` or the HUD. | Lucas approved "shown on the HUD" |
-| C14 | **Shipped rooms.** The 12 combat rooms get arrival points, reinforcements and `max_engaged` as the table below this one gives; reinforcements use only enemy types the room already lists. The grids of F-013 do not change otherwise (an `S` replaces a `.`), and every F-013 shipped-room rule still holds. Arrival-point rules, each with a test over every shipped combat room: (a) no wall tile at 2 tiles or nearer to an `S` (the larger of the x and y distance, the border included); (b) **the warning is on screen**: for every walkable tile taken as the player's position, the point C8 chooses with every point free, the point it chooses when that one is taken away, and the one it chooses when both of those are taken away, all three lie inside the arrival box of C8 (19 × 10 tiles; half a screen is 20 × 11.25). A room gets as many `S` tiles as (b) needs: the plan review's search needed 13 to 22 per room. Rule (b) covers the first three choices with no enemy standing on a point; C8's preference for the box covers the rest as far as the points allow. (c) `max_engaged` is at most 1 plus the room's first share, so the cap can be reached at the first fight. | The lead's starting values (§10 Q1); plan review PR-6 |
+| C14 | **Shipped rooms.** The 12 combat rooms get arrival points, reinforcements and `max_engaged` as the table below this one gives; reinforcements use only enemy types the room already lists. The grids of F-013 do not change otherwise (an `S` replaces a `.`), and every F-013 shipped-room rule still holds. Arrival-point rules, each with a test over every shipped combat room: (a) no wall tile at 2 tiles or nearer to an `S` (the larger of the x and y distance, the border included); (b) **the warning is on screen**: for every walkable tile taken as the player's position, the point C8 chooses with every point free, the point it chooses when that one is taken away, and the one it chooses when both of those are taken away, all three lie inside the arrival box of C8 (19 × 10 tiles; half a screen is 20 × 11.25). A room gets as many `S` tiles as (b) needs: the plan review's search needed 13 to 22 per room. Rule (b) covers the first three choices with no enemy standing on a point; C8's preference for the box covers the rest as far as the points allow. (c) `max_engaged` is at most 1 plus the room's first share, so the cap can be reached at the first fight. (d) (After code review round 1, CR-1.) **The arrival is a short walk away**: for every walkable tile taken as the player's position, with every point free, the point the director chooses with the room's nav grid has a walk of at most `wave_max_walk_tiles` to the player. | The lead's starting values (§10 Q1); plan review PR-6 |
 | C15 | **Nothing changes where there are no waves.** A room without reinforcements (every fixture, every boss room, the town) behaves exactly as before, and its sim snapshot is exactly what it was. | The old suite is the proof |
 | C16 | **Pre-existing tests** change only as listed here, each change listed in §8 with its reason. (1) `tests/scenes/test_f011_shipped_floors.gd`, `test_ac26_floor_{1,2,3}_every_room_loads_and_steps_clean`: the list of registered ids now holds the reserve. (2) `tests/core/floors/test_floor_tunables.gd`: the shipped-values test gains the new values (an addition). (3) A test that pins a tile of a shipped grid where an `S` now stands. Everything else, and every test on fixtures, passes unchanged; `kill_all()` keeps clearing a room because `get_enemies()` includes the reserve (C5, C7, C11). | As F-013/C16; the plan review's prototype failed exactly the three tests of (1) |
 | C17 | No new third-party dependency, no new autoload, no new input action. Core stays pure. | G4, G6 |
@@ -256,7 +256,7 @@ the sim's grid (1/120 s).
 **Data**
 - [ ] AC1: A room with reinforcements `[1, 2, 1]` on a grid with two spawns reports a kill target of 5, three reinforcement spawns of the right enemies with ids numbered on from the spawns', and its `S` tiles as arrival points in row-major order. `get_spawns()` returns what it returned before.
 - [ ] AC2: Each rule of C3 is refused with its own error naming the tile or value, alone and together with others; a room with no reinforcements and no `S` gets no new error.
-- [ ] AC3: The eight tunables of C4 exist with their shipped values, and `FloorTunables.validate()` refuses each bad value.
+- [ ] AC3: The nine tunables of C4 exist with their shipped values, and `FloorTunables.validate()` refuses each bad value.
 
 **Waiting and arriving**
 - [ ] AC4: A waiting enemy is not alive in a `CombatView`, is not chosen as a target, is not hit by a sword arc that covers its position, does not aggro on a player standing on it, has no hitbox or projectile, and after 5 s of sim time its position, cooldown, phase time and HP are what they were. `apply_hit()` on it changes nothing: same HP, not aggroed, still waiting.
@@ -267,13 +267,14 @@ the sim's grid (1/120 s).
 - [ ] AC7: Nothing arrives before the fight starts, however long the player waits outside every aggro radius. The fight has started by the end of the step in which an enemy first notices the player by range, and by the end of the next step after a hit or a death.
 - [ ] AC8: With `max_engaged` 2, two placed enemies both aggroed and three in reserve: while both live nothing arrives; in the step after one dies a warning starts, and the reinforcement arrives at the first step end at or after `wave_spawn_warning_duration` later (96 steps for 0.8 s); at no step are more than 2 enemies engaged or on their way because of an arrival.
 - [ ] AC9: With `max_engaged` 2, two placed enemies of which only one is aggroed, and a reserve: a warning starts in the step the fight starts (the sleeping one does not count, and before any arrival the interval counts as passed). With `max_engaged` 3, one aggroed placed enemy and a first share of at least 2, the second warning starts `wave_spawn_interval` after the first, in the order of `reinforcements`; with an interval of 0 both start in the same step at different points.
-- [ ] AC10: `RoomWaves`'s point choice returns what C8 names, in each of its cases: the nearest far-enough point; the farthest when none is far enough; the earlier point on a tie; never a point with a pending arrival or a living enemy nearer than the gap; none when no point qualifies, and then the arrival starts in the first later step in which one does.
+- [ ] AC10: `RoomWaves`'s point choice returns what C8 names, in each of its cases: the nearest far-enough point; the farthest when none is far enough; the earlier point on a tie; never a point with a pending arrival or a living enemy nearer than the gap; none when no point qualifies, and then the arrival starts in the first later step in which one does; a boxed point with a short walk before a nearer boxed point behind a wall, and that nearer one when it is the only boxed point.
 - [ ] AC11: With no living player nothing new starts; pending arrivals still arrive.
 - [ ] AC12: Kill count and kill target follow C9 through a whole room: 0 of n at the start, +1 by the end of the step an enemy dies, n of n when the last dies, and `Room.is_cleared()` is true exactly then.
 - [ ] AC13: A scripted run on a fixture room gives the same warning start times, arrival times and points at 30, 60 and 120 ticks per second.
 - [ ] AC14: A snapshot taken in the middle of a warning, restored into a freshly built room, continues to the same arrival instant, point and kill count as the original; a snapshot without the `waves` entry is refused by a sim that has a director, with nothing changed.
 - [ ] AC15: A reserve enemy killed by a test while it waits (lethal damage on its `CombatState`) counts as a kill and is never sent; one killed during its own warning never arrives; neither reports an error. After `kill_all()` in a room with a reserve the room is cleared in that tick, `get_pending()` is empty at once, and for 5 s nothing arrives and no error is reported.
 - [ ] AC26: With two placed enemies and a reserve of five (shares 3 and 2), `max_engaged` 4 and an interval of 0: when the first placed enemy is engaged exactly three arrivals start, and no fourth however many die; once those three and the first placed enemy are dead and the second placed enemy is engaged or killed, the last two start (while the cap is full they wait for it). `get_released_count()` is 0, 3 and 5 at those moments.
+- [ ] AC27 (after code review round 1, CR-1): `NavGrid.walk_distance(from, to)` is the length in tiles of the shortest path between the two positions' tiles under the grid's own step rules (0 on the same tile, infinite when there is none), equal to an independent shortest-path computation on fixture rooms, a 64 × 36 room with blocks and room 2-4; asking it changes no answer of `direction_toward()` (the F-013 equivalence proof still passes). In a room with a wall between a boxed point and the player, the director sends the arrival to a boxed point with a short walk.
 
 **Room, markers, HUD**
 - [ ] AC16: In a `Room` with reinforcements the reserve enemies exist, are registered after the placed ones in arrival order, have no collision and draw nothing (no shape, bar, label or debug ring); a body walks through the place a waiting enemy's node stands. `CombatRunner.reset()` on such a room changes nothing and reports an error.
@@ -284,7 +285,7 @@ the sim's grid (1/120 s).
 - [ ] AC21: The HUD shows `Kills 0 / n` on entering a combat room, counts up with each kill, shows nothing in the town and in a boss room, and follows a room change in the same tick as the location text.
 
 **Shipped rooms**
-- [ ] AC22: Every shipped combat room matches the wave table (reinforcement types in order, kill target, `max_engaged`) and C14's rules (a) and (b); the shipped tower validates; F-013's shipped-room tests pass on the new grids.
+- [ ] AC22: Every shipped combat room matches the wave table (reinforcement types in order, kill target, `max_engaged`) and C14's rules (a) to (d); the shipped tower validates; F-013's shipped-room tests pass on the new grids.
 - [ ] AC23: Every shipped combat room, played by this script: the player's HP is refilled every tick; the player is put 3 tiles from the placed enemy nearest to `P`, on the line toward `P`; every 3 s, counted from the moment the player was last put somewhere, the script kills the enemy that has been engaged longest; whenever nobody is engaged, nothing is pending and every released reinforcement has started, it puts the player 3 tiles from the nearest placed enemy that still sleeps, on the line toward where the player was. Then: every reinforcement arrives; no arrival takes the engaged enemies plus the pending arrivals above `max_engaged`; the engaged enemies reach `max_engaged` at some step; the k-th share never starts before k placed enemies are aggroed or dead; the room is cleared exactly at its kill target; no error is reported. From every arrival point the nav grid gives a direction toward `P`.
 
 **Whole feature**
@@ -732,6 +733,111 @@ Manual: §5, "How to verify manually".
 ---
 
 ## 9. Code Review  ·  _Auditor_
+
+<!-- review-round: 1 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** 65019e6 (the diff `7f64b77..65019e6` under `src`, `tests` and `data`; §8 read at b20b1ba)
+
+**Date:** 2026-11-19 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+A fresh reviewer sub-agent that wrote neither the spec nor the code and took part in no plan
+review round, read-only, with its own copies for probes and mutations (58 mutants: 56 killed,
+2 survived, see CR-2). No blocking finding; one "should fix", seven suggestions. The lead
+checked each against the code before recording it.
+
+### AC evidence
+
+| AC | Status | Where | How the reviewer checked |
+|---|---|---|---|
+| AC1 | ✅ | `test_f014_wave_data.gd` `test_ac1_*` (11); `room_data.gd` | ran, mutated |
+| AC2 | ✅ | `test_ac2_*` (28) | ran, mutated |
+| AC3 | ✅ | `test_floor_tunables.gd`, `test_f014_wave_data.gd` `test_ac3_*`; `floors.tres` | ran, mutated |
+| AC4 | ✅ | `test_f014_waiting.gd` `test_ac4_*` (12, each with a control) | mutated (the `sense()` guard is an equivalent mutant) |
+| AC5 | ✅ with a test gap (CR-2) | `test_ac5_*` (11) | mutated |
+| AC6 | ✅ | `test_ac6_*` (6) | mutated; own rewind fuzz |
+| AC7 | ✅ | `test_f014_room_waves.gd` `test_ac7_*` (6) | read, mutated |
+| AC8 | ✅ | `test_ac8_*` (3) | read, mutated; own fuzz |
+| AC9 | ✅ | `test_ac9_*` (6) | read, mutated |
+| AC10 | ✅ | `test_ac10_*` (14) | mutated; own reimplementation of C8, 60,000 inputs, 0 mismatches |
+| AC11 | ✅ | `test_ac11_*` (2) | mutated |
+| AC12 | ✅ | core `test_ac12_*` (4), scene `test_ac12_*` (3) | mutated; own bot, every tick of 72 room runs |
+| AC13 | ✅ | `test_f014_sim_waves.gd` `test_ac13_*` (2) | own fuzz: 500 random rooms at 30/60/120, no difference |
+| AC14 | ✅ | `test_ac14_*` (6), `test_c10_*` (4) | mutated; own fuzz (restored twin, rewind) |
+| AC15 | ✅ | core and scene `test_ac15_*` (3 + 3) | mutated |
+| AC16 | ✅ | `test_f014_room.gd` `test_ac16_*` (7), `test_f014_enemy_waiting.gd` | mutated; own bot checked every waiting node every tick |
+| AC17 | ✅ | `test_f014_markers.gd` `test_ac17_*` (11); reads `get_markers()`, not pixels (DEV-8) | mutated |
+| AC18 | ✅ | `test_ac18_*` (4) | mutated; own restore probe |
+| AC19 | ✅ | `test_ac19_*` (3) | mutated; own probes (last kill a placed enemy that never woke; last kill and last arrival in one tick; nobody alive while one is pending): door, heal and count right, heal once |
+| AC20 | ✅ | `test_ac20_*` (R, N, death; the town in `test_f014_game.gd`) | own probe: old room, director and markers freed |
+| AC21 | ✅ | `test_f014_hud.gd` (13), `test_f014_game.gd` `test_ac21_*` (8) | mutated; own probe on `main.tscn`, all of floor 1 |
+| AC22 | ✅ | `test_f014_shipped_waves.gd`; own Python check of the 12 files against the table, C3 and C14 (a), (b), (c); only `S` tiles and the two properties changed against 7f64b77 | ran |
+| AC23 | ✅ as worded | the core run of all 12 rooms; room 1-1 in the game. The reviewer also ran all 12 rooms in the real floor scene itself | read the script; ran |
+| AC24 | ✅ | `test_ac24_*` (2), `test_c15_*` (3); three pre-existing test files changed, additions only | ran |
+| AC25 | ✅ | full suite in a clean copy at 65019e6: 140 scripts, 2023 tests, all passing; lint, format, purity, boot | ran |
+| AC26 | ✅ | `test_ac26_*` (7) | mutated; own fuzz recomputes the released count every step |
+
+**Rejected options:** none implemented. **Constraints:** C1–C17 and G1–G9 hold (C8's
+boundary epsilons are ASSUMPTION-6). **Deviation audit:** DEV-1 to DEV-12 each justified; the
+pre-existing test files changed are exactly the three §8 lists, additions only; no unlogged
+deviation beyond the two small choices of CR-8. **Assumptions 1–12:** reasonable and
+reversible (ASSUMPTION-5: see CR-5).
+
+### Findings
+
+### CR-1 🟡 An arrival can be put on the far side of a wall, where its walk to the player is long and it holds a cap slot  ·  `data/floors/floor_2/room_4.tres`, `src/core/floors/room_waves.gd:129-160`; smaller in `floor_3/room_1.tres`
+C8 measures straight lines. Verified by a scene probe in room 2-4: with the player at
+(54.5, 11.5) a chaser arrived 8.5 tiles away in a straight line and reached the player after
+19.2 s, a caster had a clear line after 20.7 s, and with 3 of 3 engaged nothing else was sent.
+By a path script over every walkable tile: in room 2-4's middle lane a first, second or third
+choice with a walk of 30 tiles or more from 32 % / 37 % / 46 % of tiles (worst 60.9 tiles); in
+room 3-1 a walk of 20 or more from 6–8 % of tiles; the other ten rooms never reach 30. The
+code does what C8 and C14 (b) say, so it is not a constraint violation; it is a Planner
+decision: prefer candidates with a bounded nav path, or bound the walk by a shipped-room rule.
+
+### CR-2 🔵 A test of AC5 cannot fail on its own  ·  `tests/core/enemies/test_f014_waiting.gd:302-312`
+The enemy in `test_ac5_hold_in_reserve_on_an_aggroed_enemy…` is in `CHASE`, so `IDLE` alone
+refuses it; removing `and not _aggroed` from `_is_fresh()` leaves all 32 tests passing
+(mutation survived). The real code does refuse an idle aggroed enemy (ran).
+
+### CR-3 🔵 A dynamic call and a stale comment  ·  `src/ui/debug/combat_debug_draw.gd:81-84`
+`has_director()` still asks the sim by name (`has_method`, `call`), with a comment about a
+state that ended when the sim got `get_waves()`.
+
+### CR-4 🔵 The two HUD lines can disagree after a skip in the death pause  ·  `src/world/game.gd:216-217, 140-146`
+`_on_room_entered()` returns early when the session is not on the floor ("the session ignored
+it, so the HUD does too"), but the kills line is fed every frame anyway. Verified by running:
+after `skip_room()` in the death pause the location says room 1 and the kills line counts
+room 2. Reachable from code only: the N key is off once the death is reported.
+
+### CR-5 🔵 A director with no placed enemy never starts, though comment, test name and ASSUMPTION-5 say it holds nothing back  ·  `src/core/floors/room_waves.gd:104-105`
+Verified by running a rig with 0 placed and 2 in reserve for 20 s: nothing started. Not
+reachable through validated data.
+
+### CR-6 🔵 "Reserve" has two meanings  ·  `studio/GLOSSARY.md` against `Room.get_reserve_enemies()`, `RoomWaves._reserve`
+The glossary says "reinforcements that have not arrived yet"; the code's reserve holds every
+reinforcement, arrived and dead ones included.
+
+### CR-7 🔵 `design/floors.md` says "two to three times the enemies per room"; room 2-1 has four times
+The rest of the encounter table matches the 12 data files type by type.
+
+### CR-8 🔵 Two small choices in the code that §8 does not list  ·  `room_waves.gd:385-390, 209-211`
+Players at equal distance from a point: the earlier-registered one wins. `restore_errors()`
+also refuses "arrivals were started but the fight has not".
+
+**Tried, found nothing** (the reviewer's list, shortened): a director fuzz on a real sim: 500
+random rooms (0–6 placed, 0–20 in reserve, caps 1–6, 2–30 points, random tunables with an
+interval and a warning of 0, one or two players), random wakes, kills of placed, arrived,
+waiting and pending enemies, player deaths and revivals, at 30, 60 and 120 ticks/s, with a
+dozen invariants checked every step: 0 violations, 0 stuck rooms, identical at the three
+rates, 500 restored twins identical on every later step (the harness caught 7 of 7 mutants).
+A rewind fuzz of 150 rooms. A bot in the real floor scene: all 12 rooms in five styles (kite,
+a real sword fight, stand on each arrival point, push on the locked exit, pull every placed
+enemy at once), 72 runs: every room cleared at its target with one heal, no engine error. An
+arrival exactly on a living enemy: the bodies separate at once.
+
+**Not checked in this round:** how the marker and the HUD line look; two players in a scene;
+F5 data reload in a waves room; a staged boss-type enemy as a reinforcement; the reserve's
+frame cost; floors 2 and 3 through the real `Game`; manual play.
 
 ---
 
