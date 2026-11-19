@@ -1,8 +1,8 @@
 ---
 id: F-013
 title: Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair)
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-19
 updated: 2026-11-19
 depends_on: [F-001, F-011, F-012, D-010, D-012, D-014, D-015]
@@ -325,12 +325,12 @@ through the lead.
 | T1 | Camera: `CameraTunables` and its file, `Tunables.camera`, `Room.camera_limits_px()`, limits, smoothing and callback on the room's camera, the outside strips. Tests AC1–AC8 in new files, on rooms the tests build (48 × 28, 64 × 36, 12 × 8) and on fixture towers. | `src/core/tunables/camera_tunables.gd`, `data/tunables/camera.tres`, `src/autoload/tunables.gd`, `src/world/floors/room.gd`, `tests/core/test_camera_tunables.gd`, `tests/scenes/test_f013_camera.gd` | A. Where a test needs a `Game` on a room larger than the shipped `max_room_size` allows before T2 lands (AC8), it raises `Tunables.floors.max_room_size` for its own duration and restores it, as `F012GameTest` does with the tower tunables. |
 | T2 | Rooms, part 1: `max_room_size` 80 × 46; the town (C11) and floor 1 (C9); their geometry and rule pins (C16 2–4). | `data/tunables/floors.tres`, `data/floors/town.tres`, `data/floors/floor_1/**`, `tests/core/floors/test_shipped_tower.gd`, `tests/core/floors/test_shipped_floors.gd`, `tests/core/floors/test_floor_tunables.gd`, scene tests only where they pin these coordinates | B. A generator script in the scratchpad may draw the grids; only `.tres` files are committed. The grids go to the lead before the pins are written (C9). |
 | T3 | Rooms, part 2: floor 2. | `data/floors/floor_2/**`, the same two shipped test files | B |
-| T4 | Rooms, part 3: floor 3; the C10 rule tests over all rooms; AC14's core test. | `data/floors/floor_3/**`, the same two shipped test files, `tests/scenes/test_f011_shipped_floors.gd` where it pins coordinates | B |
+| T4 | Rooms, part 3: floor 3; the C10 rule tests over all rooms. | `data/floors/floor_3/**`, the same two shipped test files, `tests/scenes/test_f011_shipped_floors.gd` where it pins coordinates | B |
 | T5 | The one-screen rule: `TowerData.screen_size_tiles`, its errors, tests on fixtures (AC10). | `src/core/floors/tower_data.gd`, `tests/core/floors/test_tower_data.gd` (new tests appended), `tests/scenes/test_f013_tower_rule.gd` for the `Game` case | A, after T1. Does not set the shipped value. |
 | T6 | Set `screen_size_tiles = Vector2i(40, 23)` in `data/floors/tower.tres`; the shipped tests of AC9; AC2's shipped-room pass. | `data/floors/tower.tres`, `tests/core/floors/test_shipped_tower.gd`, `tests/scenes/test_f013_camera.gd` | B, after T4 and T5 are committed (T1 is committed by then, so `test_f013_camera.gd` is free). |
 | T7 | Dash recovery in core, the Warrior's value, tests AC17–AC26 in a new file; the helper lines and the scene-test changes of C16 (1). | `src/core/classes/class_data.gd`, `src/core/player/player_motor.gd`, `data/classes/warrior.tres`, `tests/core/player/test_f013_dash_recovery.gd`, `tests/core/player/motor_harness.gd`, `tests/core/combat/combat_arena.gd`, `tests/scenes/test_f003_physics.gd` and its helper | A, after T5. |
-| T8 | Navigation cost (C17): the three changes, the reference copy, the equivalence tests, the before and after timings. | `src/core/floors/nav_grid.gd`, `tests/core/floors/nav_grid_reference.gd`, `tests/core/floors/test_f013_nav_equivalence.gd` | Whoever is free first; before T9's gate. |
-| T9 | Final gate: full suite, lint, format, purity, headless boot; a rendered look at the town and one room per floor; a rendered walk at a frame rate other than 60 to look for camera jitter (C3). | — | Lead. |
+| T8 | Navigation cost (C17): C17's changes, the reference copy, the equivalence tests, the before and after timings. | `src/core/floors/nav_grid.gd`, `tests/core/floors/nav_grid_reference.gd`, `tests/core/floors/test_f013_nav_equivalence.gd` | Whoever is free first; before T9's gate. |
+| T9 | Final gate: full suite, lint, format, purity, headless boot; a rendered look at the town and one room per floor; a rendered walk at a frame rate other than 60 to look for camera jitter (C3); C17's worst-case measurement on room 3-5. | — | Lead. |
 | T10 | Design docs and glossary: `design/floors.md` (room rules, sizes, encounter table, town), `design/combat.md` (dash recovery), `GLOSSARY.md`. | `studio/design/*.md`, `studio/GLOSSARY.md` | Lead, as Planner. |
 
 ---
@@ -508,11 +508,30 @@ Random pairs with one goal each almost never resume a half-settled field.
 purity; anything rendered; a release build's timings; two goal-tile changes inside one physics
 tick as a worst case for C17.
 
+<!-- review-round: 3 verdict: APPROVE_WITH_NOTES -->
+
+**Date:** 2026-11-19 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+The same reviewer, on the diff `a01432b..958b88d`, confirmation only, no probe re-run.
+PR-5 and PR-15 to PR-20 ✔ resolved, each checked against the revised text. No new
+contradiction between the room table, C10, C13, C16, C17, AC14, AC18 and the task table.
+
+### PR-21 🔵 Three leftovers in the task table after the edits
+T4 still listed "AC14's core test" (AC14 now points at an existing test); T8 said "the three
+changes" where C17 says "at least"; no task row carried the lead's worst-case measurement.
+> **Planner reply:** fixed in this commit: T4, T8 and T9 are reworded.
+
+**Not checked in this round:** anything outside the diff; the Hexer layout as a grid through
+`RoomData.validate()`; lint, format, purity; anything rendered.
+
+Gate A: Lucas's go-ahead in chat on the lead's proposal (D-015), so the file goes from
+`PLAN_REVIEW` to `IN_PROGRESS` without `APPROVED`.
+
 ---
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** —  ·  **Branch:** `feature/F-013-camera-rooms-dash` (cut from `feature/F-012-the-loop`, D-015)
+**Started:** 2026-11-19  ·  **Branch:** `feature/F-013-camera-rooms-dash` (cut from `feature/F-012-the-loop`, D-015)
 
 ### Progress
 - [ ] T1
@@ -527,6 +546,12 @@ tick as a worst case for C17.
 - [ ] T10
 
 ### Deviations from plan
+- DEV-1: the two implementers were started on T1 and T2 while plan review round 3 (a
+  confirmation of round 2's fixes) was still running, and the file was still `PLAN_REVIEW`.
+  — **Why:** round 2 had cleared T1's and T2's parts of the spec and its one blocking
+  finding was a one-line fix in a later task's row. — **Impact:** none; round 3 approved
+  with one wording note, fixed before any task was committed.
+- DEV-2: the file skips `APPROVED` (D-015: Lucas's go-ahead in chat is Gate A).
 
 ### Assumptions made (small, reversible)
 
