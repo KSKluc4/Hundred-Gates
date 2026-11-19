@@ -176,7 +176,7 @@ the F5 reload in debug scenes, snapshots.
 - [ ] AC20: A `TownScene` built from a fixture safe room has the walls, the player at `P` at full HP, no enemies, a `CombatRunner` with no setup errors, and its gate body has no collision. A scripted player can walk around. An invalid town room builds nothing and reports the errors.
 - [ ] AC21: Walking the scripted player onto a gate tile opens the gate menu within one tick, listing exactly `TowerProgress.get_entries()` in order plus a last "stay" entry. While the gate is engaged the player takes no input and stays exactly on the position they had when the list opened, checked over 60 ticks for a player who walked in and for one who dashed in (review round 1, CR-1).
 - [ ] AC22: Choosing an entry emits `floor_chosen(floor_number, at_boss)` once and closes the menu. Closing without choosing (the stay entry or `ui_cancel`) emits nothing, puts the player on `TownGate.get_return_position_tiles()`, gives input back on the next tick (later if a dash is still running or buffered), and the menu doesn't reopen until the player has left and re-entered the gate. Closing it with a real Space key press (`ui_accept` and `dodge` at once) or a click doesn't make the player dodge or attack (review round 1, CR-2).
-- [ ] AC23: `GateMenu`: entry text comes from one static function (`Floor 1 — from the start`, `Floor 1 — at the boss`, with ` (cleared)` appended for a cleared floor); focus starts on the last floor entry; `move_up` / `move_down` and `ui_up` / `ui_down` move the focus; `ui_accept` or `interact` chooses. A held stick moves the focus one step per push, not one per motion event (review round 1, CR-3).
+- [ ] AC23: `GateMenu`: entry text comes from one static function (`Floor 1 — from the start`, `Floor 1 — at the boss`, with ` (cleared)` appended for a cleared floor); focus starts on the last floor entry; `move_up` / `move_down` and `ui_up` / `ui_down` move the focus; `ui_accept` or `interact` chooses. A held stick moves the focus one step per push, not one per motion event (review round 1, CR-3): a push starts past the larger deadzone of its direction and ends inside the smaller one, and only the stick sets the stick's state (round 3, CR-15, CR-16). On a gamepad A chooses and B cancels (round 3, CR-17).
 - [ ] AC24: In the town, with debug keys on, `debug_next_room` (N) clears the highest unlocked floor in the injected progress; with them off it does nothing.
 
 **Shipped data (T6)**
@@ -382,6 +382,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 - [x] T7 — 9216679
 - [x] Review round 1 fixes — CR-1/CR-2/CR-9 add2f1b, CR-3/CR-10 6472012, CR-5 8de6c4c, CR-4 996fc6e, town origin ec5b964; F-011's round 1 fixes merged in 7f71ab5 (replies in §9)
 - [x] Review round 2 fix — CR-3 a772a52; spec and log edits 19a57bf; F-011's round 2 merged in 8905f83
+- [x] Review round 3 notes — CR-15, CR-16, CR-17 2f5cb54
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -429,6 +430,12 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   **Why:** F-011's review found the same defect in the floor scene (its CR-4); the town builds
   its room the same way. — **Impact:** one more setup error; `Game` adds both scenes under a
   plain `Node`, so nothing shipped is affected.
+- DEV-14: `project.godot` overrides two built-in actions: `ui_accept` gains pad A and
+  `ui_cancel` gains pad B (their keys are listed again unchanged). — **Why:** review round 3,
+  CR-17: in this project the built-ins had no pad button, so only Y chose in the gate list. —
+  **Impact:** every focused `Control` in the project now answers pad A, which is the point;
+  pad A is also `dodge`, covered by a town test. No game action was added or changed, and
+  `tests/test_input_map.gd` is untouched; a new `tests/test_ui_input_map.gd` pins the two.
 - DEV-10: one sentence of F-011's README paragraph was reworded (the floor debug scenes are no
   longer "placeholders until the loop is wired"). — **Why:** it became false. — **Impact:** none.
 - DEV-5: `# gdlint:disable=max-public-methods` on six long test files
@@ -535,7 +542,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 ### How to test
 ```sh
 export GODOT_BIN=/path/to/Godot_v4.7.2-stable
-tools/test                      # 122 scripts, 1462 tests, all passing (about 7 min)
+tools/test                      # 123 scripts, 1572 tests, all passing (about 7.5 min)
 tools/lint                      # on Windows: .venv/Scripts/gdlint src tests && .venv/Scripts/gdformat --check src tests
 tools/check_core_purity
 ```
@@ -545,6 +552,9 @@ All of this feature's scene tests: `-gdir=res://tests/scenes -gselect=f012`.
 By hand (Gate B): open the project and press F5. See §5 "How to verify manually". `N` skips a
 room in a floor and unlocks the next floor in the town; `R` restarts a room; `F3` hides the
 debug overlay.
+
+After the round 3 notes (`2f5cb54`): 1572/1572 tests, gdlint clean, gdformat 248 files unchanged,
+core purity ok, and `main.tscn` boots headless with no error.
 
 After the review round 1 fixes and the merge of F-011's (`ec5b964`): 1542/1542 tests, gdlint clean,
 gdformat 247 files unchanged, core purity ok.
@@ -864,6 +874,8 @@ dropped.** Verified by running.
   one push. Minor and self-correcting.
 - **Suggested fix:** derive the flag from the stick alone, or refresh it on every event.
 
+> **Builder reply (lead):** fixed in `2f5cb54`. The stick's state now comes only from joypad motion events, and it is tracked while the list is closed too, so a stick already held when the list opens is known to be held. Keys and the d-pad never change it, and the stick never blocks them: a key and a stick push are two presses. Tests: W or d-pad up held at open, released, then a stick flick moves one step (both failed before).
+
 **CR-16 🔵 A release that overshoots the centre counts as a push back.** Verified with
 synthetic events; suspected on hardware.
 - **Where:** `gate_menu.gd:150`.
@@ -872,6 +884,8 @@ synthetic events; suspected on hardware.
   −0.15 moved it three.
 - **Suggested fix:** start a push only at the larger deadzone and end it below the smaller
   one; the band in between is the hysteresis.
+
+> **Builder reply (lead):** fixed in `2f5cb54`. A push starts only when the stick is past the larger deadzone of its direction (every action of it pressed: 0.5 today) and ends only inside the smaller one (none pressed: 0.2); both come from the input map, no new tunable. The reviewer's overshoot and jitter sequences are tests and failed before. One round 2 expectation is reversed by this and its test renamed: a stick resting at −0.4 when the list opens has not pushed yet, so going on to −0.9 is one step.
 
 **CR-17 🟡 On a gamepad, A and B do nothing in the gate list; only Y chooses.** Verified by
 running. It dates from T5, not from the fixes.
@@ -885,6 +899,8 @@ running. It dates from T5, not from the fixes.
   cancels), and AC23 is met by its words, hence 🟡.
 - **Suggested fix:** give the list pad buttons for choose and cancel (A is also `dodge`, so
   CR-2's Space test needs a pad twin), or put it to Lucas.
+
+> **Builder reply (lead):** fixed in `2f5cb54`, in the input map so that later menus get it too: `project.godot` now overrides the built-in `ui_accept` (Enter, keypad Enter, Space, pad A) and `ui_cancel` (Escape, pad B). `tests/test_ui_input_map.gd` pins both and the four `ui_*` directions; `tests/test_input_map.gd` passes unchanged. In the list pad A chooses once, pad B cancels once, X does nothing, Y still chooses, and no single press matches two choose actions. Pad A is also `dodge`: a town test closes the list on "Stay in town" with a held pad A and sees no dash, and it fails if input is given back in the handler. Logged as DEV-14; AC23 says so.
 
 **Not checked in this round:** a real gamepad, keyboard or mouse (every stick and button result
 is from synthetic events); a rendered frame.
