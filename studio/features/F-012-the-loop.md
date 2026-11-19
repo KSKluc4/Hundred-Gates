@@ -383,6 +383,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 - [x] Review round 1 fixes — CR-1/CR-2/CR-9 add2f1b, CR-3/CR-10 6472012, CR-5 8de6c4c, CR-4 996fc6e, town origin ec5b964; F-011's round 1 fixes merged in 7f71ab5 (replies in §9)
 - [x] Review round 2 fix — CR-3 a772a52; spec and log edits 19a57bf; F-011's round 2 merged in 8905f83
 - [x] Review round 3 notes — CR-15, CR-16, CR-17 2f5cb54
+- [x] Review round 4 fix — CR-18 983846b
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -543,7 +544,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 ### How to test
 ```sh
 export GODOT_BIN=/path/to/Godot_v4.7.2-stable
-tools/test                      # 123 scripts, 1572 tests, all passing (about 7.5 min)
+tools/test                      # 123 scripts, 1579 tests, all passing (about 7.5 min)
 tools/lint                      # on Windows: .venv/Scripts/gdlint src tests && .venv/Scripts/gdformat --check src tests
 tools/check_core_purity
 ```
@@ -553,6 +554,9 @@ All of this feature's scene tests: `-gdir=res://tests/scenes -gselect=f012`.
 By hand (Gate B): open the project and press F5. See §5 "How to verify manually". `N` skips a
 room in a floor and unlocks the next floor in the town; `R` restarts a room; `F3` hides the
 debug overlay.
+
+After the round 4 fix (`983846b`): 1579/1579 tests, gdlint clean, gdformat 248 files unchanged, core
+purity ok, and `main.tscn` boots headless with no error.
 
 After the round 3 notes (`2f5cb54`): 1572/1572 tests, gdlint clean, gdformat 248 files unchanged,
 core purity ok, and `main.tscn` boots headless with no error.
@@ -946,6 +950,8 @@ then moves the focus.** Verified by running with synthetic events. A regression 
 - **Suggested fix:** seed the stick's state from the stick itself when the list opens
   (`Input.get_joy_axis` is stick-only), counting a direction past its smaller deadzone as
   already pushed. That also restores round 2's expectation for a stick resting at −0.4.
+
+> **Builder reply (lead):** fixed in `983846b`. When the list opens it reads the stick's own axes (`Input.get_joy_axis`, the axes taken from the bindings of the list's direction actions, every connected pad plus device 0, which is where a synthetic event lands in a headless test). A direction the stick is past the smaller deadzone in counts as already pushed, so neither a small change nor letting go is a push; a stick resting at −0.4 at open is back to round 2's expectation (no step on −0.9). Tracking while the list is closed is removed, since the reading at open replaces it. Tests: the stick is pushed before the menu instance exists (up and down), and in the real `Game` through a death and a rebuilt town; those three and the −0.4 test failed on the round 3 code. Not covered: a pad connected after the list has opened is only known from its events.
 
 **Note on the record itself:** in round 3 the lead corrected an enemy count (41 → 42) by
 editing earlier review lines of F-011's file in place. `AGENTS.md` says a review only grows.
