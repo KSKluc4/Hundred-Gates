@@ -633,7 +633,7 @@ without it. One new note (CR-11). No blocking finding: the feature is ready for 
 |---|---|---|
 | CR-1 | ✔ resolved | DEV-8 to DEV-11 are in §8; §10 Q5 asks Lucas about the opposite-sides rule; `floors.md` lists it as a guideline, which matches the code. |
 | CR-2 | ✔ resolved | `room_data.gd:244`, `:332`. The rule is exact: it is the same as "no edge between two walkable tiles has a wall touching both of its ends". It accepts an L-shaped room, 2×2 pillars two tiles from a wall, a 2-wide corridor with a turn, a diagonal staircase of 2×2 steps and wall blocks that touch only at a corner; it rejects the reproduction, its quarter turn and a 2-wide corridor that jogs by one tile. Skipping tiles the `corridor` rule already refuses can't change which rooms are rejected. The narrowest opening that still passes is diagonal, about 1.41 tiles, against a 1.2-tile body. Without the rule 3 tests fail. |
-| CR-3 | ✔ resolved | `test_f011_shipped_floors.gd:124`. All 41 enemies of the 15 rooms were aggroed and acted; with the wake loop removed the three floor-walk tests fail. One claim in the reply is not true: CR-11. |
+| CR-3 | ✔ resolved | `test_f011_shipped_floors.gd:124`. All 42 enemies of the 15 rooms were aggroed and acted; with the wake loop removed the three floor-walk tests fail. One claim in the reply is not true: CR-11. |
 | CR-4 | ✔ resolved | `floor_scene.gd:137`. It breaks no legitimate use: the debug scenes sit at the origin and a parent at the origin is accepted. Without the check 5 tests fail. |
 | CR-5 | ✔ resolved | `combat.md:160`, `:175` point at D-012. The brute's movement line doesn't mention routing but contradicts nothing. `PHASE1.md` is still stale; it is Direction's file. |
 | CR-6 | ✔ accepted | Nothing under `src/world/floors` takes or restores a sim snapshot. |
@@ -649,9 +649,9 @@ Verified by reading and by running the test.
 - **Where:** `tests/scenes/test_f011_shipped_floors.gd:179` (`_check_acted`).
 - **Problem:** `_left[]` is recorded and printed, but only `is_aggroed()` and `_acted[]` are
   asserted. An enemy that decides but stays pinned on its spawn tile would pass.
-- **Suggested fix:** assert it; it holds for all 41 enemies today.
+- **Suggested fix:** assert it; it holds for all 42 enemies today.
 
-> **Builder reply (lead):** fixed in `2c71d51`. `_check_acted` now asserts it for every enemy; it holds for all 41 in the 15 rooms (42 more asserts). Gated by the F-011 scene tests (53/53), lint and format on this branch, and by the full suite on the F-012 branch after the merge.
+> **Builder reply (lead):** fixed in `2c71d51`. `_check_acted` now asserts it for every enemy; it holds for all 42 in the 15 rooms (42 more asserts). Gated by the F-011 scene tests (53/53), lint and format on this branch, and by the full suite on the F-012 branch after the merge.
 
 **Not checked in this round:** the pinch rule against a real brute in a scene (reasoned on the
 grid); a JSON round trip of the snapshot (it requires `is int`, and Godot's JSON parser returns

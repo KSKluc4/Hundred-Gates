@@ -381,6 +381,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 - [x] T6 — d768146
 - [x] T7 — 9216679
 - [x] Review round 1 fixes — CR-1/CR-2/CR-9 add2f1b, CR-3/CR-10 6472012, CR-5 8de6c4c, CR-4 996fc6e, town origin ec5b964; F-011's round 1 fixes merged in 7f71ab5 (replies in §9)
+- [x] Review round 2 fix — CR-3 a772a52; spec and log edits 19a57bf; F-011's round 2 merged in 8905f83
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -805,6 +806,8 @@ the cancel path, the death pause and the snapshot flag found nothing broken.
 
 ### New findings
 
+> **Builder reply (lead):** fixed in `a772a52`. The stick is tracked per direction: a motion event is a push only when no action of that direction was held before it, and the direction stays held until every action of it is released. Seven new tests use the reviewer's values (the ramp −0.1 … −1.0, a stick resting at −0.4 when the list opens, the wobble 1.0 → 0.4 → 0.6); five of them fail on the old code.
+
 **CR-13 🟡 The town's origin rule is in the code but in no constraint.** Verified by reading.
 - **Where:** `src/world/town/town_scene.gd:114`. Its comment cites C9 (which is about
   `TowerData`) and F-011's C6 (which names the floor scene only).
@@ -813,16 +816,78 @@ the cancel path, the death pause and the snapshot flag found nothing broken.
   the right behaviour, hence 🟡.
 - **Suggested fix:** one sentence in a constraint and a DEV line.
 
+> **Builder reply (lead):** fixed in `19a57bf`: C9 states the town's origin rule and DEV-13 logs it.
+
 **CR-14 🔵 §8 and the amended spec lag the fixed code.** Verified by reading. "The player can
 stand slightly outside the room on the gate tiles" and ASSUMPTION-14's "about 0.1 tile of
 drift" are no longer true; DEV-4 describes an AC21 wording that round 1 replaced; C10 and AC22
 say input comes back "on the next physics tick", while the code also waits for a running or
 buffered dash to end.
 
+> **Builder reply (lead):** fixed in `19a57bf`: C10 and AC22 mention the dash wait; DEV-4 is marked superseded; ASSUMPTION-14 and the "look closely" line say the player is held exactly.
+
 **Not checked in this round:** a real keyboard, mouse or gamepad and a rendered frame (CR-3 is
 from synthetic motion events); a click on "Stay in town"; bosses attacking a dead player for
 the whole pause; a JSON round trip of the snapshots (both require `is int`, and Godot's JSON
 parser returns floats, so a JSON save would be refused: a note for slice 4).
+
+<!-- review-round: 3 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** 8905f83 (the stick fix `a772a52`, the spec edits `19a57bf`, and the merge
+of F-011's round 2)
+
+**Date:** 2026-11-18 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+A narrow round by the round 2 reviewer, on a fresh extraction of this commit. The full suite
+passed on it (1549 tests), with lint, format and core purity clean.
+
+| Item | Result | Evidence |
+|---|---|---|
+| CR-3 | ✔ resolved | `gate_menu.gd:150`, `:178`. The round 2 probe, unchanged, now passes all three cases; a ramp in steps of 0.05 up, back to 0 and down gave one step, nothing, one step. Against the old menu 5 of the 7 new tests fail; the other 2 guard against over-fixing. Nothing else broke: keys and d-pad one step per press, repeats ignored, left and right ignored, a ramped diagonal one step, held across a reopen not a push, `open()` while open fine. |
+| CR-13 | ✔ resolved | C9 matches `town_scene.gd:116`; DEV-13 logs it. |
+| CR-14 | ✔ resolved | C10 and AC22 match `town_scene.gd:73`, `:179`; the three §8 lines are true now. |
+| Merge `8905f83` | nothing lost | It changes only F-011 round 2's three files; no conflict marker; nothing under `src`. |
+
+Correction to round 2's own count, carried into F-011's file: the 15 rooms hold 42 enemies
+(10 + 17 + 15), not 41.
+
+### New findings
+
+**CR-15 🔵 A key or d-pad press can leave the stick's "held" flag stale, and one stick push is
+dropped.** Verified by running.
+- **Where:** `src/ui/town/gate_menu.gd:151`, `:178`, `:92`.
+- **Problem:** the flag is read from `Input.is_action_pressed`, which is also true for W, the
+  arrow keys and the d-pad, and it is refreshed only in `open()` and on stick events. With W or
+  d-pad up held when the list opens and then released, the next stick push up is dropped
+  whole; the second counts.
+- **Why it matters:** a player who walks in on keys or the d-pad and then uses the stick loses
+  one push. Minor and self-correcting.
+- **Suggested fix:** derive the flag from the stick alone, or refresh it on every event.
+
+**CR-16 🔵 A release that overshoots the centre counts as a push back.** Verified with
+synthetic events; suspected on hardware.
+- **Where:** `gate_menu.gd:150`.
+- **Problem:** a push starts at the smaller deadzone (0.2) and ends below the same value.
+  −1.0, −0.5, 0.1, 0.25, 0.1, 0.0 moved the focus back down a step; jitter between −0.25 and
+  −0.15 moved it three.
+- **Suggested fix:** start a push only at the larger deadzone and end it below the smaller
+  one; the band in between is the hysteresis.
+
+**CR-17 🟡 On a gamepad, A and B do nothing in the gate list; only Y chooses.** Verified by
+running. It dates from T5, not from the fixes.
+- **Where:** `gate_menu.gd:25`; `project.godot` doesn't override the built-in actions.
+- **Problem:** in this project the built-in `ui_accept` is Enter, keypad Enter and Space, and
+  `ui_cancel` is Escape; neither has a pad button (printed from `InputMap` at runtime). Pad
+  buttons A, B and X did nothing on an open list; Y (`interact`) chose. Round 1's note under
+  CR-2 that gamepad A "follows from the same mechanism" assumed A was `ui_accept`; it isn't.
+- **Why it matters:** a pad player can't confirm with the bottom button or cancel with a
+  button, and nothing on screen says Y. Not a soft lock (Y chooses, "Stay in town" plus Y
+  cancels), and AC23 is met by its words, hence 🟡.
+- **Suggested fix:** give the list pad buttons for choose and cancel (A is also `dodge`, so
+  CR-2's Space test needs a pad twin), or put it to Lucas.
+
+**Not checked in this round:** a real gamepad, keyboard or mouse (every stick and button result
+is from synthetic events); a rendered frame.
 
 ---
 
