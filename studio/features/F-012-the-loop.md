@@ -122,12 +122,12 @@ It merges three rows of `PHASE1.md`: F-012 (progression), F-013 (minimal town) a
 | C2 | **Every rule of the loop is decided in core.** Unlocking, boss reached, which entries the gate lists, whether a floor may be entered, when death sends the player to town, when the gate list opens: `TowerProgress`, `TowerSession`, `TownGate`. The glue only reports events and shows results. | G6 |
 | C3 | Floor `n` is unlocked when `n == 1` or floor `n − 1` is cleared. A floor's boss room counts as reached the moment that room is entered. Clearing a floor also marks its boss reached. Marks on a locked or unknown floor are refused. Nothing ever un-clears or un-reaches. | Pillar 1, D-006 |
 | C4 | `TowerSession.enter_floor(n, at_boss)` succeeds only from the town, only for an unlocked floor, and with `at_boss` only if that boss room was reached. `at_boss` starts in the floor's last room; otherwise room 0. Either way the player starts at full HP. | D-006 |
-| C5 | Death: `report_player_died()` moves the session to `DEATH_PAUSE` for `death_return_delay` seconds of ticked time, then to the town. Progress made before the death is kept. If the player and the boss die in the same tick, the death counts and the floor is not cleared. | D-006 |
+| C5 | Death: `report_player_died()` moves the session to `DEATH_PAUSE` for `death_return_delay` seconds of ticked time, then to the town. Progress made before the death is kept. If the player and the boss die in the same tick, the death counts and the floor is not cleared. From the reported death until the town, the player takes no input and the floor's debug keys do nothing (review round 1, CR-4). | D-006 |
 | C6 | Leaving a floor: only through the exit of its cleared boss room (`report_floor_exited()` is refused otherwise). The session then goes to the town. | Lucas, 2026-11-18 |
-| C7 | `TowerProgress` and `TowerSession` have `to_dict()` / `from_dict()`. A snapshot that doesn't fit (wrong floor count, a cleared floor above an uncleared one, a boss reached on a locked floor, a cleared floor whose boss isn't reached, unknown place, floor out of range) is refused and changes nothing. | G7 |
+| C7 | `TowerProgress` and `TowerSession` have `to_dict()` / `from_dict()`. A snapshot that doesn't fit (wrong floor count, a cleared floor above an uncleared one, a boss reached on a locked floor, a cleared floor whose boss isn't reached, unknown place, floor out of range) is refused and changes nothing. The session's snapshot includes whether the floor was cleared during this visit; that flag may be true only on a floor (review round 1, CR-5). | G7 |
 | C8 | The town is a `RoomData` with `is_safe_room = true`: no spawns, no enemies, never a boss room. `FloorData.validate()` refuses a safe room inside a floor. All other room rules (F-011/C16) apply to the town unchanged. Its `E` run is the tower gate. | D-012: one room format |
 | C9 | `TowerData` (`data/floors/tower.tres`) lists the town and the floors in order; `floors[i].floor_number == i + 1`; room ids are unique across the tower. Invalid data is refused, never repaired: `Game` and `TownScene` build nothing and log every error. | G9, F-011/C8 |
-| C10 | The gate list opens when the player's logic position enters a gate tile (`TownGate.check()`), once per entry: it can't open again until the player has been off the gate tiles. While the list is open the player takes no input and doesn't move. Closing it without a choice puts the player back on the walkable tile just inside the gate. | G6; nothing lies beyond a door |
+| C10 | The gate list opens when the player's logic position enters a gate tile (`TownGate.check()`), once per entry: it can't open again until the player has been off the gate tiles. Opening the list **engages** the gate (state in `TownGate`): while it is engaged the player takes no input and is held on the position they had when it engaged, every tick, also through a dash. Closing the list without a choice releases the gate, puts the player back on the walkable tile just inside it, and gives input back on the next physics tick, after the room's runner has run, so the key that closed the list can't also act in the room (review round 1, CR-1, CR-2, CR-9). | G6; nothing lies beyond a door |
 | C11 | **No behaviour change for F-011's scenes.** `FloorScene`'s new exports default to F-011's behaviour (`death_restarts_room = true`, `debug_keys_enabled = true`, `debug_label_visible = true`). No existing test file is edited, except `tests/test_input_map.gd` if an input action is added (none is planned). All 1135 tests on the F-011 branch stay green. | Regression safety |
 | C12 | `Game` never frees or replaces the scene it shows from inside a signal of that scene. Handlers only report to the session; `Game._physics_process` (physics priority 2, after `FloorScene`'s 1) compares what is shown with what the session says and rebuilds then. | Freed-while-running crashes |
 | C13 | The HUD decides nothing and nothing reads it. It reads the player's `CombatState` through a provider every frame (the player node is rebuilt every room), so it can't go stale. | G6 |
@@ -174,9 +174,9 @@ the F5 reload in debug scenes, snapshots.
 
 **Town (T5)**
 - [ ] AC20: A `TownScene` built from a fixture safe room has the walls, the player at `P` at full HP, no enemies, a `CombatRunner` with no setup errors, and its gate body has no collision. A scripted player can walk around. An invalid town room builds nothing and reports the errors.
-- [ ] AC21: Walking the scripted player onto a gate tile opens the gate menu within one tick, listing exactly `TowerProgress.get_entries()` in order plus a last "stay" entry. While it is open the player takes no input: once the motor's own deceleration has ended the position doesn't change (checked over 60 ticks), and it never ends more than 1 tile from where the menu opened.
-- [ ] AC22: Choosing an entry emits `floor_chosen(floor_number, at_boss)` once and closes the menu. Closing without choosing (the stay entry or `ui_cancel`) emits nothing, puts the player on `TownGate.get_return_position_tiles()`, gives input back, and the menu doesn't reopen until the player has left and re-entered the gate.
-- [ ] AC23: `GateMenu`: entry text comes from one static function (`Floor 1 — from the start`, `Floor 1 — at the boss`, with ` (cleared)` appended for a cleared floor); focus starts on the last floor entry; `move_up` / `move_down` and `ui_up` / `ui_down` move the focus; `ui_accept` or `interact` chooses.
+- [ ] AC21: Walking the scripted player onto a gate tile opens the gate menu within one tick, listing exactly `TowerProgress.get_entries()` in order plus a last "stay" entry. While the gate is engaged the player takes no input and stays exactly on the position they had when the list opened, checked over 60 ticks for a player who walked in and for one who dashed in (review round 1, CR-1).
+- [ ] AC22: Choosing an entry emits `floor_chosen(floor_number, at_boss)` once and closes the menu. Closing without choosing (the stay entry or `ui_cancel`) emits nothing, puts the player on `TownGate.get_return_position_tiles()`, gives input back on the next tick, and the menu doesn't reopen until the player has left and re-entered the gate. Closing it with a real Space key press (`ui_accept` and `dodge` at once) or a click doesn't make the player dodge or attack (review round 1, CR-2).
+- [ ] AC23: `GateMenu`: entry text comes from one static function (`Floor 1 — from the start`, `Floor 1 — at the boss`, with ` (cleared)` appended for a cleared floor); focus starts on the last floor entry; `move_up` / `move_down` and `ui_up` / `ui_down` move the focus; `ui_accept` or `interact` chooses. A held stick moves the focus one step per push, not one per motion event (review round 1, CR-3).
 - [ ] AC24: In the town, with debug keys on, `debug_next_room` (N) clears the highest unlocked floor in the injected progress; with them off it does nothing.
 
 **Shipped data (T6)**
@@ -247,7 +247,10 @@ func validate(rules: FloorTunables) -> PackedStringArray
 # src/core/floors/town_gate.gd
 class_name TownGate extends RefCounted
 func setup(room: RoomData) -> void                     # gate tiles = the room's exit tiles
-func check(player_position_tiles: Vector2) -> bool     # true once per entry (C10)
+func check(player_position_tiles: Vector2) -> bool     # true once per entry (C10); engages the gate
+func is_engaged() -> bool                              # review round 1 (CR-1, CR-9)
+func get_hold_position_tiles() -> Vector2              # where the player was when it engaged
+func release() -> void                                 # not armed again until the player is off the gate
 func get_return_position_tiles(player_position_tiles: Vector2) -> Vector2
 
 # src/core/floors/tower_entry.gd
@@ -411,6 +414,13 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   handler has returned. — **Why:** that is what C12 asks for (never inside the signal); waiting
   a whole extra tick would add nothing. — **Impact:** none; the tests check "valid inside the
   handler, gone by the next tick".
+- DEV-11: `tests/scenes/f012_game_test.gd` (a test helper class for T7) is not in §6's file
+  list. — **Why:** the game tests needed their own helper on top of `F012SceneTest`; the lead
+  put it in T7's brief and forgot the table. — **Impact:** none (review round 1, CR-11).
+- DEV-12: after code review round 1 the lead amended C5, C7, C10, AC21, AC22, AC23 and the
+  `TownGate` contract (each marked "review round 1"). — **Why:** CR-1, CR-2, CR-3, CR-4, CR-5
+  and CR-9 showed the rules as written were incomplete. — **Impact:** `TownGate` gains an
+  engaged state; the session snapshot gains one key.
 - DEV-10: one sentence of F-011's README paragraph was reworded (the floor debug scenes are no
   longer "placeholders until the loop is wired"). — **Why:** it became false. — **Impact:** none.
 - DEV-5: `# gdlint:disable=max-public-methods` on six long test files
@@ -461,9 +471,9 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   null unless one was injected. After a cancel the player is put on the return tile with the
   motor's velocity left as it is (at most about 0.1 tile of drift, off the gate).
 - ASSUMPTION-15 (T6): the gate is x = 10..13, so its centre line is a tile edge and `P` can't
-  sit exactly under it: `P` is at tile (11, 10), half a tile left. The two blocks are at
-  (7..8, 4..5) and (15..16, 4..5), mirrored about the gate's centre line. The shipped town
-  equals the fixture town.
+  sit exactly under it: `P` is at tile (12, 10), half a tile right (corrected in review round 1, CR-11: the log first said (11, 10)). The two blocks are at
+  (7..8, 4..5) and (15..16, 4..5), mirrored about the gate's centre line. The fixture
+  town differs only in `P`, which is at (11, 10).
 - ASSUMPTION-16 (T7): the "You died" banner is shown when `Game` sees the death pause, for
   `death_return_delay` seconds; with a delay of 0 there is no pause and no banner. Clearing
   the last floor always says "no floor above yet", also on a replay. In a floor the location
