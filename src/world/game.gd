@@ -65,17 +65,17 @@ func _ready() -> void:
 ## F-012/C12: the session's clock first, then what is shown follows what it says.
 func _physics_process(delta: float) -> void:
 	_session.tick(delta)
-	if not _is_shown_stale:
-		return
-	_is_shown_stale = false
-	match _session.get_place():
-		TowerSession.Place.TOWN:
-			_show_town()
-		TowerSession.Place.FLOOR:
-			_show_floor()
-		TowerSession.Place.DEATH_PAUSE:
-			# The floor stays on screen through the pause.
-			_hud.show_banner(DEATH_BANNER, Tunables.tower.death_return_delay)
+	if _is_shown_stale:
+		_is_shown_stale = false
+		match _session.get_place():
+			TowerSession.Place.TOWN:
+				_show_town()
+			TowerSession.Place.FLOOR:
+				_show_floor()
+			TowerSession.Place.DEATH_PAUSE:
+				# The floor stays on screen through the pause.
+				_hud.show_banner(DEATH_BANNER, Tunables.tower.death_return_delay)
+	_feed_kills()
 
 
 func get_session() -> TowerSession:
@@ -131,6 +131,19 @@ func _collect_setup_errors() -> PackedStringArray:
 	else:
 		errors.append_array(tower_data.validate(Tunables.floors))
 	return errors
+
+
+## F-014/C13: what the HUD's kills line says, read from the shown room every physics frame (and
+## when a room is entered, so it follows the location text): a combat room of a floor shows its
+## count and target, the town and a boss room show nothing. The counts are the room's; nothing
+## about waves is decided here.
+func _feed_kills() -> void:
+	if is_instance_valid(_floor):
+		var shown: Room = _floor.get_room()
+		if is_instance_valid(shown) and not shown.get_room_data().is_boss_room:
+			_hud.set_kills(shown.get_kill_count(), shown.get_kill_target())
+			return
+	_hud.hide_kills()
 
 
 func _get_shown_room() -> Room:
@@ -212,6 +225,7 @@ func _on_room_entered(room_index: int) -> void:
 			room.is_boss_room
 		)
 	)
+	_feed_kills()  # F-014/C13: in the same breath as the location text.
 
 
 func _on_floor_cleared(_floor_number: int) -> void:

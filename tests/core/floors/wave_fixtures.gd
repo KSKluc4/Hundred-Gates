@@ -345,3 +345,19 @@ static func _add_enemy(result: Rig, spawn: RoomSpawn) -> EnemyLogic:
 	result.arena.enemies.append(enemy)
 	result.arena.sim.register(enemy)
 	return enemy
+
+
+## F-014 T6: a valid one-floor tower for Game tests: the fixture town, then `wave_rooms` wave
+## rooms (`f1_wave_1`...) and a boss room `f1_boss`. Each wave room is wave_room(): kill target 5.
+static func wave_tower(wave_rooms: int = 2) -> TowerData:
+	var floor_data: FloorData = FloorData.new()
+	floor_data.floor_number = 1
+	var list: Array[RoomData] = []
+	for index: int in wave_rooms:
+		list.append(wave_room(StringName("f1_wave_%d" % (index + 1))))
+	list.append(RoomFixtures.valid_boss_room(&"f1_boss"))
+	floor_data.rooms = list
+	var data: TowerData = TowerData.new()
+	data.town = TowerFixtures.town_room()
+	data.floors = [floor_data] as Array[FloorData]
+	return data

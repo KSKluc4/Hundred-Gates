@@ -204,6 +204,8 @@ func _check_loaded(number: int, index: int) -> void:
 	var expected: Array[StringName] = [PLAYER_ID]
 	for spawn: RoomSpawn in room_data.get_spawns():
 		expected.append(spawn.combat_id)
+	for spawn: RoomSpawn in room_data.get_reinforcement_spawns():  # F-014/C16 (1): the reserve.
+		expected.append(spawn.combat_id)
 	var ids: Array[StringName] = []
 	for combatant: Combatant in room().get_runner().get_sim().get_combatants():
 		ids.append(combatant.get_combat_id())
