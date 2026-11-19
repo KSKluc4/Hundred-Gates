@@ -157,11 +157,14 @@ func _collect_setup_errors() -> PackedStringArray:
 
 
 ## Takes the current room away and builds the run's current one with its entry HP. The old one
-## leaves the tree and is freed at once: nothing of it can run again.
+## leaves the tree at once, so nothing of it can run again, and is freed at the end of the frame.
 func _build_room() -> void:
 	if _room != null:
 		remove_child(_room)
-		_room.free()
+		# F-011 DEV-13: not free(). This runs inside _physics_process, and a node freed during a
+		# processing pass can have its address reused by the new room's nodes, which the engine's
+		# group call then skips: the new camera never became current (room drawn in the corner).
+		_room.queue_free()
 	_room = Room.new()
 	_room.name = ROOM_NAME
 	_room.player_input_enabled = player_input_enabled

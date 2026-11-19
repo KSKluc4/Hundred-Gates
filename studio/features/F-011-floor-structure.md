@@ -1,8 +1,8 @@
 ---
 id: F-011
 title: Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-004, F-005, F-006, F-007, F-008, F-009, D-006, D-007, D-008, D-011, D-012]
@@ -307,6 +307,7 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - [x] T7 — f5837b4
 - [x] Review round 1 fixes — CR-2 fefa482, CR-8 85d7646, CR-4 eb2b7fe, CR-3 6165d01 (replies in §9)
 - [x] Review round 2 note — CR-11 2c71d51
+- [x] Gate B playtest fix — camera lost on a walked-in room, c40c2a6 (§10 Q6, DEV-13). Gate: 1157/1157 tests (7 new, 4 of which fail without the fix), lint, format and purity clean.
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -356,6 +357,15 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - DEV-12: after code review round 1 the lead amended C6, C13 and C16 (each marked "review
   round 1"). — **Why:** CR-2, CR-4 and CR-8. — **Impact:** one more validation rule, one more
   setup error, one more snapshot key.
+
+- DEV-13: `FloorScene._build_room()` frees the old room with `queue_free()` after removing it
+  from the tree, not with `free()` (DEV-6 said the immediate free was safe while the floor runs
+  after the runner; Lucas's Gate B playtest showed it is not, §10 Q6). — **Why:** freeing nodes
+  inside a physics pass lets new nodes reuse their addresses, and the engine then skips the
+  new camera when it makes one current. — **Impact:** the old room is out of the tree in the
+  same tick as before and nothing of it runs again; its memory goes at the end of the frame.
+  The two asserts that read "freed in the same tick" now read "out of the tree, freed by the
+  end of the frame".
 
 ### Assumptions made (small, reversible)
 - ASSUMPTION-1: tile size stays 16 px and rooms are at most 40 × 22 tiles (one 640 × 360
@@ -673,6 +683,7 @@ assert holds for all 42.
 | Q4 | Lead | → Combat: found in T5's scene tests. (a) A caster inside its stop distance (6 tiles) never routes: behind a wall it holds and shoots the wall for as long as the player stays put. Not a softlock (the player can walk to it), but it never repositions for a clear line. (b) A brute whose target is 3–7 tiles away behind a pillar charges the pillar and stuns itself, then walks round. Both follow from C3 (attack choice ignores walls). Keep as cover play, or teach attack choice about line of sight? | no | |
 | Q3 | Lead | → Lucas: starting values to judge at Gate B — heal 30 %, room sizes, enemy counts per room (`studio/design/floors.md`). | no | |
 | Q5 | Lead | → Lucas: should "`P` and `E` sit on opposite sides of the room" be enforced by validation? It was listed as enforced when you gave Gate A and is a guideline now (DEV-8, review CR-1). All 15 shipped rooms comply. Enforcing it means defining "opposite" (opposite walls only?) and limits rooms like a loop or an L. | no | |
+| Q6 | Lucas (Gate B playtest, 2026-11-18) | "like the photo some rooms are not moving around and it stays on the conner like that one" (screenshot: floor 2, room 2 of 4, drawn in the top-left corner of the window, the player off-centre). | yes | **Diagnosis (lead, reproduced with a scripted run of `main.tscn`):** a room entered by walking through the opened exit has no current camera (`get_viewport().get_camera_2d()` is null, canvas origin (0, 0)); a room reached with N or R, or from the town, has one. Cause: `FloorScene._build_room()` removes the old room and `free()`s it at once, inside `_physics_process`. While the scene tree runs a processing pass the engine remembers removed nodes by address and skips them in group calls; the new room's `Camera2D` can be allocated at an address just freed, and the group call that makes a camera current skips it. Called from input or idle (N, R) there is no pass running, so it works. Confirmed on a scratch copy: `queue_free()` instead of `free()` and the walked-in room keeps its camera. Fix: see §8 review-fix line and DEV-13. |
 
 ---
 
