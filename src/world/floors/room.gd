@@ -34,7 +34,10 @@ var _room_data: RoomData
 var _entry_hp: int = 0
 var _class_data: ClassData
 var _player: Player
+# F-014/C11: every enemy, the placed ones in spawn order and then the reserve in arrival order.
 var _enemies: Array[Enemy] = []
+var _reserve: Array[Enemy] = []
+var _waves: RoomWaves = null
 var _runner: CombatRunner
 var _door: StaticBody2D
 var _door_shape: CollisionShape2D
@@ -70,8 +73,19 @@ func get_player() -> Player:
 	return _player
 
 
+## F-014/C11: every enemy, the placed ones first and then the reserve (waiting ones included).
 func get_enemies() -> Array[Enemy]:
 	return _enemies
+
+
+## F-014/C11: the reinforcements, in arrival order. Empty in a room without waves.
+func get_reserve_enemies() -> Array[Enemy]:
+	return _reserve
+
+
+## F-014/C11: the room's director, null in a room without reinforcements.
+func get_waves() -> RoomWaves:
+	return _waves
 
 
 func get_runner() -> CombatRunner:
@@ -113,10 +127,30 @@ static func camera_limits_px(room_size_tiles: Vector2i, view_size_px: Vector2i) 
 
 
 ## F-011/C11: computed from logic on every call, never stored, so a restore can't leave it stale.
+## F-014/C11: nobody alive and nobody waiting to arrive.
 func is_cleared() -> bool:
+	for enemy: Enemy in _enemies:
+		if enemy.logic.is_waiting():
+			return false
 	return count_living_enemies() == 0
 
 
+## F-014/C11, C13: the enemies killed so far. With a director its own count; without, the room's
+## enemies that are not alive. From the logic on every call.
+func get_kill_count() -> int:
+	if _waves != null:
+		return _waves.get_kill_count()
+	return _enemies.size() - count_living_enemies()
+
+
+## F-014/C11: how many kills clear the room: every enemy it has, the reserve included.
+func get_kill_target() -> int:
+	if _waves != null:
+		return _waves.get_kill_target()
+	return _enemies.size()
+
+
+## F-014/C11: alive. A waiting enemy is not alive and not dead either.
 func count_living_enemies() -> int:
 	var living: int = 0
 	for enemy: Enemy in _enemies:
@@ -239,16 +273,30 @@ func _build_outside_strips() -> void:
 	add_child(holder)
 
 
-## F-011/C7, C14: spawn order is the registration order.
+## F-011/C7, C14: spawn order is the registration order. F-014/C11: then the reserve, in arrival
+## order, held in reserve at the first arrival point. In a room with reinforcements every enemy
+## vanishes when it dies, as a pile of corpses would hide the arrivals.
 func _build_enemies() -> void:
+	var reinforcements: Array[RoomSpawn] = _room_data.get_reinforcement_spawns()
 	for spawn: RoomSpawn in _room_data.get_spawns():
-		var enemy: Enemy = ENEMY_SCENE.instantiate()
-		enemy.name = spawn.combat_id
-		enemy.combat_id = spawn.combat_id
-		enemy.data = spawn.enemy
-		enemy.position = Units.vector_tiles_to_px(spawn.position_tiles)
+		_enemies.append(_build_enemy(spawn, not reinforcements.is_empty()))
+	for spawn: RoomSpawn in reinforcements:
+		var enemy: Enemy = _build_enemy(spawn, true)
+		_reserve.append(enemy)
 		_enemies.append(enemy)
-		add_child(enemy)
+
+
+## Before the node enters the tree: its _ready() holds a reserve enemy in reserve.
+func _build_enemy(spawn: RoomSpawn, hides_when_dead: bool) -> Enemy:
+	var enemy: Enemy = ENEMY_SCENE.instantiate()
+	enemy.name = spawn.combat_id
+	enemy.combat_id = spawn.combat_id
+	enemy.data = spawn.enemy
+	enemy.position = Units.vector_tiles_to_px(spawn.position_tiles)
+	enemy.starts_in_reserve = spawn.is_reinforcement
+	enemy.hide_when_dead = hides_when_dead
+	add_child(enemy)
+	return enemy
 
 
 func _build_debug_draw() -> void:
@@ -290,7 +338,28 @@ func _build_runner() -> void:
 	add_child(_runner)
 	# F-011/C2: the nav grid comes from the same rows as the walls. Not in any snapshot.
 	_runner.get_sim().set_nav(NavGrid.from_rows(_room_data.rows))
+	_build_waves()
 	_player.motor.get_combat_state().set_hp(_entry_hp)
+
+
+## F-014/C6, C11: only a room with reinforcements has a director, attached once every combatant is
+## registered (the runner's _ready() did that). A room without gets none: its sim is as it was.
+func _build_waves() -> void:
+	if _reserve.is_empty():
+		return
+	var placed: Array[EnemyLogic] = []
+	var reserve: Array[EnemyLogic] = []
+	for enemy: Enemy in _enemies:
+		(reserve if _reserve.has(enemy) else placed).append(enemy.logic)
+	_waves = RoomWaves.new()
+	_waves.setup(
+		placed,
+		reserve,
+		_room_data.get_arrival_points_tiles(),
+		_room_data.get_max_engaged(Tunables.floors),
+		Tunables.floors
+	)
+	_runner.get_sim().set_waves(_waves)
 
 
 ## A layer 1 static body over a rectangle of tiles, with a placeholder visual named `Visual`.

@@ -109,6 +109,10 @@ func toggle_ai() -> void:
 ## F-003/C20, F-004/C15: a fresh setup() on every combatant. Only pulse, shake and AI on/off
 ## survive.
 func reset() -> void:
+	if _sim.get_waves() != null:
+		# F-014/C5: setup() would take every reserve enemy out of reserve. A room is rebuilt.
+		push_error("CombatRunner: reset refused, this room has waves; rebuild the room instead")
+		return
 	for body: CombatBody in _bodies:
 		body.reset_to_start()
 	_clear_transient_views()

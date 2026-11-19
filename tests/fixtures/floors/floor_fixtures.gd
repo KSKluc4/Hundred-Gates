@@ -135,3 +135,27 @@ static func floor_of(rooms: Array[RoomData], floor_number: int = 1) -> FloorData
 	list.append(boss_room())
 	data.rooms = list
 	return data
+
+
+## F-014 T4: 24 x 12, P at (1, 5), E at (23, 5) and (23, 6). One placed enemy `1` (a chaser) at
+## (21, 10), asleep, and one reinforcement (a chaser). A 2 x 6 pillar at x = 14..15, y = 3..8, with
+## a 2-tile gap above and below, stands between the arrival points `S` at (20, 4) and (20, 7) and a
+## player at (10.5, 5.5), ten tiles west of them.
+static func wave_pillar_room(room_id: StringName = &"wave_pillar") -> RoomData:
+	var rows: PackedStringArray = []
+	for y: int in 12:
+		var row: String = "#" + ".".repeat(22) + "#"
+		if y == 0 or y == 11:
+			row = "#".repeat(24)
+		elif y >= 3 and y <= 8:
+			row = row.substr(0, 14) + "##" + row.substr(16)
+		rows.append(row)
+	rows[5] = "#P" + ".".repeat(12) + "##" + ".".repeat(7) + "E"
+	rows[6] = "#" + ".".repeat(13) + "##" + ".".repeat(7) + "E"
+	rows = RoomFixtures.with_tile(rows, 20, 4, "S")
+	rows = RoomFixtures.with_tile(rows, 20, 7, "S")
+	rows = RoomFixtures.with_tile(rows, 21, 10, "1")
+	var enemies: Array[EnemyData] = [RoomFixtures.chaser()]
+	var data: RoomData = RoomFixtures.room(room_id, rows, enemies)
+	data.reinforcements = PackedInt32Array([1])
+	return data
