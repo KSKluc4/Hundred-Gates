@@ -306,6 +306,7 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - [x] T6 — 3975aa6
 - [x] T7 — f5837b4
 - [x] Review round 1 fixes — CR-2 fefa482, CR-8 85d7646, CR-4 eb2b7fe, CR-3 6165d01 (replies in §9)
+- [x] Review round 2 note — CR-11 2c71d51
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -649,6 +650,8 @@ Verified by reading and by running the test.
 - **Problem:** `_left[]` is recorded and printed, but only `is_aggroed()` and `_acted[]` are
   asserted. An enemy that decides but stays pinned on its spawn tile would pass.
 - **Suggested fix:** assert it; it holds for all 41 enemies today.
+
+> **Builder reply (lead):** fixed in `2c71d51`. `_check_acted` now asserts it for every enemy; it holds for all 41 in the 15 rooms (42 more asserts). Gated by the F-011 scene tests (53/53), lint and format on this branch, and by the full suite on the F-012 branch after the merge.
 
 **Not checked in this round:** the pinch rule against a real brute in a scene (reasoned on the
 grid); a JSON round trip of the snapshot (it requires `is int`, and Godot's JSON parser returns
