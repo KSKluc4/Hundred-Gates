@@ -441,14 +441,71 @@ func test_ac13_restoring_a_different_place_says_so_once() -> void:
 	assert_signal_emit_count(copy, "place_changed", 1, "the same place again says nothing")
 
 
-func test_ac13_a_restored_floor_has_to_be_cleared_again_before_its_exit_works() -> void:
+func test_ac13_a_floor_cleared_this_visit_keeps_that_across_a_restore() -> void:
 	_session.enter_floor(1, false)
 	_session.report_floor_cleared()
-	var copy: TowerSession = _new_session()
-	copy.from_dict(_session.to_dict())
+	var copy: TowerSession = _assert_round_trip(_session)
+	assert_true(copy.to_dict()[TowerSession.KEY_CLEARED_IN_RUN])
+	watch_signals(copy)
+	copy.report_floor_cleared()
+	assert_signal_not_emitted(copy, "floor_cleared", "it already happened this visit")
+	assert_eq(copy.get_place(), TowerSession.Place.FLOOR)
+	assert_true(copy.report_floor_exited(), "the exit is open: no soft lock (G7)")
+	assert_eq(copy.get_place(), TowerSession.Place.TOWN)
+	assert_eq(copy.get_floor_number(), 0)
+
+
+func test_ac13_a_floor_not_cleared_this_visit_stays_that_way_across_a_restore() -> void:
+	_session.enter_floor(1, false)
+	var copy: TowerSession = _assert_round_trip(_session)
+	assert_false(copy.to_dict()[TowerSession.KEY_CLEARED_IN_RUN])
 	assert_false(copy.report_floor_exited())
 	copy.report_floor_cleared()
 	assert_true(copy.report_floor_exited())
+
+
+func test_ac13_a_replayed_cleared_floor_is_not_cleared_this_visit_until_it_is() -> void:
+	# The progress says cleared (an earlier visit), the visit says not: both survive a restore.
+	_clear_floor(1)
+	_session.enter_floor(1, false)
+	var copy: TowerSession = _assert_round_trip(_session)
+	assert_true(copy.get_progress().is_floor_cleared(1))
+	assert_false(copy.report_floor_exited())
+
+
+func test_ac13_a_restore_replaces_a_flag_that_was_already_set() -> void:
+	_session.enter_floor(1, false)
+	_session.report_floor_cleared()
+	assert_true(_session.from_dict(_floor_snapshot()))
+	assert_false(_session.report_floor_exited(), "the snapshot says not cleared this visit")
+
+
+func test_ac13_the_death_pause_saves_the_flag_as_false() -> void:
+	_session.enter_floor(1, false)
+	_session.report_floor_cleared()
+	_session.report_player_died()
+	assert_false(_session.to_dict()[TowerSession.KEY_CLEARED_IN_RUN], "true only on a floor")
+	_assert_round_trip(_session)
+
+
+func test_ac13_a_flag_that_is_not_a_bool_is_refused() -> void:
+	for bad: Variant in [1, 0, "true", null, 1.0]:
+		_assert_refused(_cleared_floor_snapshot(), TowerSession.KEY_CLEARED_IN_RUN, bad)
+
+
+func test_ac13_a_cleared_flag_in_the_town_is_refused() -> void:
+	_assert_refused(_session.to_dict(), TowerSession.KEY_CLEARED_IN_RUN, true)
+
+
+func test_ac13_a_cleared_flag_in_the_death_pause_is_refused() -> void:
+	_session.enter_floor(1, false)
+	_session.report_floor_cleared()
+	_session.report_player_died()
+	_assert_refused(_session.to_dict(), TowerSession.KEY_CLEARED_IN_RUN, true)
+
+
+func test_ac13_a_cleared_flag_on_a_floor_the_progress_says_is_not_cleared_is_refused() -> void:
+	_assert_refused(_floor_snapshot(), TowerSession.KEY_CLEARED_IN_RUN, true)
 
 
 func test_ac13_an_unknown_place_is_refused() -> void:
@@ -577,6 +634,14 @@ func _tick_until_town(step: float) -> float:
 func _floor_snapshot() -> Dictionary:
 	var session: TowerSession = _new_session()
 	session.enter_floor(1, false)
+	return session.to_dict()
+
+
+## A snapshot of a session on floor 1 that cleared it this visit.
+func _cleared_floor_snapshot() -> Dictionary:
+	var session: TowerSession = _new_session()
+	session.enter_floor(1, false)
+	session.report_floor_cleared()
 	return session.to_dict()
 
 

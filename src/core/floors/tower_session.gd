@@ -16,6 +16,7 @@ const KEY_FLOOR: String = "floor"
 const KEY_START_ROOM: String = "start_room"
 const KEY_DEATH_TIME_LEFT: String = "death_time_left"
 const KEY_PROGRESS: String = "progress"
+const KEY_CLEARED_IN_RUN: String = "cleared_in_run"
 
 var _tower: TowerData
 var _rules: TowerTunables
@@ -24,7 +25,8 @@ var _place: Place = Place.TOWN
 var _floor_number: int = 0
 var _start_room: int = 0
 var _death_time_left: float = 0.0
-## C6: the floor was cleared during this visit; only then may it be left through the door.
+## C6: the floor was cleared during this visit; only then may it be left through the door. Part of
+## the snapshot (F-012/C7), and true there only on a floor.
 var _cleared_in_run: bool = false
 
 
@@ -134,7 +136,8 @@ func get_death_time_left() -> float:
 	return _death_time_left
 
 
-## G7: the progress snapshot is part of it.
+## G7: the progress snapshot is part of it. F-012/C7: so is "cleared during this visit", but only
+## on a floor: in the death pause the flag no longer matters (C5), so it is saved as false.
 func to_dict() -> Dictionary:
 	return {
 		KEY_PLACE: int(_place),
@@ -142,12 +145,13 @@ func to_dict() -> Dictionary:
 		KEY_START_ROOM: _start_room,
 		KEY_DEATH_TIME_LEFT: _death_time_left,
 		KEY_PROGRESS: _progress.to_dict(),
+		KEY_CLEARED_IN_RUN: _cleared_in_run and _place == Place.FLOOR,
 	}
 
 
 ## C7: a snapshot that doesn't fit is refused and changes nothing. The "cleared during this
-## visit" flag is not saved: a restored floor starts over, and its exit stays shut until it is
-## cleared again.
+## visit" flag is restored with it: a floor cleared before the save keeps its exit open and its
+## clear reported (G7, no soft lock).
 func from_dict(snapshot: Dictionary) -> bool:
 	if _tower == null or not snapshot.has(KEY_PROGRESS) or not snapshot[KEY_PROGRESS] is Dictionary:
 		return false
@@ -161,7 +165,7 @@ func from_dict(snapshot: Dictionary) -> bool:
 	_floor_number = snapshot[KEY_FLOOR]
 	_start_room = snapshot[KEY_START_ROOM]
 	_death_time_left = float(snapshot[KEY_DEATH_TIME_LEFT])
-	_cleared_in_run = false
+	_cleared_in_run = snapshot[KEY_CLEARED_IN_RUN]
 	if _place != before:
 		place_changed.emit(_place)
 	return true
@@ -179,21 +183,29 @@ func _fits(snapshot: Dictionary, scratch: TowerProgress) -> bool:
 	var most: float = maxf(0.0, _rules.death_return_delay) if place == Place.DEATH_PAUSE else 0.0
 	if not (time_left >= 0.0 and time_left <= most):
 		return false
+	# F-012/C7: cleared during this visit means on a floor, and the progress agrees.
+	var cleared_in_run: bool = snapshot[KEY_CLEARED_IN_RUN]
+	if cleared_in_run and place != Place.FLOOR:
+		return false
 	if place == Place.TOWN:
 		return floor_number == 0 and start_room == 0
-	return _fits_floor(floor_number, start_room, scratch)
+	if not _fits_floor(floor_number, start_room, scratch):
+		return false
+	return not cleared_in_run or scratch.is_floor_cleared(floor_number)
 
 
-## The four keys exist, hold numbers, and the place is one of the three.
+## The five keys exist, hold numbers (and a bool), and the place is one of the three.
 func _has_types(snapshot: Dictionary) -> bool:
-	for key: String in [KEY_PLACE, KEY_FLOOR, KEY_START_ROOM, KEY_DEATH_TIME_LEFT]:
+	for key: String in [
+		KEY_PLACE, KEY_FLOOR, KEY_START_ROOM, KEY_DEATH_TIME_LEFT, KEY_CLEARED_IN_RUN
+	]:
 		if not snapshot.has(key):
 			return false
 	var place: Variant = snapshot[KEY_PLACE]
 	if not (place is int and snapshot[KEY_FLOOR] is int and snapshot[KEY_START_ROOM] is int):
 		return false
 	var time_left: Variant = snapshot[KEY_DEATH_TIME_LEFT]
-	if not (time_left is float or time_left is int):
+	if not (time_left is float or time_left is int) or not snapshot[KEY_CLEARED_IN_RUN] is bool:
 		return false
 	return place >= Place.TOWN and place <= Place.DEATH_PAUSE
 
