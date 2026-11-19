@@ -74,7 +74,8 @@
 | Exit | The run of `E` tiles on a room's border. A door covers it until the room is cleared; standing on it then moves the player on. In the town it is the tower gate | `get_exit_tiles()`, `is_exit_reached()` |
 | Placed enemy | An enemy that stands in a room from the start, on its spawn tile (a digit in the grid) | `RoomData.get_spawns()` |
 | Reinforcement | An enemy that arrives during the fight. Listed in the room's data in arrival order; held waiting in reserve until then | `RoomData.reinforcements`, `get_reinforcement_spawns()` |
-| Reserve | A room's reinforcements that have not arrived yet | `Room.get_reserve_enemies()` |
+| Reserve | A room's reinforcements as a roster, in arrival order, whatever their state: one that has not arrived yet is waiting | `Room.get_reserve_enemies()`, `RoomWaves` |
+| Walk | The length in tiles of the shortest path between two positions on a room's nav grid. The director prefers an arrival point whose walk to the player is short | `NavGrid.walk_distance()`, `wave_max_walk_tiles` |
 | Share | The part of the reserve that one placed enemy releases when it notices a player or dies. The reserve is split as evenly as it goes over the placed enemies | `RoomWaves.get_released_count()` |
 | Arrival point | A floor tile where a reinforcement may arrive (`S` in the grid). The director picks one near the player but not on them | `RoomData.get_arrival_points_tiles()`, `RoomWaves.choose_point()` |
 | Arrival box | How far from the player, horizontally and vertically, an arrival is preferred: about one screen | `wave_arrival_box_tiles` |

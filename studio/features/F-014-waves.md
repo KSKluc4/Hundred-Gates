@@ -1,8 +1,8 @@
 ---
 id: F-014
 title: Waves — reinforcements arrive in a room until its kill target is reached (Gate B playtest, third fix)
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-19
 updated: 2026-11-19
 depends_on: [F-004, F-011, F-012, F-013, D-007, D-010, D-012, D-014, D-015]
@@ -567,6 +567,7 @@ without `APPROVED`.
 - [x] T7 — 1684c7e (the 12 rooms' data: 204 arrival points), b36965f (core tests over the shipped rooms; 25 tests), 5d31c35 (room 1-1 in the game; C16 (1))
 - [x] T8 — c994bde (`design/floors.md`, `design/combat.md`, `GLOSSARY.md`)
 - [x] T9 — final gate on 65019e6, results under "How to test"
+- [x] Code review round 1 — CR-2, CR-3 6350df5; CR-1 (data) 8f9422d; CR-1 (code), CR-4, CR-5 1a6b595; CR-6, CR-7, CR-8 with the replies.
 
 ### Deviations from plan
 - DEV-1: the two implementers were started on T1 and T2 while plan review round 3 (a check
@@ -645,6 +646,8 @@ without `APPROVED`.
   reserve included; a reserve enemy killed by a test while waiting starts the fight but
   releases nothing. A room with no placed enemy (validation never allows one) releases its
   whole reserve.
+  **Corrected after code review round 1 (CR-5):** as first built such a room released its
+  reserve but could never start. Since 1a6b595 it starts at once.
 - ASSUMPTION-6: in C8 "far enough" and "inside the box" are inclusive within
   `Geometry.DISTANCE_EPSILON`, and an enemy is "nearer than the gap" only below the gap
   minus that epsilon. The shipped rooms rely on the box edge being inside: in most rooms a
@@ -665,6 +668,19 @@ without `APPROVED`.
 - ASSUMPTION-12: the arrival points were placed at least 4 tiles from each other (the rule
   is 1.5) so they spread evenly; rule (b) was checked over every tile that is not a wall,
   `P` and `E` included.
+- ASSUMPTION-13 (code review CR-8): players at the same distance from an arrival point
+  resolve to the earlier-registered one, within `Geometry.DISTANCE_EPSILON`, as targets do
+  in `design/combat.md`.
+- ASSUMPTION-14 (code review CR-8): the director's `restore_errors()` also refuses a
+  snapshot in which arrivals were started but the fight was not; the director cannot
+  produce one.
+- ASSUMPTION-15 (CR-1): the walk tier's boundary is inclusive within the same epsilon; a
+  point's walk is measured to its nearest living player by straight line; a sim without a
+  nav grid, and a call with no walks, choose as before the tier existed.
+- ASSUMPTION-16 (CR-4): in the death pause the kills line keeps what it last showed.
+- ASSUMPTION-17 (CR-1, data): points were only added, never moved; four of room 2-4's six
+  new points are beyond what rule (d) needs, added to shorten the second and third
+  choices' walks.
 
 ### Things the Auditor should look at closely
 - `RoomWaves.step()`: the order of (1) to (4); that a pending arrival whose enemy was
@@ -683,6 +699,11 @@ without `APPROVED`.
   in the gate; the game itself left none). Fixed in 65019e6.
 
 ### How to test
+After code review round 1 (6350df5, 8f9422d, 1a6b595): the full suite on 1a6b595 is 141 scripts,
+2047 tests, all passing (679 s), with no "Orphans" line and no leak line; lint, format and
+purity are clean; the game boots with no error line. The scripted runs of the 12 rooms give
+the same table as below. The block below is the first gate's.
+
 ```
 tools/test                      # 140 scripts, 2023 tests, all passing (639 s)
 .venv/Scripts/gdlint src tests  # no problems
@@ -793,36 +814,61 @@ choice with a walk of 30 tiles or more from 32 % / 37 % / 46 % of tiles (worst 6
 room 3-1 a walk of 20 or more from 6–8 % of tiles; the other ten rooms never reach 30. The
 code does what C8 and C14 (b) say, so it is not a constraint violation; it is a Planner
 decision: prefer candidates with a bounded nav path, or bound the walk by a shipped-room rule.
+> **Builder reply (lead):** fixed, by both. The Planner (the lead) amended the spec in e01fc23:
+> C8 gains a first tier (far enough, inside the box and a walk of at most
+> `wave_max_walk_tiles`, 18), C14 gains rule (d), AC27 is new. Code in 1a6b595:
+> `NavGrid.walk_distance()` on the lazy field, the tier in `choose_point()`, the director
+> reading `view.nav`. Data in 8f9422d: 13 arrival points added in rooms 2-3, 2-4, 3-2, 3-3
+> and 3-5 (217 in all), nothing else in the grids changed. Result, over every walkable tile:
+> the first choice's walk is at most 17.9 in all 12 rooms (it was 39.9 in room 2-4); in room
+> 2-4 the second choice is at most 17.9 and the third is over 18 from 64 tiles (4.2 %), where
+> the second and third together were over from about 466. In the six rooms measured (2-3,
+> 2-4, 3-1, 3-2, 3-3, 3-5) the third choice is still over 18 from 3 to 12 % of tiles (worst
+> 58.9, in 2-4): accepted, it needs two points taken at once near the player (§10 Q4). One
+> choice costs one field build: median 3.6 ms in room 3-5, at a warning's start only.
 
 ### CR-2 🔵 A test of AC5 cannot fail on its own  ·  `tests/core/enemies/test_f014_waiting.gd:302-312`
 The enemy in `test_ac5_hold_in_reserve_on_an_aggroed_enemy…` is in `CHASE`, so `IDLE` alone
 refuses it; removing `and not _aggroed` from `_is_fresh()` leaves all 32 tests passing
 (mutation survived). The real code does refuse an idle aggroed enemy (ran).
+> **Builder reply (lead):** fixed in 6350df5: two tests on an idle aggroed enemy with a fresh combat
+> state (one that just arrived, one aggroed by a hit); with `and not _aggroed` removed
+> exactly those two fail.
 
 ### CR-3 🔵 A dynamic call and a stale comment  ·  `src/ui/debug/combat_debug_draw.gd:81-84`
 `has_director()` still asks the sim by name (`has_method`, `call`), with a comment about a
 state that ended when the sim got `get_waves()`.
+> **Builder reply (lead):** fixed in 6350df5: `return sim.get_waves() != null`.
 
 ### CR-4 🔵 The two HUD lines can disagree after a skip in the death pause  ·  `src/world/game.gd:216-217, 140-146`
 `_on_room_entered()` returns early when the session is not on the floor ("the session ignored
 it, so the HUD does too"), but the kills line is fed every frame anyway. Verified by running:
 after `skip_room()` in the death pause the location says room 1 and the kills line counts
 room 2. Reachable from code only: the N key is off once the death is reported.
+> **Builder reply (lead):** fixed in 1a6b595: the kills line is not fed during the death pause, so it
+> keeps what it showed, as the location text does; the comment says so; `test_cr4_*`.
 
 ### CR-5 🔵 A director with no placed enemy never starts, though comment, test name and ASSUMPTION-5 say it holds nothing back  ·  `src/core/floors/room_waves.gd:104-105`
 Verified by running a rig with 0 placed and 2 in reserve for 20 s: nothing started. Not
 reachable through validated data.
+> **Builder reply (lead):** fixed in 1a6b595: a director with no placed enemy starts at once; the
+> test now runs it and sees both reinforcements arrive. ASSUMPTION-5 is corrected in §8.
 
 ### CR-6 🔵 "Reserve" has two meanings  ·  `studio/GLOSSARY.md` against `Room.get_reserve_enemies()`, `RoomWaves._reserve`
 The glossary says "reinforcements that have not arrived yet"; the code's reserve holds every
 reinforcement, arrived and dead ones included.
+> **Builder reply (lead):** fixed in this commit: the glossary's "Reserve" is the room's
+> reinforcements as a roster, whatever their state; one that has not arrived is waiting.
 
 ### CR-7 🔵 `design/floors.md` says "two to three times the enemies per room"; room 2-1 has four times
 The rest of the encounter table matches the 12 data files type by type.
+> **Builder reply (lead):** fixed in this commit: "two to four times".
 
 ### CR-8 🔵 Two small choices in the code that §8 does not list  ·  `room_waves.gd:385-390, 209-211`
 Players at equal distance from a point: the earlier-registered one wins. `restore_errors()`
 also refuses "arrivals were started but the fight has not".
+> **Builder reply (lead):** logged in this commit as ASSUMPTION-13 and ASSUMPTION-14; (a) is also
+> pinned by a test now (1a6b595).
 
 **Tried, found nothing** (the reviewer's list, shortened): a director fuzz on a real sim: 500
 random rooms (0–6 placed, 0–20 in reserve, caps 1–6, 2–30 points, random tunables with an
@@ -848,6 +894,7 @@ frame cost; floors 2 and 3 through the real `Game`; manual play.
 | Q1 | Lead | → Lucas, at Gate B: the starting values. Kill targets (6 to 15 per room), how many arrive with each placed enemy (1 to 3) and how many are on you at once (2 in the first rooms, 3 later; the wave table), the warning (0.8 s), the pause between arrivals (1.5 s), and whether the heal (30 % per cleared room) still fits rooms with two to four times the enemies. All are data. | no | |
 | Q2 | Lead | → Lucas, at Gate B: three things the lead added to what you approved. Reinforcements arrive at marked points near you (never closer than 6 tiles), they come for you at once, and they only start once the fight has (the first enemy noticing you or dying). Each enemy placed in the room brings its share of the reinforcements when it notices you, so every part of the room has its own fight and nothing arrives while you stand still after one. Enemies placed at the start that have not noticed you do not count toward the cap, so walking on can pull more onto you than the cap. Dead enemies vanish in rooms with waves. Right, or change? | no | |
 | Q3 | Lead | → Lucas, at Gate B: room 3-1 sends its three brutes one at a time and 3-4 keeps two on you. Is one brute after another the lesson you want in 3-1? | no | |
+| Q4 | Lead | → Lucas, at Gate B (code review CR-1): a reinforcement now arrives where its walk to you is short (at most 18 tiles), not only where it is near in a straight line, so it no longer appears behind a wall and takes 20 seconds to come round. When the two best points near you are both in use, the third can still be a long walk in a few places (room 2-4 above all). If a fight ever stalls with the count stuck and nobody coming, that is this: tell me the room. | no | |
 
 ---
 

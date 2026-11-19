@@ -76,14 +76,16 @@ Guidelines (not enforced by validation; true of every shipped room and checked b
   `wave_spawn_interval` after the last one was sent. Placed enemies that have not noticed
   the player do not count, so walking on can pull more onto the player than the cap.
 - **Arrival.** The director picks an arrival point: the nearest one at least
-  `wave_min_spawn_distance_tiles` from the player and inside the arrival box (about a
-  screen); a marker shows there for `wave_spawn_warning_duration`; then the enemy appears,
-  already aggroed.
+  `wave_min_spawn_distance_tiles` from the player, inside the arrival box (about a screen)
+  and within a walk of `wave_max_walk_tiles` along the nav grid, so it is not behind a wall;
+  failing that the nearest far-enough one in the box, then the nearest far-enough one, then
+  the farthest. A marker shows there for `wave_spawn_warning_duration`; then the enemy
+  appears, already aggroed.
 - **Order is data.** No randomness: a room plays the same every time.
 - Tunables (`data/tunables/floors.tres`): `wave_max_engaged` 3 (when a room gives none),
   `wave_spawn_warning_duration` 0.8 s, `wave_spawn_interval` 1.5 s,
   `wave_min_spawn_distance_tiles` 6, `wave_spawn_gap_tiles` 1.5, `wave_min_arrival_points` 2,
-  `max_kill_target` 30, `wave_arrival_box_tiles` 19 × 10.
+  `max_kill_target` 30, `wave_arrival_box_tiles` 19 × 10, `wave_max_walk_tiles` 18.
 - In a room with waves a dead enemy vanishes at once (a death effect → Art & Game Feel).
 
 ## Shipped-room rules (F-013)
@@ -103,7 +105,8 @@ Checked by tests over the shipped tower, on top of the format rules:
   least 2 tiles from a wall or another block.
 - Arrival points (F-014): no wall tile at 2 tiles or nearer; from every walkable tile the
   first three points the director would choose are inside the arrival box, so the warning
-  is on screen (13 to 22 points per room); `max_engaged` is at most 1 plus the first share.
+  is on screen, and the first is a walk of at most `wave_max_walk_tiles` (13 to 28 points
+  per room); `max_engaged` is at most 1 plus the first share.
 - Casters start behind cover from `P`, or behind the chasers in an open room (2-1); the two
   walking bosses stand 12 to 18 tiles east of `P`; the Hexer's room has exactly four blocks.
 
@@ -162,7 +165,7 @@ Notes:
   sizes would leave no wall within reach, so the floor 3 rooms have blocks (shipped-room rules).
   The Juggernaut's room was open before F-013; whether that is the fight wanted is F-013 §10 Q2.
 - Sizes include the border walls.
-- The heal is still 30 % per cleared room, with two to three times the enemies per room it
+- The heal is still 30 % per cleared room, with two to four times the enemies per room it
   had (F-014 §10 Q1).
 
 ## Open questions (cross-department)
