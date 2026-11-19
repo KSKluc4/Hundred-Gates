@@ -727,6 +727,7 @@ line.
 | Q5 | Lead | → Direction: the gate list is a plain column with no scrolling. It holds 3 floors; by slice 5 (floors 4–6, two entries each) it needs paging or a different shape. | no | |
 | Q6 | Lead | → Lucas (Gate B): `dodge` (Space) is also `ui_accept`, so a second Space press right after dashing into the gate chooses the focused entry (the highest floor). Annoying or fine? | no | |
 | Q7 | Lead | → Direction / F-011's review: the boss bar label in `src/world/floors/room.gd` sets its size before the font override and ends up 23 px tall (found in T7's layout tests). Harmless today; fix with F-011's review changes or a later feature? | no | |
+| Q8 | Auditor (lead) | → Lucas / Direction (review CR-6): G8 says player actions go through a command layer. Entering a floor goes from the gate list straight to `TowerSession.enter_floor(floor, at_boss)`: one call with two plain values, no command object. Does a menu choice count as a player action under G8? The lead's view: treat that one call as the command boundary for now and wrap it in a command when co-op needs it (phase 3). | no | |
 
 ---
 
