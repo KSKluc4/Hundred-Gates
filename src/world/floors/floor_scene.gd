@@ -100,6 +100,21 @@ func skip_room() -> void:
 
 func _collect_setup_errors() -> PackedStringArray:
 	var errors: PackedStringArray = []
+	# F-011/C6: bodies read their tile from global_position, the nav grid and the exit from the
+	# room's own tiles; they only agree when the scene sits at the world origin.
+	if not global_transform.is_equal_approx(Transform2D.IDENTITY):
+		(
+			errors
+			. append(
+				(
+					(
+						"origin: the floor scene must sit at the world origin with no rotation or scale, "
+						+ "is at %s (rotation %s, scale %s)"
+					)
+					% [global_position, global_rotation, global_scale]
+				)
+			)
+		)
 	for error: String in Tunables.floors.validate():
 		errors.append("floor tunables: %s" % error)
 	if floor_data == null:
