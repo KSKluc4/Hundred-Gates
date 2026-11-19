@@ -32,19 +32,19 @@ const ENCOUNTERS: Dictionary = {
 const BOSSES: Dictionary = {1: &"warden", 2: &"hexer", 3: &"juggernaut"}
 
 ## The C9 table of studio/features/F-013-camera-rooms-dash.md: sizes in tiles, borders included,
-## and a shipped room has exactly this size. Floor 1 is redrawn (F-013 T2). Floors 2 and 3 still
-## hold their old sizes (the design table of floors.md): F-013 T3 and T4 replace them with the C9
-## table's when those floors are redrawn.
+## and a shipped room has exactly this size. Floors 1 and 2 are redrawn (F-013 T2, T3). Floor 3
+## still holds its old sizes (the design table of floors.md): F-013 T4 replaces them with the C9
+## table's when that floor is redrawn.
 const SIZES: Dictionary = {
 	&"f1_r1": Vector2i(48, 28),
 	&"f1_r2": Vector2i(52, 28),
 	&"f1_r3": Vector2i(56, 30),
 	&"f1_boss": Vector2i(56, 32),
-	&"f2_r1": Vector2i(22, 12),
-	&"f2_r2": Vector2i(26, 14),
-	&"f2_r3": Vector2i(32, 12),
-	&"f2_r4": Vector2i(28, 16),
-	&"f2_boss": Vector2i(24, 16),
+	&"f2_r1": Vector2i(48, 28),
+	&"f2_r2": Vector2i(52, 30),
+	&"f2_r3": Vector2i(64, 28),
+	&"f2_r4": Vector2i(56, 32),
+	&"f2_boss": Vector2i(56, 32),
 	&"f3_r1": Vector2i(22, 12),
 	&"f3_r2": Vector2i(26, 14),
 	&"f3_r3": Vector2i(28, 14),
@@ -54,9 +54,9 @@ const SIZES: Dictionary = {
 }
 ## F-013/C10 (a): a combat room has a spawn this near `P` at the start, centre to centre.
 const NEAR_SPAWN_MAX_TILES: Vector2 = Vector2(18.0, 9.0)
-## F-013 T2: the floors that C10 (a) is checked on. T3 and T4 add floors 2 and 3 when they are
-## redrawn; their old rooms would fail the rule.
-const C10A_FLOORS: Array[int] = [1]
+## F-013 T2, T3: the floors that C10 (a) is checked on. T4 adds floor 3 when it is redrawn; its
+## old rooms would fail the rule.
+const C10A_FLOORS: Array[int] = [1, 2]
 ## F-013/C10 (d): no shipped attack starts further away than this (half a screen is 11.25).
 const ATTACK_START_LIMIT_TILES: float = 11.0
 
