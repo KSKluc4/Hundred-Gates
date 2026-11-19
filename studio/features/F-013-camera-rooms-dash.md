@@ -1,8 +1,8 @@
 ---
 id: F-013
 title: Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair)
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-19
 updated: 2026-11-19
 depends_on: [F-001, F-011, F-012, D-010, D-012, D-014, D-015]
@@ -673,6 +673,129 @@ Manual: §5, "How to verify manually".
 ---
 
 ## 9. Code Review  ·  _Auditor_
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 5c3553a (the diff `8089770..5c3553a`, 14 commits)
+
+**Date:** 2026-11-19 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+A fresh reviewer sub-agent that wrote neither the spec nor the code and took part in no plan
+review round, read-only, with its own extracted copy for probes and mutations. One blocking
+finding (CR-1), one "should fix", five suggestions. The lead checked each against the code
+before recording it.
+
+### AC evidence
+
+| AC | Status | Where | How the reviewer checked |
+|---|---|---|---|
+| AC1 | ✅ | `room.gd` `camera_limits_px()`; `test_f013_camera.gd` `test_ac1_*` (six cases, exact `Rect2i`) | read, ran (38/38) |
+| AC2 | ✅ | `test_ac2_*` (48 × 28, 64 × 36, smallest and largest shipped by area, town included) | read, ran |
+| AC3 | ✅ | `test_ac3_*` (3) | read, ran |
+| AC4 | ✅ | `test_ac4_*` (2) | read, ran |
+| AC5 | ✅ | `test_f013_camera.gd` (direct, first room, door, boss door, N, R, death); `test_f013_camera_game.gd` (town start, town to floor, floor to town, death to town, at the boss); no settle call | read, ran (38/38, 7/7), mutated (CR-7 a) |
+| AC6 | ✅ | `test_ac6_*`; `test_camera_tunables.gd` (11) | read, ran |
+| AC7 | ✅ | `test_ac7_*`; `room.gd` `_build_outside_strips()` | read, ran |
+| AC8 | ✅ | `test_ac8_*` in both camera files | read, ran |
+| AC9 | ✅ | `test_shipped_tower.gd` `test_ac9_*` (4); the size test in `test_shipped_floors.gd` | ran (31/31, 30/30); own script re-read all 16 sizes |
+| AC10 | ✅ | `tower_data.gd` `_check_screen()`; `test_ac10_*` (exact strings); `test_f013_tower_rule.gd` (4) | read, ran (30/30, 4/4) |
+| AC11 | ✅ | `test_ac24_every_room_matches_the_encounter_table`; `ENCOUNTERS` untouched | ran; own parse of the `.tres` files agrees |
+| AC12 | ✅ | `test_c10a/b/c/d_*` and the kept pins | ran; own script recomputed C10 a, b, c, spawn gaps, aggro, sides, block spacing. See CR-6 |
+| AC13 | ✅ | `test_c11_*` (5), the kept `test_ac25_*`; `test_f012_town.gd` unchanged | ran (31/31, 59/59); grid checked against C11 |
+| AC14 | ✅ | the path test and `test_f011_shipped_floors.gd`, both unchanged | ran (8/8); own probe walked every spawn along the flow field to `P`: all 42 arrive |
+| AC15 | ✅ | `test_f012_main.gd`, `test_f012_game.gd`, `test_f012_floor_scene.gd`, none in the diff | ran (11/11, 51/51, 40/40) |
+| AC16 | ✅ as worded; C17 itself ❌ | `test_f013_nav_equivalence.gd` 9/9; costs in §8 | ran; re-timed room 3-5: reference median 22.2 ms, new 3.2, max 4.8. See CR-1, CR-2 |
+| AC17 | ✅ | `player_motor.gd` `_end_dash()`, `_advance_dash_recovery()`; `test_ac17_*` (5) | ran (44/44), mutated |
+| AC18 | ✅ | `test_ac18_*` (10), at 30/60/120 | mutated: the freeze decided at the segment's end fails 3 tests |
+| AC19 | ✅ | `test_ac19_*` (3), at 30/60/120/240 | ran; own fuzz |
+| AC20 | ✅ | `test_ac20_*` (2); only the two helper lines changed | ran `tests/core/player` (223/223), `tests/core/combat` (147/147) |
+| AC21 | ✅ | `test_ac21_*` (3) | mutated: both hit mutations each fail 1 test |
+| AC22 | ✅ | `test_ac22_*` (3), `test_c14_*` (2) | ran; own round trips |
+| AC23 | ✅ | `test_ac23_*` (3) | mutated: an unlatched recovery fails 3 tests |
+| AC24 | ✅ | `test_ac24_*` (2) | read, ran |
+| AC25 | ✅ | `class_data.gd`; `test_ac25_*` (2) | read, ran |
+| AC26 | ✅ | `test_ac26_*` (4) | read, ran |
+| AC27 | ✅ | the lead's full run (not repeated); in the reviewer's copy: lint clean, format 256 unchanged, purity ok, `main.tscn` boots with no error line | ran |
+
+**Rejected options:** none implemented (no zoom, `min_room_size` still 8 × 6, the camera is
+still the player's `PlaceholderShake`, cooldown still 0.35, the recovery roots, no
+`AStarGrid2D`, buffers frozen, enemy counts unchanged).
+**Constraints:** C1–C16, C18 and G1–G9 hold. C17 is violated (CR-1).
+**Deviation audit:** the pre-existing test files changed are exactly the seven §8 lists, each
+within C16; none was weakened. DEV-7 is inaccurate (CR-3).
+**Assumptions 1–10:** reasonable and reversible.
+
+### Findings
+
+### CR-1 🔴 `has_clear_line()` does not always return what the old code returned (C17)  ·  `src/core/floors/nav_grid.gd:29-31, 108-128`
+For a segment at least 32 tiles long on an axis whose `to` end sits within about 1e-6 tiles of
+grazing a wall to the east, north or south, the new code answers clear where the reference
+answers blocked. `along = to - from` is a 32-bit `Vector2`; its rounding error reaches 1.9e-6
+for a difference of 32 to 64 tiles, larger than `CLIP_MARGIN` (1e-6), so the end tile is
+clipped out. The west side is safe only through the extra `- 1` on the left column, which §8
+judged a no-op: it is not (4,281 of 300,000 west probes differ without it). Verified by
+running: `has_clear_line(Vector2(22.367403, 3.0021656), Vector2(62.3, 7.769074), 0.7)` in a
+64 × 12 room is true in `NavGrid` and false in the reference; on the shipped Warden room,
+radius 0.7, a target at x = 54.3 differs in 3,339 of 20,000 checks; grazing probes on a
+64 × 36 room differ in 811 of 150,000 (east), 192 of 150,000 (south), 2,942 of 300,000
+(north), 0 of 300,000 (west). In play the effect is close to nil (one step of a brain going
+straight instead of along the field, for a target on one exact float value), but C17 says
+"without changing any result". Suggested: a larger margin or the end coordinates taken from
+`to` itself, and a grazing kind in the proof.
+
+### CR-2 🟡 The proof's radii are not the bodies' radii, and it cannot see CR-1  ·  `tests/core/floors/test_f013_nav_equivalence.gd:12`
+`RADII` is 0, 0.25, 0.5, 0.6; the brains pass `hurtbox_radius_tiles`, which is 0.35, 0.4, 0.5,
+0.6, 0.7, 0.8 in `data/enemies/`. Every exact graze in the proof lies on quarter-tile or whole
+coordinates, where the float subtraction is exact. Verified by reading; the reviewer's own
+fuzz at all six radii found 0 differences outside CR-1's window.
+
+### CR-3 🔵 DEV-7 describes a change the commit does not contain  ·  §8
+`git show --stat e90b2d2` lists three files, all under `studio/`.
+
+### CR-4 🔵 A shake that starts while the camera is trailing makes the view jump  ·  `placeholder_shake.gd:29` with the smoothing set in `room.gd`
+While a shake runs, `_process()` writes `offset` every frame, and in 4.7.2 each write
+re-evaluates the smoothed camera one smoothing step ahead. Verified by a standalone probe
+(speed 8, physics callback): with the camera 240 px behind its target, one write of `offset`
+moved the view 32 px with no physics tick. At the walking lag of 10 px that is about 1.3 px,
+more right after a dash or a knockback; it is hidden inside the shake, and C6 forbids changing
+the shake here. Nobody has looked at it rendered.
+
+### CR-5 🔵 `from_dict()` trusts `dash_recovery_remaining`  ·  `src/core/player/player_motor.gd:219, 509-516`
+Verified by running with state `DASH_RECOVERY`: −0.5 left moves the player 2.54 tiles in the
+next 1/30 s tick (a negative segment); 5.0 left with a latched duration of 0 roots the player
+for 5 s; state `IDLE` with 0.5 left keeps the stale value. Only a malformed snapshot reaches
+it; `dash_elapsed` has the same older weakness.
+
+### CR-6 🔵 Table details no test pins; one caster is barely "behind a block"  ·  `data/floors/floor_3/room_3.tres`; `test_shipped_floors.gd`
+The caster at tile (45, 8) of room 3-3 has a line to `P` that clears a block's corner by 0.13
+tiles (clear at radius 0, blocked at 0.25; ran). Only floor 2's casters have a cover test. No
+test pins the Warden and the Juggernaut 12 to 18 tiles east, 1-1's chasers 6 apart, 2-3's five
+blocks and east third, 3-1's wall length, 3-3's brute distance; the kept Hexer test asserts at
+least four blocks, not exactly four. Today's data satisfies all of them.
+
+### CR-7 🔵 Comments and a name that mislead
+(a) `room.gd`: the comment says the camera is configured before it enters the tree "so it
+starts on its limited target"; configuring it after `add_child(_player)` leaves all 38 camera
+tests passing. (b) `test_f013_camera.gd:16-17` says the shipped file still says 40 × 22; it
+says 80 × 46, and the override in both camera test files is a no-op. (c) `player_motor.gd`
+`_is_in_recovery()` means an attack's recovery phase and is false during `DASH_RECOVERY`.
+(d) `design/floors.md`, "Shipped-room rules", says "`P` is on the west side" under rules
+checked over the shipped tower; the town's `P` is under the north gate.
+
+**Tried, found nothing** (the reviewer's list, shortened): about 78,000 `direction_toward()`
+comparisons over two seeds on 14 degenerate grids, 120 random rooms up to 70 × 40 and an
+80 × 46 room, with goals changing every call and askers in walls, outside the grid and in
+sealed pockets: 0 differences, build counts equal, member arrays always restored. About
+304,000 line comparisons at 11 radii: 0 differences outside CR-1's window. The motor: 400
+random scripts at 30, 60 and 120 against 240 ticks/s, 600 coarse-step runs, 60 snapshot round
+trips into motors with other class data, hitstop in mid-recovery: 0 differences, and no way
+found to act during a recovery or to get stuck in one. Mouse aim, HUD, boss bar, gate menu
+and debug draw do not depend on the camera sitting on the player. All 16 grids match the C9
+table, C11 and every C10 rule.
+
+**Not checked in this round:** anything rendered (camera feel, jitter, the strips in a shake,
+CR-4 on screen); the full suite in one run; a release build's timings; `RoomData.validate()`'s
+own code; the debug scenes.
 
 ---
 

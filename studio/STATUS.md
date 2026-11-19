@@ -19,7 +19,7 @@
 | F-010 | Studio queue — chained features, auto-drafted specs, opt-in automatic Gate A | PLAN_REVIEW | Auditor | — |
 | F-011 | Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox | CODE_REVIEW | Lucas | — |
 | F-012 | The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene | CODE_REVIEW | Lucas | F-011 (stacked on its branch, D-013; merge F-011 first) |
-| F-013 | Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair) | CODE_REVIEW | Auditor | F-012 (stacked on its branch, D-015) |
+| F-013 | Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair) | CODE_CHANGES | Builder | F-012 (stacked on its branch, D-015) |
 
 ## Open questions waiting on Lucas
 - **Gate B, second pass, for F-011 and F-012.** Lucas played on 2026-11-18 and raised six points (F-012 §10 Q9 to Q13). Fixed and reviewed: the room stuck in the corner (camera) and the invisible healing (`+30 HP`). Answered on 2026-11-19 and being built as F-013: dash recovery (Q12), a follow camera with rooms larger than the screen (Q13). Still waiting for his answer: waves with a kill target (Q11). No review round used a real device.
