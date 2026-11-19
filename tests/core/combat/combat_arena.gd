@@ -21,6 +21,7 @@ var events: Array[HitEvent] = []
 
 static func warrior() -> ClassData:
 	var data: ClassData = (load(Tunables.WARRIOR_PATH) as ClassData).duplicate()
+	data.dash_recovery_duration = 0.0  # F-013/C16
 	var chain: Array[AttackData] = []
 	for attack: AttackData in data.attack_chain:
 		chain.append(attack.duplicate())

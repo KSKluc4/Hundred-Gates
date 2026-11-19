@@ -92,6 +92,11 @@ func test_ac12_a_wall_stops_knockback_and_the_state_still_ends_on_time() -> void
 
 
 func _place_for_ac22() -> void:
+	# F-013/C16: this timing was worked out before a dash had a recovery. A duplicate, never the
+	# cached resource, so no other test sees the change.
+	var no_recovery: ClassData = _player.class_data.duplicate()
+	no_recovery.dash_recovery_duration = 0.0
+	_player.class_data = no_recovery
 	_player.position = Vector2(240, 160)
 	_anchored.position = Vector2(240, 176)
 	_loose.position = Vector2(40, 300)

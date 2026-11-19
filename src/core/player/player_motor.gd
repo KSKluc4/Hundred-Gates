@@ -10,7 +10,8 @@ signal invulnerability_changed(is_invulnerable: bool)
 ## F-003/C12: from_dict() sends no change signals, so views re-sync from state on this.
 signal state_restored
 
-enum State { IDLE, MOVING, DASHING, ATTACKING, KNOCKBACK }
+## F-013/C13 (b): DASH_RECOVERY is appended, so every earlier value keeps its number.
+enum State { IDLE, MOVING, DASHING, ATTACKING, KNOCKBACK, DASH_RECOVERY }
 
 ## F-003 T2: CombatTiming owns it, this name stays for F-001's code and tests.
 const TIME_EPSILON: float = CombatTiming.TIME_EPSILON
@@ -26,6 +27,8 @@ const SNAPSHOT_KEYS: Array[String] = [
 	"dash_distance",
 	"dash_duration",
 	"dash_iframe_duration",
+	"dash_recovery_duration",
+	"dash_recovery_remaining",
 	"cooldown_remaining",
 	"has_buffered_dash",
 	"buffered_dash_age",
@@ -53,6 +56,9 @@ var _dash_elapsed: float = 0.0
 var _dash_distance: float = 0.0
 var _dash_duration: float = 0.0
 var _dash_iframe_duration: float = 0.0
+# F-013/C13 (f), C14: latched with the other dash values; the time the recovery still has left.
+var _dash_recovery_duration: float = 0.0
+var _dash_recovery_remaining: float = 0.0
 
 var _cooldown_remaining: float = 0.0
 var _has_buffered_dash: bool = false
@@ -156,7 +162,8 @@ func finish_tick() -> void:
 ## F-003/C17, AC15: a hit that landed. Interrupts any attack or dash, leaves the buffers.
 func apply_hit(event: HitEvent, tunables: PlayerCombatTunables) -> void:
 	if _state == State.DASHING:
-		_end_dash()  # Velocity 0, and the full cooldown starts here (F-001/C9).
+		_end_dash(false)  # Velocity 0, and the full cooldown starts here (F-001/C9). No recovery.
+	_dash_recovery_remaining = 0.0  # F-013/C13 (a), (e): a hit ends a recovery, and leaves none.
 	_attack_chain.reset()
 	_velocity = Vector2.ZERO
 	# The motion itself starts when hitstop ends (F-003/C15).
@@ -177,6 +184,8 @@ func to_dict() -> Dictionary:
 		"dash_distance": _dash_distance,
 		"dash_duration": _dash_duration,
 		"dash_iframe_duration": _dash_iframe_duration,
+		"dash_recovery_duration": _dash_recovery_duration,
+		"dash_recovery_remaining": _dash_recovery_remaining,
 		"cooldown_remaining": _cooldown_remaining,
 		"has_buffered_dash": _has_buffered_dash,
 		"buffered_dash_age": _buffered_dash_age,
@@ -206,6 +215,8 @@ func from_dict(snapshot: Dictionary) -> void:
 	_dash_distance = snapshot["dash_distance"]
 	_dash_duration = snapshot["dash_duration"]
 	_dash_iframe_duration = snapshot["dash_iframe_duration"]
+	_dash_recovery_duration = snapshot["dash_recovery_duration"]
+	_dash_recovery_remaining = snapshot["dash_recovery_remaining"]
 	_cooldown_remaining = snapshot["cooldown_remaining"]
 	_has_buffered_dash = snapshot["has_buffered_dash"]
 	_buffered_dash_age = snapshot["buffered_dash_age"]
@@ -303,6 +314,8 @@ func _reset_state() -> void:
 	_dash_distance = 0.0
 	_dash_duration = 0.0
 	_dash_iframe_duration = 0.0
+	_dash_recovery_duration = 0.0
+	_dash_recovery_remaining = 0.0
 	_cooldown_remaining = 0.0
 	_has_buffered_dash = false
 	_buffered_dash_age = 0.0
@@ -388,6 +401,9 @@ func _run_phases(duration: float) -> void:
 	# a step's end would fire before or after that contact depending on the rounding.
 	while remaining > TIME_EPSILON:
 		_fire_buffered_actions()
+		# F-013/C13 (c): decided from the state at the segment's start, so the dash's own last
+		# segment still ages the buffers and the recovery's segments never do (PR-1, PR-20).
+		var buffers_frozen: bool = _state == State.DASH_RECOVERY
 		var segment: float = 0.0
 		match _state:
 			State.DASHING:
@@ -396,14 +412,16 @@ func _run_phases(duration: float) -> void:
 				segment = _advance_attack(remaining)
 			State.KNOCKBACK:
 				segment = _advance_knockback(remaining)
+			State.DASH_RECOVERY:
+				segment = _advance_dash_recovery(remaining)
 			_:
 				segment = _advance_normal(remaining)
 		_time += segment
 		remaining -= segment
 		_combat.advance_hurt_iframes(segment)  # AC14: they run during knockback.
-		if _has_buffered_dash:
+		if _has_buffered_dash and not buffers_frozen:
 			_buffered_dash_age += segment
-		if _has_buffered_attack:
+		if _has_buffered_attack and not buffers_frozen:
 			_buffered_attack_age += segment
 	_time += remaining
 
@@ -449,6 +467,7 @@ func _fire_dash() -> void:
 	_dash_distance = _class_data.dash_distance
 	_dash_duration = _class_data.dash_duration
 	_dash_iframe_duration = _class_data.dash_iframe_duration
+	_dash_recovery_duration = _class_data.dash_recovery_duration  # F-013/C13 (f)
 	var direction: Vector2 = _move_input if _move_input != Vector2.ZERO else _facing
 	_dash_direction = direction.normalized()
 	_dash_elapsed = 0.0
@@ -468,15 +487,33 @@ func _advance_dash(limit: float) -> float:
 	_tick_displacement += _velocity * segment
 	_dash_elapsed += segment
 	if dash_time_left - segment <= TIME_EPSILON:
-		_end_dash()
+		_end_dash(true)
 	return segment
 
 
-func _end_dash() -> void:
+## F-013/C13 (a), (b), (g): only a dash that ran its whole length is followed by a recovery, and
+## only with a latched duration above 0. The state is set before dash_ended is emitted.
+func _end_dash(ran_full_length: bool) -> void:
 	_velocity = Vector2.ZERO
 	_cooldown_remaining = _class_data.dash_cooldown  # F-001/C9
-	_state = State.IDLE
+	if ran_full_length and _dash_recovery_duration > 0.0:
+		_state = State.DASH_RECOVERY
+		_dash_recovery_remaining = _dash_recovery_duration
+	else:
+		_state = State.IDLE
 	dash_ended.emit()
+
+
+## F-013/C13 (c), (d): rooted, nothing fires, the cooldown keeps counting. It ends in its own
+## exact segment, so whatever is buffered can fire at that same instant. Returns the time consumed.
+func _advance_dash_recovery(limit: float) -> float:
+	var segment: float = minf(limit, _dash_recovery_remaining)
+	_cooldown_remaining = maxf(0.0, _cooldown_remaining - segment)
+	_dash_recovery_remaining -= segment
+	if _dash_recovery_remaining <= TIME_EPSILON:
+		_dash_recovery_remaining = 0.0
+		_state = State.IDLE
+	return segment
 
 
 ## Returns the time consumed.
