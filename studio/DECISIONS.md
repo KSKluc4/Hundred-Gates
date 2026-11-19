@@ -20,6 +20,34 @@
 
 ---
 
+## D-015 — Gate B fixes that are new work get their own stacked feature, built as D-013 sets
+- **Status:** ACCEPTED
+- **Date:** 2026-11-19 · **Decided by:** Lucas (instruction in chat)
+- **Context:** At Gate B of F-011 and F-012 Lucas raised six points and wrote: "Let's fix this
+  before we move on with the slices. do 2 fixes at a time no more than that". The first pair
+  were defects and were fixed inside F-011 and F-012. The second pair (a follow camera with
+  rooms larger than the screen; a dash recovery) and the third (waves) are new behaviour that
+  touch several features and two departments. On the lead's proposal for the second pair he
+  answered: "I liked all the idea for the rooms and for the dash just a short end-lag yeah so
+  go ahead with that".
+- **Chosen:** Each such pair is one new feature, stacked on the branch that holds the work it
+  changes (F-013 on `feature/F-012-the-loop`). D-013's arrangement applies: the lead writes
+  the spec, up to two Sonnet implementers write on disjoint file lists, only the lead gates
+  and commits. Lucas's go-ahead in chat on the lead's written proposal is Gate A, so the file
+  skips `APPROVED`. The plan review and the code review run as D-014 sets. A feature may cover
+  two departments when the pair does; the header names both.
+- **Rejected:**
+  - *Keep adding to F-011 and F-012* — their specs, logs and reviews would describe a
+    different game from the one they approved, and F-001's dash is `DONE`. Tempting because
+    no new file or branch is needed.
+  - *One feature per fix* — two specs and four reviews for changes Lucas asked to judge
+    together. Tempting because each feature would have one department.
+- **Consequences:** The stack grows: F-011, then F-012, then F-013, merged in that order.
+  `PHASE1.md` uses the ids F-013 to F-016 for planned features that have not started; its rows
+  need renumbering (Direction). Lucas plays the top of the stack.
+- **Revisit if:** a stacked feature has to change after the one below it is merged.
+
+
 ## D-014 — The lead runs the Auditor's reviews
 - **Status:** ACCEPTED
 - **Date:** 2026-11-18 · **Decided by:** Lucas (instruction in chat)
