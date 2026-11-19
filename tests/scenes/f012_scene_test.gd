@@ -63,6 +63,16 @@ func run_ticks(ticks: int, move: Vector2 = Vector2.ZERO, aim: Vector2 = Vector2.
 		await get_tree().physics_frame
 
 
+## One tick that carries a dash press toward `direction`, as a DashCommand: the dash fires in this
+## tick and runs for the next 0.15 s (18 ticks at RATE).
+func dash_for_one_tick(direction: Vector2) -> void:
+	var body: Player = player()
+	body.motor.submit(MoveCommand.new(direction))
+	body.motor.submit(AimCommand.new(direction))
+	body.motor.submit(DashCommand.new())
+	await get_tree().physics_frame
+
+
 ## Runs until `condition` holds, at most `limit` ticks. Returns whether it held.
 func run_until(
 	condition: Callable, limit: int = 600, move: Vector2 = Vector2.ZERO, aim: Vector2 = Vector2.DOWN
@@ -99,7 +109,8 @@ func gate_outward() -> Vector2:
 
 
 ## A press and a release of an input action, through the engine's input path (_input, the GUI,
-## _unhandled_input), as the keyboard would send them.
+## _unhandled_input). It sets the action itself: no key is pressed, so Input's polling
+## (is_action_just_pressed, is_physical_key_pressed) doesn't see it. Use press_key() for that.
 func press_action(action: StringName) -> void:
 	for pressed: bool in [true, false]:
 		var event: InputEventAction = InputEventAction.new()
@@ -111,6 +122,9 @@ func press_action(action: StringName) -> void:
 
 ## The key stays down for Input's polling (what the player's own input reads, as
 ## Input.is_physical_key_pressed) until release_held_keys(), which after_each() calls.
+## Like the keyboard it sends both the key and the physical key, so it matches the game's actions
+## (bound by physical key) and the built-in `ui_*` ones (bound by key): Space is `ui_accept` and
+## `dodge`. With only one of them set, the other family never matched and F-012's CR-2 got through.
 func hold_key(key: Key) -> void:
 	_send_key(key, true)
 	_held_keys.append(key)
@@ -122,6 +136,16 @@ func release_held_keys() -> void:
 	_held_keys.clear()
 
 
+## F-012/CR-2: the key goes down between two physics ticks, where the OS delivers it, and stays
+## down until release_held_keys(). Posted from inside a physics tick (as hold_key() after a
+## `physics_frame`) Input counts the press for the tick after next, one later than the real
+## thing, and a tap (press and release together) is never "just pressed" when a tick polls it.
+func hold_key_between_ticks(key: Key) -> void:
+	await get_tree().process_frame
+	hold_key(key)
+
+
+## A press and a release at once, as a tap.
 func press_key(key: Key) -> void:
 	_send_key(key, true)
 	_send_key(key, false)
@@ -129,6 +153,7 @@ func press_key(key: Key) -> void:
 
 func _send_key(key: Key, pressed: bool) -> void:
 	var event: InputEventKey = InputEventKey.new()
+	event.keycode = key
 	event.physical_keycode = key
 	event.pressed = pressed
 	Input.parse_input_event(event)

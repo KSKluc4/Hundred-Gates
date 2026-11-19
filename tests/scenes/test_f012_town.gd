@@ -1,6 +1,8 @@
 # gdlint:disable=max-public-methods
 extends F012SceneTest
 ## F-012 T5 (AC20-AC22, AC24): the town scene. The gate menu's own rules are in test_gate_menu.
+## Review round 1: the engaged gate holds the player exactly (CR-1, CR-9) and the key that closes
+## the list is spent before the input comes back (CR-2).
 
 const WALK_TICKS: int = 60
 ## Most a tile moves in one tick at the Warrior's speed (5 tiles/s at 120 ticks/s) is 0.042.
@@ -8,13 +10,20 @@ const ONE_TICK_TILES: float = 0.05
 const POSITION_TOLERANCE: float = 0.001
 ## The player walks up from x = 11.5, so the nearest of the gate's tiles (10..13, 0) is x = 11.
 const NORTH_RETURN_TILES: Vector2 = Vector2(11.5, 1.5)
+## Just inside the gate, on its way in: a dash north from here reaches the gate tile (y < 1) with
+## most of the dash still to run.
+const DASH_START_TILES: Vector2 = Vector2(11.5, 1.6)
+## A dash is 0.15 s, 18 ticks at 120 ticks/s; the margin covers the step rounding.
+const DASH_TICKS: int = 22
 
 var _chosen: Array[Vector2i] = []
+var _dashes: int = 0
 
 
 func before_each() -> void:
 	super.before_each()
 	_chosen = []
+	_dashes = 0
 
 
 # --- AC20: the town is built ---
@@ -226,18 +235,51 @@ func test_ac21_the_list_opens_on_a_gate_on_each_border() -> void:
 		await get_tree().physics_frame
 
 
-func test_ac21_while_the_list_is_open_the_scripted_player_stays_where_it_stopped() -> void:
+func test_ac21_a_player_who_walked_in_is_held_exactly_where_the_list_opened() -> void:
 	await spawn_town(TowerFixtures.town_room(), _progress(3))
 	await _walk_into_the_gate()
-	var opened_at: Vector2 = player().motor.get_position_tiles()
-	await run_ticks(20)  # The motor's own deceleration.
-	var settled: Vector2 = player().motor.get_position_tiles()
-	await run_ticks(WALK_TICKS)
-	assert_eq(player().motor.get_position_tiles(), settled, "constant over 60 ticks")
-	assert_eq(player().global_position, player().motor.get_position_px(), "body and logic agree")
-	assert_lt(settled.distance_to(opened_at), 1.0, "never more than a tile from where it opened")
+	var held: Vector2 = _position_tiles()
+	assert_gt(player().motor.get_velocity_tiles().length(), 0.0, "it was still walking")
+	assert_eq(await _ticks_off_the(held, WALK_TICKS), 0, "exactly the hold position, every tick")
 	assert_false(player().input_enabled, "the player's input is off")
 	assert_true(menu().is_open(), "and the list is still there")
+	assert_eq(player().motor.get_velocity_tiles(), Vector2.ZERO, "the walk has run out")
+
+
+func test_ac21_a_player_who_dashed_in_is_held_exactly_where_the_list_opened() -> void:
+	await spawn_town(TowerFixtures.town_room(), _progress(3))
+	await _dash_into_the_gate()
+	assert_eq(player().motor.get_state(), PlayerMotor.State.DASHING, "the dash is still running")
+	var held: Vector2 = _position_tiles()
+	assert_gt(held.y, 0.0, "the list opened inside the room")
+	assert_lt(held.y, 1.0, "on a gate tile")
+	assert_eq(await _ticks_off_the(held, WALK_TICKS), 0, "exactly the hold position, every tick")
+	assert_ne(player().motor.get_state(), PlayerMotor.State.DASHING, "the dash has ended")
+	assert_eq(player().motor.get_velocity_tiles(), Vector2.ZERO)
+	assert_true(menu().is_open())
+	assert_eq(menu().get_entry_count(), 1, "the list was opened once")
+
+
+func test_ac21_the_held_player_never_leaves_the_rooms_grid() -> void:
+	await spawn_town(TowerFixtures.town_room(), _progress(3))
+	await _dash_into_the_gate()
+	var size: Vector2i = town().get_room().get_room_data().get_size()
+	var outside: int = 0
+	for _i: int in WALK_TICKS:
+		await run_ticks(1, Vector2.UP)
+		var at: Vector2 = _position_tiles()
+		if at.x < 0.0 or at.y < 0.0 or at.x >= size.x or at.y >= size.y:
+			outside += 1
+	assert_eq(outside, 0, "ticks with the player outside the grid")
+
+
+func test_ac21_the_hold_does_not_depend_on_the_list_being_open() -> void:
+	await spawn_town(TowerFixtures.town_room(), _progress(3))
+	await _walk_into_the_gate()
+	var held: Vector2 = _position_tiles()
+	menu().close()  # No signal: the gate's own state decides, not the UI (CR-9).
+	assert_eq(await _ticks_off_the(held, WALK_TICKS), 0, "still held")
+	assert_false(menu().is_open(), "and the list is not opened again")
 
 
 func test_ac21_with_the_real_input_on_the_held_key_does_not_walk_the_player_away() -> void:
@@ -247,14 +289,19 @@ func test_ac21_with_the_real_input_on_the_held_key_does_not_walk_the_player_away
 	var opened: Callable = func() -> bool: return menu().is_open()
 	assert_true(await run_until(opened, 400), "the player's own input walked it to the gate")
 	assert_false(player().input_enabled, "and the list took the input away")
-	var opened_at: Vector2 = player().motor.get_position_tiles()
-	await run_ticks(20)  # Still holding the key.
-	var settled: Vector2 = player().motor.get_position_tiles()
-	await run_ticks(WALK_TICKS)
-	assert_eq(player().motor.get_position_tiles(), settled, "constant over 60 ticks")
-	assert_lt(settled.distance_to(opened_at), 1.0)
-	assert_lt(settled.y, 1.0, "still on the gate row: it did not come back either")
-	assert_gt(settled.y, -1.0, "and it did not walk off the map")
+	var held: Vector2 = _position_tiles()
+	assert_eq(await _ticks_off_the(held, WALK_TICKS), 0, "still holding the key: not one step")
+	assert_lt(held.y, 1.0, "on the gate row")
+	assert_gt(held.y, 0.0, "and not off the map")
+
+
+func test_ac21_the_debug_key_refreshes_the_list_and_the_player_stays_held() -> void:
+	await spawn_town(TowerFixtures.town_room(), _progress(3))
+	await _dash_into_the_gate()
+	var held: Vector2 = _position_tiles()
+	press_key(KEY_N)
+	assert_eq(menu().get_entry_count(), 3, "the list is the true one")
+	assert_eq(await _ticks_off_the(held, WALK_TICKS), 0)
 
 
 # --- AC22: choosing and closing ---
@@ -327,19 +374,29 @@ func test_ac22_the_stay_entry_closes_the_list_the_same_way() -> void:
 	assert_eq(_position_tiles(), NORTH_RETURN_TILES)
 
 
-func test_ac22_closing_gives_the_input_back_as_it_was_built() -> void:
+func test_ac22_closing_gives_the_input_back_one_tick_later_as_it_was_built() -> void:
 	await spawn_town(TowerFixtures.town_room(), _progress(3), _input_on)
 	hold_key(KEY_W)
 	var opened: Callable = func() -> bool: return menu().is_open()
 	assert_true(await run_until(opened, 400))
 	assert_false(player().input_enabled)
-	menu().cancel()
-	assert_true(player().input_enabled, "back on: the town was built with it on")
 	release_held_keys()
+	menu().cancel()
+	assert_false(player().input_enabled, "not in the handler, where the closing key is still fresh")
+	await run_ticks(1)
+	assert_true(player().input_enabled, "back after the next tick: the town was built with it on")
 	await spawn_town(TowerFixtures.town_room(), _progress(3))
 	await _walk_into_the_gate()
 	menu().cancel()
+	await run_ticks(2)
 	assert_false(player().input_enabled, "a scripted town stays scripted")
+
+
+func test_ac22_the_scene_runs_after_the_runner_so_the_closing_key_is_spent() -> void:
+	await spawn_town(TowerFixtures.town_room())
+	var runner: CombatRunner = town().get_room().get_runner()
+	assert_lt(runner.process_physics_priority, town().process_physics_priority)
+	assert_eq(runner.get_parent(), town().get_room(), "the runner steps with the room's ticks")
 
 
 func test_ac22_the_player_walks_on_after_closing() -> void:
@@ -377,6 +434,99 @@ func test_ac22_the_latch_rearms_by_itself_once_the_player_is_off_the_gate() -> v
 	put_player_at(on_the_gate)  # Not a walk, but the position is on the gate again.
 	await run_ticks(2)
 	assert_true(menu().is_open(), "nobody had to re-arm it: the player was off the gate")
+
+
+func test_ac22_stay_chosen_with_a_real_space_press_does_not_make_the_player_dodge() -> void:
+	await spawn_town(TowerFixtures.town_room(), _progress(3), _input_on_and_connect)
+	await _hold_w_into_the_gate()
+	await run_ticks(WALK_TICKS)
+	player().motor.dash_started.connect(_count_a_dash)
+	press_key(KEY_DOWN)  # A real ui_down: from floor 1 to the stay entry.
+	assert_eq(menu().get_focus_index(), menu().get_entry_count(), "on 'Stay in town'")
+	await hold_key_between_ticks(KEY_SPACE)  # ui_accept and dodge at once.
+	assert_false(menu().is_open(), "the list closed")
+	assert_false(player().input_enabled, "and the input is not back in the same input phase")
+	var off_the_tile: int = 0
+	for _i: int in 30:
+		await run_ticks(1)
+		if _position_tiles() != NORTH_RETURN_TILES:
+			off_the_tile += 1
+	assert_eq(_dashes, 0, "no dash was started")
+	assert_eq(off_the_tile, 0, "the player stood on the return tile throughout")
+	assert_eq(player().motor.get_velocity_tiles(), Vector2.ZERO)
+	assert_false(menu().is_open(), "the list did not reopen")
+	assert_eq(_chosen, [] as Array[Vector2i], "and nothing was chosen")
+	assert_true(player().input_enabled, "the input is back")
+
+
+func test_ac22_a_floor_chosen_with_a_real_space_press_does_not_make_the_player_dodge() -> void:
+	await spawn_town(TowerFixtures.town_room(), _progress(3), _input_on_and_connect)
+	await _hold_w_into_the_gate()
+	await run_ticks(WALK_TICKS)
+	var held: Vector2 = _position_tiles()
+	player().motor.dash_started.connect(_count_a_dash)
+	await hold_key_between_ticks(KEY_SPACE)  # On floor 1, the only entry.
+	assert_eq(_chosen, [Vector2i(1, 0)] as Array[Vector2i], "floor 1 from the start")
+	assert_eq(await _ticks_off_the(held, 30), 0, "held until the owner replaces the town")
+	assert_eq(_dashes, 0, "no dash was started")
+	assert_false(player().input_enabled)
+	assert_eq(_chosen.size(), 1)
+
+
+func test_ac22_closing_during_a_dash_keeps_the_player_on_the_return_tile_until_it_ends() -> void:
+	await spawn_town(TowerFixtures.town_room(), _progress(3), _input_on)
+	await _dash_into_the_gate(true)
+	assert_eq(player().motor.get_state(), PlayerMotor.State.DASHING, "still running at the cancel")
+	release_held_keys()
+	menu().cancel()
+	assert_eq(_position_tiles(), NORTH_RETURN_TILES)
+	var off_the_tile: int = 0
+	var input_back_while_dashing: int = 0
+	var was_dashing: bool = false
+	for _i: int in DASH_TICKS * 2:
+		await run_ticks(1)
+		if _position_tiles() != NORTH_RETURN_TILES:
+			off_the_tile += 1
+		var dashing: bool = player().motor.get_state() == PlayerMotor.State.DASHING
+		was_dashing = was_dashing or dashing
+		if dashing and player().input_enabled:
+			input_back_while_dashing += 1
+	assert_true(was_dashing, "the dash did run on after the cancel")
+	assert_eq(off_the_tile, 0, "on the return tile every tick, the dash notwithstanding")
+	assert_eq(input_back_while_dashing, 0, "the input waits for the dash")
+	assert_true(player().input_enabled, "and comes back when it has ended")
+	assert_ne(player().motor.get_state(), PlayerMotor.State.DASHING)
+	assert_false(menu().is_open(), "the list did not reopen")
+
+
+func test_ac22_a_dash_still_in_the_buffer_does_not_carry_the_player_through_the_gate() -> void:
+	await spawn_town(TowerFixtures.town_room(), _progress(3), _input_on_and_connect)
+	await _hold_w_into_the_gate()
+	player().motor.dash_started.connect(_count_a_dash)
+	player().motor.submit(DashCommand.new())  # Held in place by the gate.
+	await run_ticks(1)
+	assert_eq(_dashes, 1, "the first dash")
+	# Wait until that dash's cooldown is about to end, then press dash again: it is buffered.
+	var nearly_ready: Callable = func() -> bool:
+		return (
+			player().motor.get_cooldown_remaining() < 0.05
+			and _dashes == 1
+			and player().motor.get_state() != PlayerMotor.State.DASHING
+		)
+	assert_true(await run_until(nearly_ready, 120), "the cooldown is almost over")
+	player().motor.submit(DashCommand.new())
+	await run_ticks(1)
+	assert_true(player().motor.has_buffered_dash(), "waiting for the cooldown")
+	menu().cancel()
+	assert_eq(_position_tiles(), NORTH_RETURN_TILES)
+	var off_the_tile: int = 0
+	for _i: int in DASH_TICKS * 2:
+		await run_ticks(1)
+		if _position_tiles() != NORTH_RETURN_TILES:
+			off_the_tile += 1
+	assert_eq(_dashes, 2, "the buffered dash fired while the player was still held")
+	assert_eq(off_the_tile, 0, "and went nowhere")
+	assert_true(player().input_enabled)
 
 
 func test_ac22_every_border_returns_the_player_to_the_tile_inward_of_the_gate() -> void:
@@ -500,6 +650,46 @@ func _progress(floors: int) -> TowerProgress:
 func _walk_into_the_gate() -> void:
 	var opened: Callable = func() -> bool: return menu().is_open()
 	assert_true(await run_until(opened, 400, Vector2.UP), "the player reached the gate")
+
+
+## Starts just inside the gate and dashes north into it, until the list has opened (the dash is
+## then still running, as in a real run). `real_input`: W and Space are real keys, for a town built
+## with the player's own input on (its commands would override the scripted ones).
+func _dash_into_the_gate(real_input: bool = false) -> void:
+	put_player_at(DASH_START_TILES)
+	if real_input:
+		hold_key(KEY_W)
+	await run_ticks(2)
+	assert_false(menu().is_open(), "just inside the gate is not on it")
+	if real_input:
+		await hold_key_between_ticks(KEY_SPACE)
+	else:
+		await dash_for_one_tick(Vector2.UP)
+	var opened: Callable = func() -> bool: return menu().is_open()
+	assert_true(await run_until(opened, DASH_TICKS, Vector2.UP), "the dash reached the gate")
+
+
+## The real input on: holds W until the list opens, then lets go of it.
+func _hold_w_into_the_gate() -> void:
+	hold_key(KEY_W)
+	var opened: Callable = func() -> bool: return menu().is_open()
+	assert_true(await run_until(opened, 400), "the player's own input walked it to the gate")
+	release_held_keys()
+
+
+## Runs `ticks` ticks (no commands) and counts those that ended anywhere but exactly on `held`,
+## in the logic or in the body.
+func _ticks_off_the(held: Vector2, ticks: int) -> int:
+	var off: int = 0
+	for _i: int in ticks:
+		await run_ticks(1)
+		if _position_tiles() != held or player().global_position != Units.vector_tiles_to_px(held):
+			off += 1
+	return off
+
+
+func _count_a_dash() -> void:
+	_dashes += 1
 
 
 func _position_tiles() -> Vector2:

@@ -31,6 +31,9 @@ var _room: Room
 var _gate: TownGate = TownGate.new()
 var _gate_menu: GateMenu
 var _setup_errors: PackedStringArray = []
+## F-012/C10: the list was closed without a choice and the player's input has not come back yet.
+var _input_back_pending: bool = false
+var _return_position_tiles: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
@@ -54,12 +57,25 @@ func _ready() -> void:
 	_build_room()
 
 
-## F-012/C10: while the list is closed, the gate latch reads where the player is after this tick.
-## While it is open, check() is not called: the latch stays off until the player has left.
+## F-012/C10. Runs after the room's CombatRunner (priority 1 against 0), so each tick is read and
+## corrected right after the runner stepped the player and read the input.
+## - Engaged gate: the player goes back on the position they had when it engaged, whatever the
+##   runner just did to them (a dash included), and nothing else happens (CR-1). The decision is
+##   the gate's own state, not whether the list is open (CR-9).
+## - Input pending after a cancel: this tick's runner has already run with the input off, so the
+##   key that closed the list is spent (CR-2). The input comes back here, once nothing the player
+##   did before the cancel can still move them (a dash, a buffered dash).
 func _physics_process(_delta: float) -> void:
-	if _gate_menu.is_open():
-		return
 	var player: Player = _room.get_player()
+	if _gate.is_engaged():
+		_put_player_at(player, _gate.get_hold_position_tiles())
+		return
+	if _input_back_pending:
+		_put_player_at(player, _return_position_tiles)
+		if _can_move_on_its_own(player):
+			return
+		_input_back_pending = false
+		player.input_enabled = player_input_enabled
 	if _gate.check(player.motor.get_position_tiles()):
 		_open_gate_menu()
 
@@ -118,25 +134,42 @@ func _build_room() -> void:
 	_room.open_door()
 
 
-## F-012/C10: the player takes no input while the list is open. With no commands the motor
-## decelerates on its own, and a door that doesn't collide lets it drift a few hundredths of a tile.
+## F-012/C10: the gate has engaged (check() said so). The player takes no input and, from the next
+## tick on, _physics_process holds them on the position they had.
 func _open_gate_menu() -> void:
 	_room.get_player().input_enabled = false
 	_gate_menu.open(_progress.get_entries())
 
 
+## F-012/C10: a floor was chosen. The gate stays engaged, so the player stays held until whoever
+## owns the town replaces it (C12); nothing else here.
 func _on_menu_entry_chosen(floor_number: int, at_boss: bool) -> void:
-	floor_chosen.emit(floor_number, at_boss)  # F-012/C12: input stays off; nothing else here.
+	floor_chosen.emit(floor_number, at_boss)
 
 
-## F-012/C10, AC22: back on the walkable tile inside the gate, logic first and then the body, and
-## the input back as it was built. The latch re-arms by itself once the player is off the gate.
+## F-012/C10, AC22: the gate lets go and the player is back on the walkable tile inside it, logic
+## first and then the body. The input is NOT given back here: this runs in the input phase, where
+## the key that closed the list is still "just pressed" for the player's own input (Space is
+## `ui_accept` and `dodge`, a click is `attack`). _physics_process gives it back (CR-2). The latch
+## re-arms by itself once the player is off the gate.
 func _on_menu_closed() -> void:
 	var player: Player = _room.get_player()
-	var inside: Vector2 = _gate.get_return_position_tiles(player.motor.get_position_tiles())
-	player.motor.sync_position(Units.vector_tiles_to_px(inside))
+	_gate.release()
+	_return_position_tiles = _gate.get_return_position_tiles(player.motor.get_position_tiles())
+	_put_player_at(player, _return_position_tiles)
+	_input_back_pending = true
+
+
+## Logic first, then the body from it (F-001/C18's restore path).
+func _put_player_at(player: Player, position_tiles: Vector2) -> void:
+	player.motor.sync_position(Units.vector_tiles_to_px(position_tiles))
 	player.sync_body_from_logic()
-	player.input_enabled = player_input_enabled
+
+
+## F-012/C10: a dash that was running when the list closed (or one waiting in the buffer) would
+## carry the player back through the gate, which has no collision. Held until it is over.
+func _can_move_on_its_own(player: Player) -> bool:
+	return player.motor.get_state() == PlayerMotor.State.DASHING or player.motor.has_buffered_dash()
 
 
 ## F-012/C17, AC24: the one place outside TowerSession that changes progress, and only for a

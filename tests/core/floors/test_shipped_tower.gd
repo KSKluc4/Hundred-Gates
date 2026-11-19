@@ -178,6 +178,8 @@ func test_ac25_gate_latch_fires_on_each_gate_tile_and_not_on_the_floor_below() -
 	assert_false(gate.check(town.get_player_start_tiles()), "P is not on the gate")
 	for tile: Vector2i in town.get_exit_tiles():
 		assert_true(gate.check(Vector2(tile) + Vector2(0.5, 0.5)), "enters at %s" % tile)
+		assert_true(gate.is_engaged(), "engaged at %s" % tile)
+		gate.release()  # F-012/C10: the engagement ends before the latch can see the player leave.
 		assert_false(gate.check(Vector2(tile.x + 0.5, 1.5)), "just inside is not the gate")
 
 
