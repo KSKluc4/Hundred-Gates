@@ -38,6 +38,7 @@ var _player: Player
 var _enemies: Array[Enemy] = []
 var _reserve: Array[Enemy] = []
 var _waves: RoomWaves = null
+var _wave_markers: WaveMarkers = null
 var _runner: CombatRunner
 var _door: StaticBody2D
 var _door_shape: CollisionShape2D
@@ -86,6 +87,11 @@ func get_reserve_enemies() -> Array[Enemy]:
 ## F-014/C11: the room's director, null in a room without reinforcements.
 func get_waves() -> RoomWaves:
 	return _waves
+
+
+## F-014/C12: the warning rings, null in a room without reinforcements.
+func get_wave_markers() -> WaveMarkers:
+	return _wave_markers
 
 
 func get_runner() -> CombatRunner:
@@ -335,15 +341,17 @@ func _build_runner() -> void:
 	_runner.combatant_paths = paths
 	_runner.shake_path = NodePath("../%s/%s" % [PLAYER_NAME, SHAKE_NAME])
 	_runner.refill_player_on_died = false  # F-011/AC20: the floor scene restarts the room.
+	_build_waves()  # Before the runner, which stays the last child.
 	add_child(_runner)
 	# F-011/C2: the nav grid comes from the same rows as the walls. Not in any snapshot.
 	_runner.get_sim().set_nav(NavGrid.from_rows(_room_data.rows))
-	_build_waves()
+	if _waves != null:
+		_runner.get_sim().set_waves(_waves)  # F-014/C6: once every combatant is registered.
 	_player.motor.get_combat_state().set_hp(_entry_hp)
 
 
-## F-014/C6, C11: only a room with reinforcements has a director, attached once every combatant is
-## registered (the runner's _ready() did that). A room without gets none: its sim is as it was.
+## F-014/C6, C11, C12: only a room with reinforcements has a director and its markers. A room
+## without gets none: its sim is as it was.
 func _build_waves() -> void:
 	if _reserve.is_empty():
 		return
@@ -359,7 +367,13 @@ func _build_waves() -> void:
 		_room_data.get_max_engaged(Tunables.floors),
 		Tunables.floors
 	)
-	_runner.get_sim().set_waves(_waves)
+	var radii_tiles: Dictionary = {}
+	for enemy: Enemy in _reserve:
+		radii_tiles[enemy.combat_id] = enemy.data.hurtbox_radius_tiles
+	_wave_markers = WaveMarkers.new()
+	_wave_markers.name = &"WaveMarkers"
+	_wave_markers.setup(_waves, radii_tiles)
+	add_child(_wave_markers)
 
 
 ## A layer 1 static body over a rectangle of tiles, with a placeholder visual named `Visual`.
