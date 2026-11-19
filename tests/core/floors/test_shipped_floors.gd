@@ -32,9 +32,7 @@ const ENCOUNTERS: Dictionary = {
 const BOSSES: Dictionary = {1: &"warden", 2: &"hexer", 3: &"juggernaut"}
 
 ## The C9 table of studio/features/F-013-camera-rooms-dash.md: sizes in tiles, borders included,
-## and a shipped room has exactly this size. Floors 1 and 2 are redrawn (F-013 T2, T3). Floor 3
-## still holds its old sizes (the design table of floors.md): F-013 T4 replaces them with the C9
-## table's when that floor is redrawn.
+## and a shipped room has exactly this size. Every floor is redrawn (F-013 T2 to T4).
 const SIZES: Dictionary = {
 	&"f1_r1": Vector2i(48, 28),
 	&"f1_r2": Vector2i(52, 28),
@@ -45,18 +43,15 @@ const SIZES: Dictionary = {
 	&"f2_r3": Vector2i(64, 28),
 	&"f2_r4": Vector2i(56, 32),
 	&"f2_boss": Vector2i(56, 32),
-	&"f3_r1": Vector2i(22, 12),
-	&"f3_r2": Vector2i(26, 14),
-	&"f3_r3": Vector2i(28, 14),
-	&"f3_r4": Vector2i(28, 16),
-	&"f3_r5": Vector2i(32, 16),
-	&"f3_boss": Vector2i(26, 16),
+	&"f3_r1": Vector2i(48, 28),
+	&"f3_r2": Vector2i(52, 30),
+	&"f3_r3": Vector2i(56, 30),
+	&"f3_r4": Vector2i(60, 32),
+	&"f3_r5": Vector2i(64, 36),
+	&"f3_boss": Vector2i(56, 32),
 }
 ## F-013/C10 (a): a combat room has a spawn this near `P` at the start, centre to centre.
 const NEAR_SPAWN_MAX_TILES: Vector2 = Vector2(18.0, 9.0)
-## F-013 T2, T3: the floors that C10 (a) is checked on. T4 adds floor 3 when it is redrawn; its
-## old rooms would fail the rule.
-const C10A_FLOORS: Array[int] = [1, 2]
 ## F-013/C10 (d): no shipped attack starts further away than this (half a screen is 11.25).
 const ATTACK_START_LIMIT_TILES: float = 11.0
 
@@ -67,8 +62,11 @@ const MIN_SPAWN_GAP_TILES: float = 1.5
 const PAIRS_APART_TILES: float = 7.0
 ## F1 room 3's dividing wall is the columns DIVIDER_X and DIVIDER_X + 1.
 const DIVIDER_X: int = 27
-## floors.md: the Juggernaut's room has at least this much open floor, borders excluded.
+## F-013/C10 (c): the Juggernaut's room holds an all-walkable rectangle this big around the boss.
 const JUGGERNAUT_MIN_OPEN: Vector2i = Vector2i(20, 12)
+## F-013/C10 (b): in a brute or Juggernaut room no walkable tile is further than this from a wall
+## tile (the larger of the x and y distance), so there is always something to put behind you.
+const MAX_WALL_DISTANCE_TILES: int = 8
 const HEXER_BLOCK_COUNT: int = 4
 ## The clear floor between the Hexer's four blocks, so it is an arena and not one big obstacle.
 const HEXER_ARENA_TILES: Vector2i = Vector2i(6, 4)
@@ -242,13 +240,46 @@ func test_ac27_hexer_room_clear_area_between_the_blocks_is_an_arena() -> void:
 			assert_true(room.is_walkable(Vector2i(x, y)), "arena tile (%d, %d)" % [x, y])
 
 
-func test_ac27_juggernaut_room_has_no_interior_wall_and_enough_open_floor() -> void:
+## F-013/C10 (b): in every room with a brute or the Juggernaut, no walkable tile is further than
+## MAX_WALL_DISTANCE_TILES from a wall tile (border walls count).
+func test_c10b_no_floor_tile_is_far_from_a_wall_in_a_brute_or_juggernaut_room() -> void:
+	var checked: int = 0
+	for room: RoomData in _all_rooms():
+		if not _has_enemy(room, &"brute") and not _has_enemy(room, &"juggernaut"):
+			continue
+		checked += 1
+		var worst: int = 0
+		var worst_tile: Vector2i = Vector2i.ZERO
+		var size: Vector2i = room.get_size()
+		for y: int in size.y:
+			for x: int in size.x:
+				if not room.is_walkable(Vector2i(x, y)):
+					continue
+				var distance: int = _wall_distance(
+					room, Vector2i(x, y), MAX_WALL_DISTANCE_TILES + 1
+				)
+				if distance > worst:
+					worst = distance
+					worst_tile = Vector2i(x, y)
+		assert_lte(
+			worst,
+			MAX_WALL_DISTANCE_TILES,
+			"%s: tile %s is far from every wall" % [room.id, worst_tile]
+		)
+	assert_eq(checked, 6, "the six floor 3 rooms")
+
+
+## F-013/C10 (c): the Juggernaut's room holds an all-walkable rectangle JUGGERNAUT_MIN_OPEN big
+## that contains the boss's spawn tile.
+func test_c10c_juggernaut_room_holds_a_clear_20_by_12_floor_that_contains_the_boss() -> void:
 	var room: RoomData = _room(&"f3_boss")
-	assert_eq(_interior_wall_tiles(room).size(), 0, "interior wall tiles")
-	var size: Vector2i = room.get_size()
-	var open: Vector2i = size - Vector2i(2, 2)
-	assert_gte(open.x, JUGGERNAUT_MIN_OPEN.x, "open width")
-	assert_gte(open.y, JUGGERNAUT_MIN_OPEN.y, "open height")
+	var spawn: Vector2i = Vector2i(room.get_spawns()[0].position_tiles)
+	var found: bool = false
+	var low: Vector2i = spawn - JUGGERNAUT_MIN_OPEN + Vector2i.ONE
+	for y: int in range(low.y, spawn.y + 1):
+		for x: int in range(low.x, spawn.x + 1):
+			found = found or _is_all_walkable(room, Rect2i(Vector2i(x, y), JUGGERNAUT_MIN_OPEN))
+	assert_true(found, "a clear %s rectangle holds the boss at %s" % [JUGGERNAUT_MIN_OPEN, spawn])
 
 
 func test_ac27_warden_room_has_no_interior_wall() -> void:
@@ -389,28 +420,24 @@ func test_pin_every_room_has_exactly_the_c9_table_size() -> void:
 ## F-013/C10 (a): the first target is close. Combat rooms only: a boss room names its own spawn.
 func test_c10a_a_combat_room_has_a_spawn_near_the_player_start() -> void:
 	var checked: int = 0
-	for number: int in C10A_FLOORS:
-		for room: RoomData in _load_floor(number).rooms:
-			if room.is_boss_room:
-				continue
-			checked += 1
-			var start: Vector2 = room.get_player_start_tiles()
-			var nearest: Vector2 = Vector2(INF, INF)
-			var found: bool = false
-			for spawn: RoomSpawn in room.get_spawns():
-				var away: Vector2 = (spawn.position_tiles - start).abs()
-				if away.x <= NEAR_SPAWN_MAX_TILES.x and away.y <= NEAR_SPAWN_MAX_TILES.y:
-					found = true
-				if away.length() < nearest.length():
-					nearest = away
-			assert_true(
-				found,
-				(
-					"%s: no spawn within %s of P (nearest %s)"
-					% [room.id, NEAR_SPAWN_MAX_TILES, nearest]
-				)
-			)
-	assert_gt(checked, 0, "the rule was checked on at least one room")
+	for room: RoomData in _all_rooms():
+		if room.is_boss_room:
+			continue
+		checked += 1
+		var start: Vector2 = room.get_player_start_tiles()
+		var nearest: Vector2 = Vector2(INF, INF)
+		var found: bool = false
+		for spawn: RoomSpawn in room.get_spawns():
+			var away: Vector2 = (spawn.position_tiles - start).abs()
+			if away.x <= NEAR_SPAWN_MAX_TILES.x and away.y <= NEAR_SPAWN_MAX_TILES.y:
+				found = true
+			if away.length() < nearest.length():
+				nearest = away
+		assert_true(
+			found,
+			"%s: no spawn within %s of P (nearest %s)" % [room.id, NEAR_SPAWN_MAX_TILES, nearest]
+		)
+	assert_eq(checked, 12, "the 12 combat rooms of the tower")
 
 
 ## F-013/C10 (d): no attack starts off screen. Every attack of every enemy of every shipped room:
@@ -460,6 +487,42 @@ func _room(room_id: StringName) -> RoomData:
 			return room
 	fail_test("no shipped room %s" % room_id)
 	return RoomData.new()
+
+
+func _has_enemy(room: RoomData, enemy_id: StringName) -> bool:
+	for enemy: EnemyData in room.enemies:
+		if enemy.id == enemy_id:
+			return true
+	return false
+
+
+## The larger of the x and y distance from `tile` to the nearest wall tile; `limit` when none is
+## that near. Scans square rings outwards, so a tile near a wall is cheap.
+func _wall_distance(room: RoomData, tile: Vector2i, limit: int) -> int:
+	for radius: int in range(1, limit):
+		for offset: int in range(-radius, radius + 1):
+			var ring: Array[Vector2i] = [
+				tile + Vector2i(offset, -radius),
+				tile + Vector2i(offset, radius),
+				tile + Vector2i(-radius, offset),
+				tile + Vector2i(radius, offset),
+			]
+			for spot: Vector2i in ring:
+				if _inside(room, spot) and room.rows[spot.y][spot.x] == RoomData.WALL:
+					return radius
+	return limit
+
+
+func _inside(room: RoomData, tile: Vector2i) -> bool:
+	return tile.x >= 0 and tile.y >= 0 and tile.x < room.get_size().x and tile.y < room.get_size().y
+
+
+func _is_all_walkable(room: RoomData, area: Rect2i) -> bool:
+	for y: int in range(area.position.y, area.end.y):
+		for x: int in range(area.position.x, area.end.x):
+			if not room.is_walkable(Vector2i(x, y)):
+				return false
+	return true
 
 
 ## `attacks` and every follow-up chain reached from them, each attack once, into `into`.
