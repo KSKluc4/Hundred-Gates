@@ -1,8 +1,8 @@
 ---
 id: F-012
 title: The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-011, D-005, D-006, D-010, D-012, D-013]
@@ -387,6 +387,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 - [x] Review round 3 notes — CR-15, CR-16, CR-17 2f5cb54
 - [x] Review round 4 fix — CR-18 983846b
 - [x] Review round 5 note — CR-19 41760e4. Rounds: 1 changes requested, 2 changes requested, 3 approved with notes, 4 changes requested, 5 approved with notes.
+- [x] Gate B playtest (Lucas, 2026-11-18; §10 Q9 to Q13) — camera fix from F-011 merged in 2f8e651; heal feedback AC33 827c631; review round 6 follow-ups 76106a8 (CR-21, CR-22, orphan warnings). Round 6: approved with notes.
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -445,11 +446,19 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   (§10 Q10). — **Why:** the heal rule was working and invisible, and read as inconsistent. —
   **Impact:** one more signal on `FloorScene` (nobody listens to it in F-011's debug scenes) and
   one more banner; the rule itself is unchanged.
+- DEV-16: one existing test was edited by the Gate B commit `827c631`:
+  `test_ac29_the_health_bar_shows_the_current_rooms_player_after_every_swap` now waits one
+  tick after a `skip_room()`. — **Why:** F-011 DEV-13 frees the old room at the end of the
+  frame, so "the first room's player is gone" is true a tick later, not in the same call. —
+  **Impact:** none on what the test proves. Also from DEV-13: the scene test helpers let the
+  frame end in `after_each()`, and `GateMenu` frees its old buttons with `queue_free()`.
 - DEV-10: one sentence of F-011's README paragraph was reworded (the floor debug scenes are no
   longer "placeholders until the loop is wired"). — **Why:** it became false. — **Impact:** none.
 - DEV-5: `# gdlint:disable=max-public-methods` on six long test files
   (`test_tower_progress.gd`, `test_tower_session.gd`, `test_hud.gd`, `test_f012_town.gd`,
-  `test_gate_menu.gd`, `test_shipped_tower.gd`). — **Why:** gdlint's cap
+  `test_gate_menu.gd`, `test_shipped_tower.gd`), later also on `test_f012_floor_scene.gd` and
+  `test_f012_game.gd`; and `max-file-lines` on `test_gate_menu.gd` and `test_f012_game.gd`,
+  which passed 1000 lines (logged in review round 6, CR-20). — **Why:** gdlint's cap
   is 20; same precedent as F-011 DEV-3. — **Impact:** none at runtime.
 
 ### Assumptions made (small, reversible)
@@ -551,7 +560,7 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
 ### How to test
 ```sh
 export GODOT_BIN=/path/to/Godot_v4.7.2-stable
-tools/test                      # 123 scripts, 1579 tests, all passing (about 7.5 min)
+tools/test                      # 123 scripts, 1619 tests, all passing (about 7.5 min)
 tools/lint                      # on Windows: .venv/Scripts/gdlint src tests && .venv/Scripts/gdformat --check src tests
 tools/check_core_purity
 ```
@@ -561,6 +570,9 @@ All of this feature's scene tests: `-gdir=res://tests/scenes -gselect=f012`.
 By hand (Gate B): open the project and press F5. See §5 "How to verify manually". `N` skips a
 room in a floor and unlocks the next floor in the town; `R` restarts a room; `F3` hides the
 debug overlay.
+
+After the Gate B fixes and round 6 (`76106a8`): 1619/1619 tests, gdlint clean, gdformat 248 files
+unchanged, core purity ok, no orphan line, and `main.tscn` boots headless with no error.
 
 Final state (`41760e4`): 1579/1579 tests, gdlint clean, gdformat 248 files unchanged, core purity ok,
 and `main.tscn` boots headless with no error.
@@ -1006,6 +1018,59 @@ no event) and the claim that a real pad on a device other than 0 is in the conne
 pads at once, a pad connected after the list has opened, and a rendered frame of the list with
 a pad in hand. These are for Gate B.
 
+<!-- review-round: 6 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** 827c631 (the Gate B heal feedback, AC33; and F-011's camera fix `c40c2a6`
+as merged here, which F-011 §9 round 3 records)
+
+**Date:** 2026-11-18 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+A fresh reviewer sub-agent that did no earlier round, on an extracted copy. AC33 is met and no
+rule of the loop moved into `Game`. The clear reports `CombatState.heal()`'s result and the
+refill reports `FloorRun`'s entry HP minus the HP carried, after the swap; only positive
+amounts are emitted; nothing is emitted on a boss clear, at full HP, on entering a normal
+room, on a restart or at a floor's start. `_advance_room()` is path for path the old
+`advance` + `_build_room` in both callers. Four mutations were each caught by the AC33 tests
+(no `> 0` guard: 7 fail; refill reported before the swap: 2; the `Game` guard removed: 1; a
+skip that applies the clear heal: 2).
+
+### Findings
+
+**CR-20 🟡 §8 had nothing for this commit, and it adds a lint suppression.** Verified by
+reading. `tests/scenes/test_f012_game.gd:1` gains `max-file-lines` (1014 lines against 1000),
+an existing AC29 test was edited (`:352`), and there was no Progress line for `827c631`.
+
+> **Builder reply (lead):** logged in this commit: the Progress line, DEV-5 extended with the
+> two `max-file-lines` suppressions, and DEV-16 for the AC29 edit.
+
+**CR-21 🔵 `healed(100)` for a dead player on a direct `skip_room()`.** Verified by running.
+`Game`'s guard only declines to display, as `_on_room_entered` does, so C2 holds; but the
+signal's own contract ("HP gained between fights") was false in that case.
+
+> **Builder reply (lead):** fixed in `76106a8`: `FloorScene._report_healed()` emits nothing
+> once a death was reported; `Game`'s guard stays as a second layer. Two tests: a skip after a
+> reported death emits nothing; after `restart_room()` the refill is reported again.
+
+**CR-22 🔵 `GateMenu` frees its buttons at once in the same engine windows as F-011 DEV-13.**
+Verified by running (no symptom today: the list reopened 4 times by walking and rebuilt 4
+times with N kept its focus and texts) and by reading.
+
+> **Builder reply (lead):** fixed in `76106a8`: `remove_child()` then `queue_free()`. No menu
+> test asserted on the old buttons being gone in the same call.
+
+**CR-23 🔵 A question for Lucas at Gate B.** AC33 says "whenever", and its two listed cases
+are met; but leaving a floor at 50 HP and standing in the town at 100 shows nothing, and
+40 → 70 → 100 shows `+30 HP` twice with nothing saying which was the clear and which the boss
+room.
+
+> **Builder reply (lead):** no code change; asked of Lucas as §10 Q14.
+
+Also from F-011's round 3 (CR-14 there): the orphan warnings. `F012SceneTest.after_each()` and
+the gate menu tests now let the frame end, and every override awaits its base (`76106a8`). The
+full suite prints no orphan line.
+
+**Not checked in this round:** how the banner reads on screen; a real pad or keyboard session.
+
 ---
 
 ## 10. Open Questions  ·  _Anyone (append)_
@@ -1025,6 +1090,7 @@ a pad in hand. These are for Gate B.
 | Q11 | Lucas (Gate B playtest, 2026-11-18) | "the enimies I belive they can be spaming them on the room … enough for the space on the room … so they would appear until the player reach a certain amount that he killed, what you think? develop something around that idea" | no | A new feature (waves with a kill target), proposed by the lead in chat; waits for Lucas's answer and for the full-screen rooms. Not part of F-012. |
 | Q12 | Lucas (Gate B playtest, 2026-11-18) | "The dash that the player has need to have a recovery" | no | → Combat. Today: 0.35 s cooldown, no end-lag. Options put to Lucas in chat (longer cooldown, or end-lag plus cooldown). Not part of F-012. |
 | Q13 | Lucas (Gate B playtest, 2026-11-18) | "the map of the game I actually want to be in the whole screen"; "in the future I wanna add more design for the room etc so that's why I wanna the room to be full screen" | no | → Floors. The lead proposed: every room and the town exactly one screen (40 × 22 tiles), fixed camera. Waits for Lucas's answer. Not part of F-012. |
+| Q14 | Auditor (lead) | → Lucas (review CR-23): the heal message is `+30 HP` for a room clear and for the boss room's refill alike, and returning to town at full HP says nothing. Should the two be told apart ("Room cleared +30 HP", "Boss room: HP restored"), and should the town say anything? | no | |
 
 ---
 
