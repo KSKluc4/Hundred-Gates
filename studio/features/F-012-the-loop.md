@@ -1,8 +1,8 @@
 ---
 id: F-012
 title: The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-011, D-005, D-006, D-010, D-012, D-013]
@@ -126,8 +126,8 @@ It merges three rows of `PHASE1.md`: F-012 (progression), F-013 (minimal town) a
 | C6 | Leaving a floor: only through the exit of its cleared boss room (`report_floor_exited()` is refused otherwise). The session then goes to the town. | Lucas, 2026-11-18 |
 | C7 | `TowerProgress` and `TowerSession` have `to_dict()` / `from_dict()`. A snapshot that doesn't fit (wrong floor count, a cleared floor above an uncleared one, a boss reached on a locked floor, a cleared floor whose boss isn't reached, unknown place, floor out of range) is refused and changes nothing. The session's snapshot includes whether the floor was cleared during this visit; that flag may be true only on a floor (review round 1, CR-5). | G7 |
 | C8 | The town is a `RoomData` with `is_safe_room = true`: no spawns, no enemies, never a boss room. `FloorData.validate()` refuses a safe room inside a floor. All other room rules (F-011/C16) apply to the town unchanged. Its `E` run is the tower gate. | D-012: one room format |
-| C9 | `TowerData` (`data/floors/tower.tres`) lists the town and the floors in order; `floors[i].floor_number == i + 1`; room ids are unique across the tower. Invalid data is refused, never repaired: `Game` and `TownScene` build nothing and log every error. | G9, F-011/C8 |
-| C10 | The gate list opens when the player's logic position enters a gate tile (`TownGate.check()`), once per entry: it can't open again until the player has been off the gate tiles. Opening the list **engages** the gate (state in `TownGate`): while it is engaged the player takes no input and is held on the position they had when it engaged, every tick, also through a dash. Closing the list without a choice releases the gate, puts the player back on the walkable tile just inside it, and gives input back on the next physics tick, after the room's runner has run, so the key that closed the list can't also act in the room (review round 1, CR-1, CR-2, CR-9). | G6; nothing lies beyond a door |
+| C9 | `TowerData` (`data/floors/tower.tres`) lists the town and the floors in order; `floors[i].floor_number == i + 1`; room ids are unique across the tower. Invalid data is refused, never repaired: `Game` and `TownScene` build nothing and log every error. The town scene, like the floor scene (F-011/C6), must sit at the world origin with no rotation or scale: positions are read from global positions against the room's own tiles, and any other placement is a setup error (review rounds 1 and 2, CR-13). | G9, F-011/C8 |
+| C10 | The gate list opens when the player's logic position enters a gate tile (`TownGate.check()`), once per entry: it can't open again until the player has been off the gate tiles. Opening the list **engages** the gate (state in `TownGate`): while it is engaged the player takes no input and is held on the position they had when it engaged, every tick, also through a dash. Closing the list without a choice releases the gate, puts the player back on the walkable tile just inside it, and gives input back on the next physics tick, after the room's runner has run, or later if a dash was running or buffered when the list closed: the player is kept on that tile until it has ended. So the key that closed the list can't also act in the room (review round 1, CR-1, CR-2, CR-9; round 2, CR-14). | G6; nothing lies beyond a door |
 | C11 | **No behaviour change for F-011's scenes.** `FloorScene`'s new exports default to F-011's behaviour (`death_restarts_room = true`, `debug_keys_enabled = true`, `debug_label_visible = true`). No existing test file is edited, except `tests/test_input_map.gd` if an input action is added (none is planned). All 1135 tests on the F-011 branch stay green. | Regression safety |
 | C12 | `Game` never frees or replaces the scene it shows from inside a signal of that scene. Handlers only report to the session; `Game._physics_process` (physics priority 2, after `FloorScene`'s 1) compares what is shown with what the session says and rebuilds then. | Freed-while-running crashes |
 | C13 | The HUD decides nothing and nothing reads it. It reads the player's `CombatState` through a provider every frame (the player node is rebuilt every room), so it can't go stale. | G6 |
@@ -175,7 +175,7 @@ the F5 reload in debug scenes, snapshots.
 **Town (T5)**
 - [ ] AC20: A `TownScene` built from a fixture safe room has the walls, the player at `P` at full HP, no enemies, a `CombatRunner` with no setup errors, and its gate body has no collision. A scripted player can walk around. An invalid town room builds nothing and reports the errors.
 - [ ] AC21: Walking the scripted player onto a gate tile opens the gate menu within one tick, listing exactly `TowerProgress.get_entries()` in order plus a last "stay" entry. While the gate is engaged the player takes no input and stays exactly on the position they had when the list opened, checked over 60 ticks for a player who walked in and for one who dashed in (review round 1, CR-1).
-- [ ] AC22: Choosing an entry emits `floor_chosen(floor_number, at_boss)` once and closes the menu. Closing without choosing (the stay entry or `ui_cancel`) emits nothing, puts the player on `TownGate.get_return_position_tiles()`, gives input back on the next tick, and the menu doesn't reopen until the player has left and re-entered the gate. Closing it with a real Space key press (`ui_accept` and `dodge` at once) or a click doesn't make the player dodge or attack (review round 1, CR-2).
+- [ ] AC22: Choosing an entry emits `floor_chosen(floor_number, at_boss)` once and closes the menu. Closing without choosing (the stay entry or `ui_cancel`) emits nothing, puts the player on `TownGate.get_return_position_tiles()`, gives input back on the next tick (later if a dash is still running or buffered), and the menu doesn't reopen until the player has left and re-entered the gate. Closing it with a real Space key press (`ui_accept` and `dodge` at once) or a click doesn't make the player dodge or attack (review round 1, CR-2).
 - [ ] AC23: `GateMenu`: entry text comes from one static function (`Floor 1 — from the start`, `Floor 1 — at the boss`, with ` (cleared)` appended for a cleared floor); focus starts on the last floor entry; `move_up` / `move_down` and `ui_up` / `ui_down` move the focus; `ui_accept` or `interact` chooses. A held stick moves the focus one step per push, not one per motion event (review round 1, CR-3).
 - [ ] AC24: In the town, with debug keys on, `debug_next_room` (N) clears the highest unlocked floor in the injected progress; with them off it does nothing.
 
@@ -393,7 +393,8 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   read this branch as the diff from `a864404`.
 - DEV-3: Implementer sub-agents write files. — **Why:** D-013. — **Impact:** the lead gates
   and commits every task.
-- DEV-4: AC21 was reworded by the lead before T5 started: "position doesn't change over 60
+- DEV-4 (superseded by DEV-12: AC21 was replaced again in review round 1 and now asks for an
+  exact hold): AC21 was reworded by the lead before T5 started: "position doesn't change over 60
   ticks" became "after the motor's own deceleration the position doesn't change, and it ends
   at most 1 tile from where the menu opened". — **Why:** with input off the motor still
   decelerates; the first wording could not be met without a new stop rule in core. —
@@ -422,6 +423,11 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   `TownGate` contract (each marked "review round 1"). — **Why:** CR-1, CR-2, CR-3, CR-4, CR-5
   and CR-9 showed the rules as written were incomplete. — **Impact:** `TownGate` gains an
   engaged state; the session snapshot gains one key.
+- DEV-13: `TownScene` refuses any global transform but the identity as a setup error
+  (`ec5b964`), a rule the spec did not have until review round 2 put it in C9 (CR-13). —
+  **Why:** F-011's review found the same defect in the floor scene (its CR-4); the town builds
+  its room the same way. — **Impact:** one more setup error; `Game` adds both scenes under a
+  plain `Node`, so nothing shipped is affected.
 - DEV-10: one sentence of F-011's README paragraph was reworded (the floor debug scenes are no
   longer "placeholders until the loop is wired"). — **Why:** it became false. — **Impact:** none.
 - DEV-5: `# gdlint:disable=max-public-methods` on six long test files
@@ -470,8 +476,9 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   not a press. `choose()` and `cancel()` do nothing while closed. The list has no scrolling:
   fine for 3 floors, not for 100 (§10 Q5).
 - ASSUMPTION-14 (T5): on a setup error the town's debug key is off too and `get_progress()` is
-  null unless one was injected. After a cancel the player is put on the return tile with the
-  motor's velocity left as it is (at most about 0.1 tile of drift, off the gate).
+  null unless one was injected. After a cancel the player is put on the return tile and kept
+  there until any running or buffered dash has ended (review round 1, CR-2; the "0.1 tile of
+  drift" this entry first described no longer exists).
 - ASSUMPTION-15 (T6): the gate is x = 10..13, so its centre line is a tile edge and `P` can't
   sit exactly under it: `P` is at tile (12, 10), half a tile right (corrected in review round 1, CR-11: the log first said (11, 10)). The two blocks are at
   (7..8, 4..5) and (15..16, 4..5), mirrored about the gate's centre line. The fixture
@@ -510,9 +517,9 @@ _Skipped for this feature by Lucas's instruction (D-013). The code review (§9) 
   while open. `dodge` (Space) is also `ui_accept` (§10 Q6). If `Game` ever refused a choice
   the town would leave the player without input; it can't today because the list is exactly
   what the session accepts.
-- **The player can stand slightly outside the room on the gate tiles** (about 0.1 tile of
-  deceleration drift): the open gate has no collision and nothing lies beyond it. A cancel
-  puts the player back inside (C10).
+- **The player is held exactly where the list opened** (review round 1, CR-1), on a gate tile
+  of the border row; the open gate has no collision and nothing lies beyond it, so the hold is
+  what keeps the player in the room. A cancel puts the player back inside (C10).
 - **Found, not fixed (F-011 code):** the boss bar's label in `room.gd` is 23 px tall for 8 px
   text, because its size is set before the font override. The text is top-aligned so it looks
   right; only the control's rectangle is oversized (§10 Q7).
@@ -746,6 +753,76 @@ full heal: turn them off before a stranger plays (slice 3).
 gamepad and mouse variants are reasoned, not run); shipped bosses fighting a dead player for
 the whole pause; five of the data-test files were read by test name and in part, not line by
 line.
+
+<!-- review-round: 2 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** c22e990 (code as of `ec5b964`; the round 1 fixes are `9216679..ec5b964`,
+including the merge `7f71ab5` of F-011's fixes)
+
+**Date:** 2026-11-18 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+How this round was done: a fresh reviewer sub-agent that did neither round 1 nor any fix
+extracted HEAD into a scratch folder and ran there. Baseline: the 9 test scripts the fixes
+touch, 349/349. Then, in a second copy, it removed each fix in turn and reran them: 34 tests
+failed, each one belonging to the fix that was removed. It also wrote its own probes for the
+gate list, the town and the game. The lead recorded the result below. No existing test was
+weakened: the edits to old tests are the ones the amended C7 and C10 require.
+
+One round 1 finding is not resolved (CR-3), and the fixes added a rule the spec doesn't state
+(CR-13). Everything else is resolved or validly accepted, and the probes of the engaged gate,
+the cancel path, the death pause and the snapshot flag found nothing broken.
+
+### Round 1 findings
+
+| Finding | Result | Evidence |
+|---|---|---|
+| CR-1 | ✔ resolved | `town_gate.gd:29`, `town_scene.gd:70`. Without the hold exactly the six AC21 tests fail. Probe: dashes from four distances at 30 and 60 ticks/s (the tests use 120) were held on the gate row, 0 ticks off position in 60. |
+| CR-2 | ✔ resolved | `town_scene.gd:73`, `:163`, `:179`. With input given back in the handler 4 tests fail, the real-Space one included; with the dash wait removed 2 fail. The player can't be left without input: a dash always ends and a buffered dash expires after 0.12 s. A click on "Stay in town" is still untested; the reasoning in the reply holds. |
+| CR-3 | ✘ not resolved | See below. |
+| CR-4 | ✔ resolved | `floor_scene.gd:72`, `:90`. Without it 4 floor-scene tests and the game test fail. Every rebuild makes a new player with input as built. The default path is untouched; between `a864404` and HEAD only F-011's own two scene-test files changed. |
+| CR-5 | ✔ resolved | `tower_session.gd:148`, `:168`, `:187`. Without the restore the round-trip test fails. Refused in the town, in the death pause and on a floor the progress says is not cleared. |
+| CR-6 | ✔ accepted | §10 Q8 asks. |
+| CR-7 | ✔ accepted | Pinned by AC16's same-tick test. |
+| CR-8 | ✔ accepted | Unreachable until something restores a session. |
+| CR-9 | ✔ resolved | `town_scene.gd:70` asks `TownGate.is_engaged()`; `test_ac21_the_hold_does_not_depend_on_the_list_being_open`. |
+| CR-10 | ✔ resolved | `test_gate_menu.gd` `after_each` releases keys and axes and asserts nothing stays pressed; key events set both key codes. |
+| CR-11 | ✔ resolved | DEV-11; `town.tres` has `P` at (12, 10), as ASSUMPTION-15 now says. |
+| CR-12 | ✔ accepted | — |
+
+**CR-3 ✘ not resolved (🟡): one stick push still moves two steps.** Verified by running.
+- **Where:** `src/ui/town/gate_menu.gd:150`, `:168`, `:175`.
+- **Problem:** the fix tracks "already held" per action. Up is `[ui_up, move_up]`, both bound
+  to left stick up, with deadzones 0.5 (built-in) and 0.2 (`project.godot`). A push that ramps
+  crosses 0.2 on one event and 0.5 on a later one, and each crossing counts as a press. On a
+  five-entry list the values −0.1, −0.3, −0.45, −0.7, −1.0 moved the focus 4 → 3 → 2. A stick
+  resting at −0.4 when the list opens and then pushed to −0.9 moves one step. 1.0 → 0.4 → 0.6
+  without letting go counts as a new push.
+- **Why the tests miss it:** every stick test jumps from inside both deadzones straight to
+  −0.9 or −1.0. A real stick always passes through the values in between.
+- **Suggested fix:** track per direction, not per action: a stick event is a push only when no
+  action of that direction was held by the stick before it. Add a ramped-push test and a
+  partial-hold-at-open test.
+
+### New findings
+
+**CR-13 🟡 The town's origin rule is in the code but in no constraint.** Verified by reading.
+- **Where:** `src/world/town/town_scene.gd:114`. Its comment cites C9 (which is about
+  `TowerData`) and F-011's C6 (which names the floor scene only).
+- **Problem:** `ec5b964` added a setup error that only §8's Progress line and the CR-4 reply
+  mention. Read strictly an unlogged deviation is 🔴; it is written down in two places and is
+  the right behaviour, hence 🟡.
+- **Suggested fix:** one sentence in a constraint and a DEV line.
+
+**CR-14 🔵 §8 and the amended spec lag the fixed code.** Verified by reading. "The player can
+stand slightly outside the room on the gate tiles" and ASSUMPTION-14's "about 0.1 tile of
+drift" are no longer true; DEV-4 describes an AC21 wording that round 1 replaced; C10 and AC22
+say input comes back "on the next physics tick", while the code also waits for a running or
+buffered dash to end.
+
+**Not checked in this round:** a real keyboard, mouse or gamepad and a rendered frame (CR-3 is
+from synthetic motion events); a click on "Stay in town"; bosses attacking a dead player for
+the whole pause; a JSON round trip of the snapshots (both require `is int`, and Godot's JSON
+parser returns floats, so a JSON save would be refused: a note for slice 4).
 
 ---
 
