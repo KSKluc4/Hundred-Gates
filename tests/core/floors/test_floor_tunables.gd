@@ -22,6 +22,15 @@ func test_shipped_file_is_valid_and_matches_the_design() -> void:
 	assert_eq(Tunables.floors.max_room_size, Vector2i(80, 46))
 	assert_eq(Tunables.floors.exit_min_width_tiles, 2)
 	assert_almost_eq(Tunables.floors.min_spawn_distance_tiles, 4.0, 0.0001)
+	# F-014/C4
+	assert_eq(Tunables.floors.wave_max_engaged, 3)
+	assert_almost_eq(Tunables.floors.wave_spawn_warning_duration, 0.8, 0.0001)
+	assert_almost_eq(Tunables.floors.wave_spawn_interval, 1.5, 0.0001)
+	assert_almost_eq(Tunables.floors.wave_min_spawn_distance_tiles, 6.0, 0.0001)
+	assert_almost_eq(Tunables.floors.wave_spawn_gap_tiles, 1.5, 0.0001)
+	assert_eq(Tunables.floors.wave_min_arrival_points, 2)
+	assert_eq(Tunables.floors.max_kill_target, 30)
+	assert_eq(Tunables.floors.wave_arrival_box_tiles, Vector2(19, 10))
 
 
 func test_ac4_rejects_a_heal_fraction_outside_zero_to_one() -> void:
@@ -76,6 +85,95 @@ func test_every_error_is_returned() -> void:
 	_tunables.room_clear_heal_fraction = 2.0
 	_tunables.max_enemies_per_room = 0
 	assert_eq(_tunables.validate().size(), 2)
+
+
+# --- F-014 T1 (AC3): the wave tunables ---
+
+
+func test_ac3_rejects_a_wave_max_engaged_below_one() -> void:
+	_tunables.wave_max_engaged = 0
+	_assert_one_error("wave_max_engaged must be >= 1")
+	_tunables.wave_max_engaged = 1
+	assert_eq(_tunables.validate(), PackedStringArray())
+
+
+func test_ac3_rejects_a_negative_warning_duration_and_accepts_zero() -> void:
+	_tunables.wave_spawn_warning_duration = -0.1
+	_assert_one_error("wave_spawn_warning_duration must be >= 0")
+	_tunables.wave_spawn_warning_duration = 0.0
+	assert_eq(_tunables.validate(), PackedStringArray())
+
+
+func test_ac3_rejects_a_negative_spawn_interval_and_accepts_zero() -> void:
+	_tunables.wave_spawn_interval = -1.0
+	_assert_one_error("wave_spawn_interval must be >= 0")
+	_tunables.wave_spawn_interval = 0.0
+	assert_eq(_tunables.validate(), PackedStringArray())
+
+
+func test_ac3_rejects_a_negative_min_spawn_distance_and_accepts_zero() -> void:
+	_tunables.wave_min_spawn_distance_tiles = -0.5
+	_assert_one_error("wave_min_spawn_distance_tiles must be >= 0")
+	_tunables.wave_min_spawn_distance_tiles = 0.0
+	assert_eq(_tunables.validate(), PackedStringArray())
+
+
+func test_ac3_rejects_a_negative_spawn_gap_and_accepts_zero() -> void:
+	_tunables.wave_spawn_gap_tiles = -2.0
+	_assert_one_error("wave_spawn_gap_tiles must be >= 0")
+	_tunables.wave_spawn_gap_tiles = 0.0
+	assert_eq(_tunables.validate(), PackedStringArray())
+
+
+func test_ac3_rejects_fewer_than_one_arrival_point_and_a_kill_target_limit_below_one() -> void:
+	_tunables.wave_min_arrival_points = 0
+	_assert_one_error("wave_min_arrival_points must be >= 1")
+	_tunables.wave_min_arrival_points = 1
+	assert_eq(_tunables.validate(), PackedStringArray())
+	_tunables.max_kill_target = 0
+	_assert_one_error("max_kill_target must be >= 1")
+	_tunables.max_kill_target = 1
+	assert_eq(_tunables.validate(), PackedStringArray())
+
+
+func test_ac3_rejects_an_arrival_box_that_is_not_positive_on_both_axes() -> void:
+	_tunables.wave_arrival_box_tiles = Vector2(0.0, 10.0)
+	_assert_one_error("wave_arrival_box_tiles must be > 0")
+	_tunables.wave_arrival_box_tiles = Vector2(19.0, -1.0)
+	_assert_one_error("wave_arrival_box_tiles must be > 0")
+	_tunables.wave_arrival_box_tiles = Vector2(0.5, 0.5)
+	assert_eq(_tunables.validate(), PackedStringArray())
+
+
+func test_ac3_a_nan_fails_every_float_check() -> void:
+	_tunables.wave_spawn_warning_duration = NAN
+	_assert_one_error("wave_spawn_warning_duration")
+	_tunables.wave_spawn_warning_duration = 0.8
+	_tunables.wave_spawn_interval = NAN
+	_assert_one_error("wave_spawn_interval")
+	_tunables.wave_spawn_interval = 1.5
+	_tunables.wave_min_spawn_distance_tiles = NAN
+	_assert_one_error("wave_min_spawn_distance_tiles")
+	_tunables.wave_min_spawn_distance_tiles = 6.0
+	_tunables.wave_spawn_gap_tiles = NAN
+	_assert_one_error("wave_spawn_gap_tiles")
+	_tunables.wave_spawn_gap_tiles = 1.5
+	_tunables.wave_arrival_box_tiles = Vector2(NAN, 10.0)
+	_assert_one_error("wave_arrival_box_tiles")
+	_tunables.wave_arrival_box_tiles = Vector2(19.0, NAN)
+	_assert_one_error("wave_arrival_box_tiles")
+
+
+func test_ac3_every_bad_wave_value_is_its_own_error() -> void:
+	_tunables.wave_max_engaged = 0
+	_tunables.wave_spawn_warning_duration = -1.0
+	_tunables.wave_spawn_interval = -1.0
+	_tunables.wave_min_spawn_distance_tiles = -1.0
+	_tunables.wave_spawn_gap_tiles = -1.0
+	_tunables.wave_min_arrival_points = 0
+	_tunables.max_kill_target = 0
+	_tunables.wave_arrival_box_tiles = Vector2.ZERO
+	assert_eq(_tunables.validate().size(), 8, str(_tunables.validate()))
 
 
 func _assert_one_error(needle: String) -> void:
