@@ -21,7 +21,10 @@ func before_each() -> void:
 	Engine.physics_ticks_per_second = RATE
 
 
+## One frame passes first: a room swapped in the test's last frame is queued, not yet freed, and
+## GUT would count it as an orphan (DEV-13). GUT awaits this hook.
 func after_each() -> void:
+	await get_tree().process_frame
 	Engine.physics_ticks_per_second = _ticks_per_second_before
 
 

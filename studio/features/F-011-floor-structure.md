@@ -1,8 +1,8 @@
 ---
 id: F-011
 title: Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-004, F-005, F-006, F-007, F-008, F-009, D-006, D-007, D-008, D-011, D-012]
@@ -308,6 +308,7 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - [x] Review round 1 fixes — CR-2 fefa482, CR-8 85d7646, CR-4 eb2b7fe, CR-3 6165d01 (replies in §9)
 - [x] Review round 2 note — CR-11 2c71d51
 - [x] Gate B playtest fix — camera lost on a walked-in room, c40c2a6 (§10 Q6, DEV-13). Gate: 1157/1157 tests (7 new, 4 of which fail without the fix), lint, format and purity clean.
+- [x] Review round 3 follow-ups — CR-12, CR-13, CR-14 df6d51a. Correction to the line above: the four symptom tests failed only sometimes without the fix; with the follow-ups, 9 tests fail in 5 of 5 runs without it. Gate: 1160/1160 tests, lint, format and purity clean, no orphan line.
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -365,7 +366,9 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
   new camera when it makes one current. — **Impact:** the old room is out of the tree in the
   same tick as before and nothing of it runs again; its memory goes at the end of the frame.
   The two asserts that read "freed in the same tick" now read "out of the tree, freed by the
-  end of the frame".
+  end of the frame". Side effect: a test that ends in the same frame as a swap leaves the old
+  room alive for GUT's orphan count, so `F011SceneTest.after_each()` now lets the frame end
+  (review round 3, CR-14).
 
 ### Assumptions made (small, reversible)
 - ASSUMPTION-1: tile size stays 16 px and rooms are at most 40 × 22 tiles (one 640 × 360
@@ -672,6 +675,59 @@ anything by hand.
 enemies (10 + 17 + 15), not the 41 written in round 2 above and in the CR-11 reply. The new
 assert holds for all 42.
 
+<!-- review-round: 3 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** c40c2a6 (the Gate B camera fix, DEV-13), read on the F-012 branch at 827c631
+
+**Date:** 2026-11-18 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+A fresh reviewer sub-agent that did no earlier round, on an extracted copy. `queue_free()`
+after `remove_child()` is a root-cause fix for every room and scene swap in `src/`: a probe of
+12 walk-throughs with death restarts, 10 N and 10 R key presses through input, and a walk, R and
+N in one frame kept the camera every time; so did three rounds of town → floor → boss → town in
+the game. Nothing of the old room runs or is reachable after the swap: every signal connection
+is inside the room or between nodes that outlive it, and `Game.get_player()` and the HUD read
+the new room. No code or test still assumes a same-tick free.
+
+### Findings
+
+**CR-12 🟡 The record says the input path was safe; it was not, and two tests miss it.**
+Verified by running a probe with and without the fix.
+- **Where:** §10 Q6 ("Called from input or idle (N, R) there is no pass running, so it
+  works"); the comment in `floor_scene.gd` above the `queue_free()`; the skip and restart
+  camera tests in `test_f011_flow.gd`.
+- **Problem:** with `free()` restored, rooms reached by pressing N or R (real key events) lose
+  the camera too: all 10 N and all 10 R presses failed in 2 of 3 runs. The engine keeps the
+  same removed-node list while it dispatches input. The two tests call `skip_room()` /
+  `restart_room()` directly between ticks, the one context that never broke.
+- **Suggested fix:** correct the record and the comment; make the two tests press the keys.
+
+> **Builder reply (lead):** fixed in `df6d51a`. The lead's diagnosis in Q6 was wrong on that
+> point: its own probe called `skip_room()` from `_process`, not through a key event. The
+> correction is appended to Q6 (the original text is left as written). The comment now says
+> "inside a processing pass or an input callback". The two tests press N and R through the
+> real input path, with the direct-call versions kept as guards.
+
+**CR-13 🔵 The four symptom tests fail only sometimes without the fix.** Verified by running
+4 times: address reuse depends on the allocator; the reliable guard was the same-tick assert
+in the AC18 and AC20 tests. §8's "4 of which fail without the fix" overstates them.
+
+> **Builder reply (lead):** fixed in `df6d51a`: a test walks twelve rooms in a row and checks
+> the camera after every swap. With `free()` restored, the same 9 tests failed in 5 of 5 runs
+> (the N and R key tests, the twelve-walk test, the four symptom tests, AC18 and AC20). §8's
+> line is corrected below it.
+
+**CR-14 🔵 GUT's orphan warnings can no longer flag a real leak.** Verified by running: the
+counts are exact multiples of one room and appear only in tests that end on a swap; the orphan
+node count is 0 one frame later, so there is no leak, but the line is now noise in those tests.
+
+> **Builder reply (lead):** fixed in `df6d51a`: `F011SceneTest.after_each()` lets the frame
+> end before the test finishes. The F-011 scene tests print no orphan line now. Named in
+> DEV-13.
+
+**Not checked in this round:** the engine's source (the mechanism matches every probe but was
+not read in 4.7.2's code); a windowed run; other allocators or platforms.
+
 ---
 
 ## 10. Open Questions  ·  _Anyone (append)_
@@ -683,7 +739,7 @@ assert holds for all 42.
 | Q4 | Lead | → Combat: found in T5's scene tests. (a) A caster inside its stop distance (6 tiles) never routes: behind a wall it holds and shoots the wall for as long as the player stays put. Not a softlock (the player can walk to it), but it never repositions for a clear line. (b) A brute whose target is 3–7 tiles away behind a pillar charges the pillar and stuns itself, then walks round. Both follow from C3 (attack choice ignores walls). Keep as cover play, or teach attack choice about line of sight? | no | |
 | Q3 | Lead | → Lucas: starting values to judge at Gate B — heal 30 %, room sizes, enemy counts per room (`studio/design/floors.md`). | no | |
 | Q5 | Lead | → Lucas: should "`P` and `E` sit on opposite sides of the room" be enforced by validation? It was listed as enforced when you gave Gate A and is a guideline now (DEV-8, review CR-1). All 15 shipped rooms comply. Enforcing it means defining "opposite" (opposite walls only?) and limits rooms like a loop or an L. | no | |
-| Q6 | Lucas (Gate B playtest, 2026-11-18) | "like the photo some rooms are not moving around and it stays on the conner like that one" (screenshot: floor 2, room 2 of 4, drawn in the top-left corner of the window, the player off-centre). | yes | **Diagnosis (lead, reproduced with a scripted run of `main.tscn`):** a room entered by walking through the opened exit has no current camera (`get_viewport().get_camera_2d()` is null, canvas origin (0, 0)); a room reached with N or R, or from the town, has one. Cause: `FloorScene._build_room()` removes the old room and `free()`s it at once, inside `_physics_process`. While the scene tree runs a processing pass the engine remembers removed nodes by address and skips them in group calls; the new room's `Camera2D` can be allocated at an address just freed, and the group call that makes a camera current skips it. Called from input or idle (N, R) there is no pass running, so it works. Confirmed on a scratch copy: `queue_free()` instead of `free()` and the walked-in room keeps its camera. Fix: see §8 review-fix line and DEV-13. |
+| Q6 | Lucas (Gate B playtest, 2026-11-18) | "like the photo some rooms are not moving around and it stays on the conner like that one" (screenshot: floor 2, room 2 of 4, drawn in the top-left corner of the window, the player off-centre). | yes | **Diagnosis (lead, reproduced with a scripted run of `main.tscn`):** a room entered by walking through the opened exit has no current camera (`get_viewport().get_camera_2d()` is null, canvas origin (0, 0)); a room reached with N or R, or from the town, has one. Cause: `FloorScene._build_room()` removes the old room and `free()`s it at once, inside `_physics_process`. While the scene tree runs a processing pass the engine remembers removed nodes by address and skips them in group calls; the new room's `Camera2D` can be allocated at an address just freed, and the group call that makes a camera current skips it. Called from input or idle (N, R) there is no pass running, so it works. Confirmed on a scratch copy: `queue_free()` instead of `free()` and the walked-in room keeps its camera. Fix: see §8 review-fix line and DEV-13. **Correction (review round 3, CR-12):** N and R pressed as real keys were broken too; the engine keeps the same removed-node list while it dispatches input. The lead's probe had called `skip_room()` directly, which is the one path that worked. The fix covers every path. |
 
 ---
 
