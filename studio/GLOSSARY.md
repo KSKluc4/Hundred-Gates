@@ -37,7 +37,9 @@
 | Brain | The only per-archetype enemy code. Holds no state: reads the combat view and its own enemy, and returns an intent | `EnemyBrain`, `ChaserBrain` |
 | Intent | What a brain decided for one step: target, move direction, how far at most, and whether to start the attack | `EnemyIntent` |
 | Combat view | A read-only snapshot of every combatant (id, team, position, alive) at a step start, the same for everyone. All an enemy may know about the others | `CombatView` |
-| Aggro | An enemy has noticed a player: a living player came within `aggro_radius_tiles`, or it took damage. Once aggroed, it stays aggroed until the debug reset | `aggro_radius_tiles`, `is_aggroed()` |
+| Aggro | An enemy has noticed a player: a living player came within `aggro_radius_tiles`, it took damage, or it arrived as a reinforcement. Once aggroed, it stays aggroed until the debug reset | `aggro_radius_tiles`, `is_aggroed()` |
+| Engaged | An enemy that is alive and aggroed: on a player or on its way to one | `RoomWaves`, `max_engaged` |
+| Waiting | The state of a reinforcement before it arrives: in the sim's roster but not there for anyone. Not alive and not dead | `EnemyLogic.State.WAITING`, `is_waiting()` |
 | Target | The player an enemy is after: the nearest living one, ties to registration order. Picked at every decision, fixed during an attack | `get_target_id()` |
 | Aim tracking / Aim lock | During an enemy's windup its aim follows the target until `aim_track_time`; from then on it is locked and never changes. The locked tail is what the player reads | `aim_track_time`, `is_aim_locked()` |
 | Lunge | An enemy attack's movement along its locked aim during active, at constant speed. Walls stop it | `lunge_tiles` |
@@ -70,7 +72,16 @@
 | Boss reached | The character has entered that floor's boss room at least once, so the floor may be started there (D-006) | `is_boss_reached()` |
 | Tower progress | Which floors a character has cleared and which boss rooms it has reached | `TowerProgress` |
 | Exit | The run of `E` tiles on a room's border. A door covers it until the room is cleared; standing on it then moves the player on. In the town it is the tower gate | `get_exit_tiles()`, `is_exit_reached()` |
-| Room clear | Every enemy in the room's sim is dead. Read from logic each time, never stored in the glue. Opens the exit and gives the room-clear heal | `Room.is_cleared()`, `report_room_cleared()` |
+| Placed enemy | An enemy that stands in a room from the start, on its spawn tile (a digit in the grid) | `RoomData.get_spawns()` |
+| Reinforcement | An enemy that arrives during the fight. Listed in the room's data in arrival order; held waiting in reserve until then | `RoomData.reinforcements`, `get_reinforcement_spawns()` |
+| Reserve | A room's reinforcements that have not arrived yet | `Room.get_reserve_enemies()` |
+| Share | The part of the reserve that one placed enemy releases when it notices a player or dies. The reserve is split as evenly as it goes over the placed enemies | `RoomWaves.get_released_count()` |
+| Arrival point | A floor tile where a reinforcement may arrive (`S` in the grid). The director picks one near the player but not on them | `RoomData.get_arrival_points_tiles()`, `RoomWaves.choose_point()` |
+| Arrival box | How far from the player, horizontally and vertically, an arrival is preferred: about one screen | `wave_arrival_box_tiles` |
+| Warning | The time between an arrival being decided and the enemy appearing, shown as a marker on the arrival point | `wave_spawn_warning_duration`, `WaveMarkers` |
+| Kill target | How many kills clear a combat room: its placed enemies plus its reinforcements | `get_kill_target()` |
+| Director | The core object that sends a room's reinforcements. One per room with waves, stepped by the sim | `RoomWaves` |
+| Room clear | Nobody in the room's sim is alive and nobody is waiting: the kill target is reached. Read from logic each time, never stored in the glue. Opens the exit and gives the room-clear heal | `Room.is_cleared()`, `report_room_cleared()` |
 | Floor run | One visit to a floor: which room the player is in and the HP they carry between rooms | `FloorRun` |
 | Nav grid | A room's walls as walkable tiles, used by enemy brains only to choose a walking direction when the straight line is blocked (D-012) | `NavGrid`, `EnemyBrain.steer()` |
 | Pinch | A 1-tile opening between two wall corners. Refused by room validation: bodies are up to 1.2 tiles wide | `pinch` rule in `RoomData.validate()` |
