@@ -220,20 +220,22 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 | C7 | `TowerData.screen_size_tiles: Vector2i`, default `Vector2i.ZERO` (no rule): the screen this tower is built for, in tiles, rounded up. `TowerData.validate()` adds one error per town or floor room narrower or lower than it: `town: screen: room <id> is W x H, smaller than one screen (SW x SH)` and `floor <n>: screen: room <id> is …`. The shipped `tower.tres` sets `Vector2i(40, 23)`. A test checks that the shipped value covers the project viewport (`ceil(viewport / Units.TILE_SIZE_PX)` on both axes). | The one-screen rule, without touching fixtures. Named apart from `FloorTunables.min_room_size`, which means "what can be built at all" |
 | C8 | `FloorTunables.min_room_size` stays 8 × 6. The shipped `max_room_size` becomes 80 × 46. Every other room rule of F-011/C16 and F-012/C8 is unchanged and every shipped room passes all of them. | §3 |
 | C9 | The shipped rooms are redrawn as the table below this one gives, each keeping its enemy list (same `EnemyData`, same counts). Where the table leaves a position open, the implementer chooses, within the rules of C10. The lead looks at every grid before the tests that pin it are committed. | What Lucas approved; plan review PR-7 |
-| C10 | Shipped-room rules, each checked by a test over every shipped room it applies to. **New:** (a) in a combat room at least one spawn is on screen when the room starts: within 18 tiles horizontally and 9 vertically of `P`, centre to centre. (b) In a room with a brute or the Juggernaut no walkable tile is more than 8 tiles (the larger of the x and y distance) from a wall tile, so the player is never far from something to put behind them; this is a spacing rule of thumb, not a proof that every charge can be baited. (c) The Juggernaut's room holds an all-walkable rectangle 20 tiles wide and 12 high that contains the boss's spawn tile. (d) No attack starts off screen: the longest range at which any shipped enemy starts an attack is below 11 tiles (half a screen's height is 11.25). **Kept from F-011, still binding on the redraw:** spawns at least 1.5 tiles apart; every spawn outside its own aggro radius from `P`; `P` and `E` on opposite sides; room 1-3's two pairs more than 7 tiles apart and its wall's two gaps; floor 2's casters behind chasers or behind cover; the long straight lane of the floor 3 brute rooms; the Warden's room has no interior wall; the Hexer's room has exactly four separate 2 × 2 blocks with the Hexer in the clear area between them. **Replaced:** see C16. | The bigger rooms must still teach what the small ones did; plan review PR-5, PR-6, PR-14 |
+| C10 | Shipped-room rules, each checked by a test over every shipped room it applies to. **New:** (a) in a combat room at least one spawn is near `P` when the room starts: within 18 tiles horizontally and 9 vertically, centre to centre. That is stricter than "on screen" (from a `P` at the west wall the limited camera shows 40 columns), on purpose: the first target is close. (b) In a room with a brute or the Juggernaut no walkable tile is more than 8 tiles (the larger of the x and y distance) from a wall tile, so the player is never far from something to put behind them; this is a spacing rule of thumb, not a proof that every charge can be baited. (c) The Juggernaut's room holds an all-walkable rectangle 20 tiles wide and 12 high that contains the boss's spawn tile. (d) No attack starts off screen: the longest range at which any shipped enemy starts an attack is below 11 tiles (half a screen's height is 11.25). **Kept from F-011, still binding on the redraw:** spawns at least 1.5 tiles apart; every spawn outside its own aggro radius from `P`; `P` and `E` on opposite sides; room 1-3's two pairs more than 7 tiles apart and its wall's two gaps; floor 2's casters behind chasers or behind cover; the long straight lane of the floor 3 brute rooms; the Warden's room has no interior wall; the Hexer's room has exactly four separate 2 × 2 blocks, the Hexer in the clear area between them, that area an arena as the existing test defines it, and a block breaking the straight line from the Hexer to `P`. **Replaced:** see C16. | The bigger rooms must still teach what the small ones did; plan review PR-5, PR-6, PR-14 |
 | C11 | The town is 64 × 36. The tower gate is 4 tiles wide on the north border, tiles x 30 to 33. `P` is the tile (32, 9), so the gate is on screen at the start. Blocks: 2 × 2 at tiles (26..27, 4..5) and (36..37, 4..5) flanking the path, and 3 × 3 at (14..16, 20..22), (47..49, 20..22), (14..16, 28..30), (47..49, 28..30). Nothing else. It stays a safe room and every F-012 gate behaviour is unchanged. This overrides two lines of `design/floors.md`, Town (§3, costs). | Lucas approved "about 64 × 36, gate on the north wall"; the rest is the lead's layout (§10 Q1) |
 | C12 | `ClassData.dash_recovery_duration: float`, seconds, default 0.0, `validate()` refuses a negative value. `data/classes/warrior.tres` sets 0.12. | G2; a default of 0 keeps every fixture's behaviour |
-| C13 | Dash recovery rules. (a) It starts at the instant a dash completes its full duration, and only then: a dash ended by a hit has none. (b) It is a new `PlayerMotor.State.DASH_RECOVERY`, appended after `KNOCKBACK` so existing values keep their numbers. When `dash_ended` is emitted the state already reads `DASH_RECOVERY` (or `IDLE` when the latched duration is 0, as today). (c) While it lasts: velocity is zero, movement input is ignored, no attack and no dash can fire, presses go into the existing buffers, **the ages of both buffers do not advance** (as during hitstop), facing still updates, the dash cooldown keeps counting (it started when the dash ended, as before). (d) It ends exactly `dash_recovery_duration` after it started, in the motor's exact time segments; a buffered action that is allowed fires at that same instant, by the existing rule (the dash wins over the attack). An attack buffered during the dash and still inside its window when the dash ended therefore fires when the recovery ends. (e) A hit during recovery ends it and is handled as any other hit. (f) The duration is latched when the dash fires, with the other dash values (F-001/C17). (g) With a latched value of 0 the state is never entered and the motor behaves exactly as before this feature. (h) I-frames are unchanged: the player can be hit during recovery. | `design/combat.md`, Dash and principle 3; G1; plan review PR-1 |
+| C13 | Dash recovery rules. (a) It starts at the instant a dash completes its full duration, and only then: a dash ended by a hit has none. (b) It is a new `PlayerMotor.State.DASH_RECOVERY`, appended after `KNOCKBACK` so existing values keep their numbers. When `dash_ended` is emitted the state already reads `DASH_RECOVERY` (or `IDLE` when the latched duration is 0, as today). (c) While it lasts: velocity is zero, movement input is ignored, no attack and no dash can fire, presses go into the existing buffers, **the ages of both buffers do not advance** (as during hitstop; decided per time segment from the state at the segment's start, so the dash's own last segment still ages them), facing still updates, the dash cooldown keeps counting (it started when the dash ended, as before). (d) It ends exactly `dash_recovery_duration` after it started, in the motor's exact time segments; a buffered action that is allowed fires at that same instant, by the existing rule (the dash wins over the attack). An attack buffered during the dash and still inside its window when the dash ended therefore fires when the recovery ends. (e) A hit during recovery ends it and is handled as any other hit. (f) The duration is latched when the dash fires, with the other dash values (F-001/C17). (g) With a latched value of 0 the state is never entered and the motor behaves exactly as before this feature. (h) I-frames are unchanged: the player can be hit during recovery. | `design/combat.md`, Dash and principle 3; G1; plan review PR-1 |
 | C14 | The recovery is part of the snapshot: `SNAPSHOT_KEYS`, `to_dict` and `from_dict` gain `dash_recovery_duration` (the latched value) and `dash_recovery_remaining`. A snapshot taken in mid-dash restores a dash that is followed by the same recovery; one taken in mid-recovery restores the same remaining time. | G7; plan review PR-10 |
 | C15 | No signal is removed or renamed. `dash_ended` is still emitted when the dash motion ends. | F-001 views and tests |
-| C16 | The old suite stays the proof that nothing else moved. A pre-existing test changes only as listed here, and every change is listed in §8 with its reason. **(1) Helpers:** `tests/core/player/motor_harness.gd` and `tests/core/combat/combat_arena.gd` set `dash_recovery_duration = 0.0` on their copy of the Warrior, so F-001's and F-003's core tests and their hand-worked timings stay as they are. A scene test of F-001 to F-009 that dashes with the real player scene does the same on its own player where its helper allows it; where it cannot, its expected value is recomputed by hand and the working is written in §8 (known case: `tests/scenes/test_f003_physics.gd`, the F-003 AC22 timing). **(2) Geometry pins** of the shipped rooms and town (coordinates, sizes) follow the new grids. **(3) Rule pins replaced:** `test_pin_every_room_fits_one_screen` (now: at least one screen, C7); `test_pin_every_room_is_within_two_tiles_of_the_design_table` (now: exactly the table's size); `test_ac27_juggernaut_room_has_no_interior_wall_and_enough_open_floor` (now C10 b and c); in `test_shipped_tower.gd`: `…town_is_24_by_14…`, `…player_start_is_in_the_lower_half`, `…town_has_exactly_two_two_by_two_blocks`, `…blocks_flank_the_path…` (now C11). **(4) The shipped value** of `max_room_size` where a test pins it. Every other pre-existing test, and every test built on fixtures, passes unchanged. | Plan review PR-4, PR-5 |
-| C17 | `NavGrid` gets cheaper **without changing any result**. (a) The allowed steps of every tile are computed once, in `from_rows()`. (b) The flow field is settled lazily: `direction_toward()` runs the Dijkstra pass only until the tiles it reads are final, and a later call for the same goal resumes it. (c) `has_clear_line()` visits only the tiles the swept segment can touch. Proof: a copy of today's `nav_grid.gd` is kept under `tests/` as a reference, and for the fixture rooms, a 64 × 36 room with blocks and at least 500 seeded random pairs per room, `direction_toward()` and `has_clear_line()` return exactly what the reference returns. `get_field_builds()` keeps its meaning (one per new goal). The worst and typical cost of both calls in a 64 × 36 room, before and after, is recorded in §8. **Target:** the navigation work of one physics tick in the largest shipped room with every enemy chasing stays under 8 ms worst case on this machine's console binary. If the target is missed, it becomes a blocking §10 question for Lucas with the numbers; no redesign inside this feature. | A flow-field build in the new rooms costs 14–27 ms today (plan review PR-2) |
+| C16 | The old suite stays the proof that nothing else moved. A pre-existing test changes only as listed here, and every change is listed in §8 with its reason. **(1) Helpers:** `tests/core/player/motor_harness.gd` and `tests/core/combat/combat_arena.gd` set `dash_recovery_duration = 0.0` on their copy of the Warrior, so F-001's and F-003's core tests and their hand-worked timings stay as they are. A scene test of F-001 to F-009 that dashes with the real player scene does the same on a duplicate of its player's class data, never on the cached resource itself (known case: `tests/scenes/test_f003_physics.gd`, the F-003 AC22 timing, through `F003SceneTest.spawn(prepare)`); only where a helper offers no such hook is the expected value recomputed by hand, with the working in §8. **(2) Geometry pins** of the shipped rooms and town (coordinates, sizes) follow the new grids. **(3) Rule pins replaced:** `test_pin_every_room_fits_one_screen` (removed in T2; its successor is C7's rule and AC9, which arrive in T6 when every room is redrawn); `test_pin_every_room_is_within_two_tiles_of_the_design_table` (now: exactly the C9 table's size, floor by floor as T2 to T4 land); `test_ac27_juggernaut_room_has_no_interior_wall_and_enough_open_floor` (now C10 b and c); in `test_shipped_tower.gd`: `…town_is_24_by_14…`, `…player_start_is_in_the_lower_half`, `…town_has_exactly_two_two_by_two_blocks`, `…blocks_are_symmetric_about_the_gate_centre_line`, `…blocks_flank_the_path…` (now C11: six blocks, still symmetric about the gate's centre line, the two 2 × 2 ones flanking the path). **(4) The shipped value** of `max_room_size` where a test pins it. Every other pre-existing test, and every test built on fixtures, passes unchanged. | Plan review PR-4, PR-5 |
+| C17 | `NavGrid` gets cheaper **without changing any result**. At least: (a) The allowed steps of every tile are computed once, in `from_rows()`. (b) The flow field is settled lazily: `direction_toward()` runs the Dijkstra pass only until the tiles it reads are final, and a later call for the same goal resumes it. (c) `has_clear_line()` visits only the tiles the swept segment can touch. Any further change is allowed if the proof passes (the review's prototype needed the heap's push and pop written in place to reach the target). Proof: a copy of today's `nav_grid.gd` is kept under `tests/` as a reference, and on the fixture rooms and a 64 × 36 room with blocks `direction_toward()` and `has_clear_line()` return exactly what the reference returns, for seeded random inputs: at least 100 goals per room with at least 8 askers per goal in varying order, so that a half-settled field is resumed, with askers and goals inside walls, outside the grid, next to the goal and in a sealed pocket among them; and at least 2,000 line checks per room including segments between tile centres, axis-aligned and exactly diagonal ones, at radius 0 and at the bodies' radii. `get_field_builds()` keeps its meaning (one per new goal). The cost of both calls before and after, in T8's own 64 × 36 room with blocks, is recorded in §8, by the asker's distance (8, 24 tiles, across the room). **Worst case, measured by the lead after T4 on room 3-5:** the player's tile changes in a tick while an enemy chases from the far side of the room behind blocks. **Target:** that tick's navigation work stays under 8 ms on this machine's console binary. If the target is missed, it becomes a blocking §10 question for Lucas with the numbers; no redesign inside this feature. | A flow-field build in the new rooms costs 14–27 ms today (plan review PR-2) |
 | C18 | No new third-party dependency, no new autoload, no new input action. | G4 |
 
 **Room table for C9.** Sizes in tiles, border included. Every room keeps what it has today:
-`P` within 3 tiles of the west wall at mid height, and a 2-tile `E` on the east border at mid
-height. "On screen" means C10 (a). Blocks are at least 2 × 2 and at least 2 tiles from any wall
-or other block.
+`P` on tile x 1 or 2 (the kept pin wants its centre within 3 tiles of the west wall), at mid
+height except in the Hexer's room, and a 2-tile `E` on the east border at mid height. "On
+screen" in a row means near `P` as C10 (a) defines it. Free-standing pillars and blocks are
+at least 2 × 2 and at least 2 tiles from any wall or other block; the dividing wall of 1-3
+and the slabs of 2-4 touch the outer wall.
 
 | Room | Size | Enemies (unchanged) | Layout |
 |---|---|---|---|
@@ -245,10 +247,10 @@ or other block.
 | 2-2 | 52 × 30 | 2 chasers, 2 casters | Six pillars (2 × 2 or 3 × 3) in two rows. Chasers in front; each caster behind a pillar. |
 | 2-3 | 64 × 28 | 1 chaser, 3 casters | A long room. At least five blocks staggered along its length to advance between. The chaser on screen; the casters in the east third. |
 | 2-4 | 56 × 32 | 3 chasers, 2 casters | Two wall slabs 2 tiles thick run west from the east wall and form a north and a south alcove; one caster in each. Chasers in the open part, one on screen. |
-| 2 boss | 56 × 32 | Hexer | Exactly four 2 × 2 blocks in a square around the room's centre; the Hexer in the clear area between them. (The boss is not on screen at the start; the boss bar is.) |
+| 2 boss | 56 × 32 | Hexer | Exactly four 2 × 2 blocks in a square around the room's centre; the Hexer in the clear area between them. `P` stays in the north-west corner, tile (2, 2), as today, so a block breaks the line from the Hexer to `P`. |
 | 3-1 | 48 × 28 | 1 brute | Two long interior walls (2 thick, at least 14 long) parallel to the long side, leaving a straight lane of at least 14 tiles: learn the wall stun. The brute on screen. |
 | 3-2 | 52 × 30 | 1 brute, 2 chasers | Six 3 × 3 pillars in two rows. The brute on screen. |
-| 3-3 | 56 × 30 | 1 brute, 2 casters | Blocks through the room; the casters behind blocks in the east part; the brute in the middle, on screen or just beyond a chaser-free gap (C10 a still holds: one spawn on screen). |
+| 3-3 | 56 × 30 | 1 brute, 2 casters | Blocks through the room; the casters behind blocks in the east part; the brute within 18 tiles of `P` and more than 7 away (it is the spawn C10 a needs). |
 | 3-4 | 60 × 32 | 2 brutes | A row of blocks along the middle of the long axis splits the room into two lanes, one brute in each. |
 | 3-5 | 64 × 36 | 1 brute, 2 chasers, 2 casters | Pillars throughout and a back row: chasers first, the brute in the middle, the casters at the east end behind cover. |
 | 3 boss | 56 × 32 | Juggernaut | A clear floor of at least 20 × 12 around the Juggernaut (C10 c), ringed by blocks so C10 (b) holds. The Juggernaut 12 to 18 tiles east of `P`. |
@@ -284,13 +286,13 @@ In the camera criteria, "settled" means: the test turned the room's shake off, t
 - [ ] AC11: Every shipped room has the same enemy list as before (the table in `design/floors.md`).
 - [ ] AC12: Each rule of C10, new and kept, holds for every shipped room it applies to.
 - [ ] AC13: The town matches C11 and every F-012 gate behaviour passes on it.
-- [ ] AC14: In every shipped room, `NavGrid.direction_toward()` from every spawn to `P` is a non-zero direction. F-011's wake test (`test_f011_shipped_floors.gd`: an enemy woken by a hit acts and leaves its spawn tile) passes on the new rooms.
+- [ ] AC14: On the new rooms, F-011's path test (`test_shipped_floors.gd`, every spawn has a tile path to the player start) and its wake test (`test_f011_shipped_floors.gd`: an enemy woken by a hit acts and leaves its spawn tile) pass.
 - [ ] AC15: F-012's scripted runs of floors 1 to 3 (`put_player_at_door()`, `skip_to_boss()`) pass on the new rooms without a change to the tests' logic.
 - [ ] AC16: C17's equivalence tests pass, and the before and after costs are in §8.
 
 **Dash recovery** (fixture values are named where the shipped ones cannot show the rule)
 - [ ] AC17: With the Warrior's shipped data, at the instant a full dash ends the state is `DASH_RECOVERY`, also when read inside a `dash_ended` handler, and for 0.12 s the position does not change whatever the movement input.
-- [ ] AC18: An attack pressed during recovery starts at the instant recovery ends and not before. An attack pressed during the dash, at most `input_buffer_window` before the dash ends, also starts at that instant. With a recovery of 0.12 s and a cooldown of 0.05 s, a dash pressed during recovery fires at the instant recovery ends; with the shipped cooldown (0.35 s) it fires when the cooldown ends only if the press is still inside the buffer window then, counted without the recovery time.
+- [ ] AC18: An attack pressed during recovery starts at the instant recovery ends and not before. An attack pressed during the dash, at most `input_buffer_window` before the dash ends, also starts at that instant. With a recovery of 0.12 s and a cooldown of 0.05 s, a dash pressed during recovery fires at the instant recovery ends; with a cooldown of 0.20 s it fires when the cooldown ends; with the shipped cooldown (0.35 s) it never fires, because the press is older than the buffer window by then. Each case gives the same times at 30, 60 and 120 ticks per second.
 - [ ] AC19: The recovery ends at the same motor time, with the same position, at 30, 60, 120 and 240 ticks per second.
 - [ ] AC20: With `dash_recovery_duration` 0 the state is never `DASH_RECOVERY`. F-001's and F-003's core tests pass with no change other than the two helper lines of C16 (1).
 - [ ] AC21: A hit during recovery applies its damage and knockback and ends the recovery. A dash ended by a hit is followed by no recovery.
@@ -320,12 +322,12 @@ through the lead.
 
 | # | Task | Files likely touched | Notes |
 |---|---|---|---|
-| T1 | Camera: `CameraTunables` and its file, `Tunables.camera`, `Room.camera_limits_px()`, limits, smoothing and callback on the room's camera, the outside strips. Tests AC1–AC8 in new files, on rooms the tests build (48 × 28, 64 × 36, 12 × 8) and on fixture towers. | `src/core/tunables/camera_tunables.gd`, `data/tunables/camera.tres`, `src/autoload/tunables.gd`, `src/world/floors/room.gd`, `tests/core/test_camera_tunables.gd`, `tests/scenes/test_f013_camera.gd` | A |
+| T1 | Camera: `CameraTunables` and its file, `Tunables.camera`, `Room.camera_limits_px()`, limits, smoothing and callback on the room's camera, the outside strips. Tests AC1–AC8 in new files, on rooms the tests build (48 × 28, 64 × 36, 12 × 8) and on fixture towers. | `src/core/tunables/camera_tunables.gd`, `data/tunables/camera.tres`, `src/autoload/tunables.gd`, `src/world/floors/room.gd`, `tests/core/test_camera_tunables.gd`, `tests/scenes/test_f013_camera.gd` | A. Where a test needs a `Game` on a room larger than the shipped `max_room_size` allows before T2 lands (AC8), it raises `Tunables.floors.max_room_size` for its own duration and restores it, as `F012GameTest` does with the tower tunables. |
 | T2 | Rooms, part 1: `max_room_size` 80 × 46; the town (C11) and floor 1 (C9); their geometry and rule pins (C16 2–4). | `data/tunables/floors.tres`, `data/floors/town.tres`, `data/floors/floor_1/**`, `tests/core/floors/test_shipped_tower.gd`, `tests/core/floors/test_shipped_floors.gd`, `tests/core/floors/test_floor_tunables.gd`, scene tests only where they pin these coordinates | B. A generator script in the scratchpad may draw the grids; only `.tres` files are committed. The grids go to the lead before the pins are written (C9). |
 | T3 | Rooms, part 2: floor 2. | `data/floors/floor_2/**`, the same two shipped test files | B |
 | T4 | Rooms, part 3: floor 3; the C10 rule tests over all rooms; AC14's core test. | `data/floors/floor_3/**`, the same two shipped test files, `tests/scenes/test_f011_shipped_floors.gd` where it pins coordinates | B |
 | T5 | The one-screen rule: `TowerData.screen_size_tiles`, its errors, tests on fixtures (AC10). | `src/core/floors/tower_data.gd`, `tests/core/floors/test_tower_data.gd` (new tests appended), `tests/scenes/test_f013_tower_rule.gd` for the `Game` case | A, after T1. Does not set the shipped value. |
-| T6 | Set `screen_size_tiles = Vector2i(40, 23)` in `data/floors/tower.tres`; the shipped tests of AC9; AC2's shipped-room pass. | `data/floors/tower.tres`, `tests/core/floors/test_shipped_tower.gd`, `tests/scenes/test_f013_camera.gd` | After T4 and T5 are committed. |
+| T6 | Set `screen_size_tiles = Vector2i(40, 23)` in `data/floors/tower.tres`; the shipped tests of AC9; AC2's shipped-room pass. | `data/floors/tower.tres`, `tests/core/floors/test_shipped_tower.gd`, `tests/scenes/test_f013_camera.gd` | B, after T4 and T5 are committed (T1 is committed by then, so `test_f013_camera.gd` is free). |
 | T7 | Dash recovery in core, the Warrior's value, tests AC17–AC26 in a new file; the helper lines and the scene-test changes of C16 (1). | `src/core/classes/class_data.gd`, `src/core/player/player_motor.gd`, `data/classes/warrior.tres`, `tests/core/player/test_f013_dash_recovery.gd`, `tests/core/player/motor_harness.gd`, `tests/core/combat/combat_arena.gd`, `tests/scenes/test_f003_physics.gd` and its helper | A, after T5. |
 | T8 | Navigation cost (C17): the three changes, the reference copy, the equivalence tests, the before and after timings. | `src/core/floors/nav_grid.gd`, `tests/core/floors/nav_grid_reference.gd`, `tests/core/floors/test_f013_nav_equivalence.gd` | Whoever is free first; before T9's gate. |
 | T9 | Final gate: full suite, lint, format, purity, headless boot; a rendered look at the town and one room per floor; a rendered walk at a frame rate other than 60 to look for camera jitter (C3). | — | Lead. |
@@ -442,6 +444,70 @@ Juggernaut's, by hand); anything rendered; a release build's navigation timings;
 Lucas's approval in chat covered the town layout and the 0.12 s (it covered "about 64 × 36"
 and "a short end-lag"; the rest is in §10 Q1).
 
+<!-- review-round: 2 verdict: CHANGES_REQUESTED -->
+
+**Date:** 2026-11-19 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+The same reviewer, on commit `a01432b`, read-only, with its scratch copy updated to the
+revised C13 and a prototype of the lazy `NavGrid` against a copy of today's code.
+
+**Round 1 findings:** PR-1 ✔ resolved (probe: an attack pressed in the dash from 0.0333 s on,
+or in recovery, starts at 0.2700 s at 30, 60 and 120 ticks/s). PR-2 ✔ resolved as a plan
+(see PR-18). PR-3 ✔ resolved. PR-4 ✔ resolved (with the two helper lines `tests/core` passes
+1042/1042 on the patched copy; of the other suites only `test_f003_physics.gd:15` fails, as
+C16 names). PR-5: one test still missing from C16 (3), see the reply under PR-15. PR-6 to
+PR-14 ✔ resolved (PR-11 by a second camera probe with the physics callback; PR-14: the largest
+`trigger_max_tiles` in `data/attacks/` is 9.0).
+
+**New material, no finding:** C13 (c)/(d) is implementable in four changed lines of
+`_run_phases()` plus the new state's advance function. C17 can be exactly equivalent: the
+prototype settles until every allowed neighbour of the asker's tile has been popped or the
+heap is empty, and differs from today's code in 0 of 5,760 direction calls and 24,000 line
+calls over four rooms. Only `test_nav_grid.gd:290-307` reads `get_field_builds()`. The task
+file lists do not overlap in the stated order. Every row of the C9 table other than the
+Hexer's and 3-3 can be built, by hand arithmetic.
+
+### PR-15 🔴 The Hexer row of the C9 table cannot pass a kept test
+`test_shipped_floors.gd:193-197` needs no clear line from the Hexer to `P`; with `P` at mid
+height both ends lie in the clear band between the blocks. Today `P` is tile (2, 2). Verified
+by brute force: over 35 centred block squares and 9,158 Hexer placements with `P` on rows 15
+or 16, none breaks the line. Also: `test_ac25_blocks_are_symmetric_about_the_gate_centre_line`
+asserts two blocks and is missing from C16 (3).
+> **Planner reply:** accepted. The Hexer row keeps `P` at tile (2, 2); the table's header
+> says so; C10's kept list names the cover-line and arena pins; C16 (3) names the symmetry
+> test.
+
+### PR-16 🟡 The Hexer is on screen at the start; the table's note and §10 Q3 said it is not
+Verified by a camera probe: from the start tile the limited view is columns 0 to 40.
+> **Planner reply:** accepted. The note is gone, Q3 is withdrawn in its answer cell, and
+> C10 (a) now says it means "near `P`", which is stricter than "on screen", on purpose.
+
+### PR-17 🟡 Row 3-3 contradicted C10 (a) and named chasers the room does not have
+> **Planner reply:** accepted. The row now reads "the brute within 18 tiles of `P` and more
+> than 7 away".
+
+### PR-18 🟡 C17: the three changes alone miss the target; worst case and proof under-specified
+Prototype, 64 × 36 with blocks, one new-goal build by the asker's distance: across the room
+26 ms today, 12.1 with the three changes, 5.5 with the heap's push and pop written in place;
+24 tiles: 26, 7.5, 3.3; 8.5 tiles: 27, 2.0, 0.9. A clipped `has_clear_line()`: 0.017–0.09 ms.
+Random pairs with one goal each almost never resume a half-settled field.
+> **Planner reply:** accepted. C17 allows any change that passes the proof, defines the worst
+> case and when the lead measures it, and requires several askers per goal in varying order
+> with the awkward positions and segments the reviewer lists.
+
+### PR-19 🟡 Three ordering gaps in the task table
+> **Planner reply:** accepted. C16 (3) says `fits_one_screen` is removed in T2 and what
+> replaces it in T6; T1 may raise `max_room_size` for a test's duration; T6 is B's.
+
+### PR-20 🔵 Smaller spots where the implementer would guess
+> **Planner reply:** accepted, all six: the `P` tile, which walls may touch the border,
+> AC18's cooldown cases and tick rates, where the freeze is decided, the duplicate rule for
+> scene tests with `spawn(prepare)`, and AC14 pointing at the existing path test.
+
+**Not checked in this round** (the reviewer's list): the grids themselves; lint, format and
+purity; anything rendered; a release build's timings; two goal-tile changes inside one physics
+tick as a worst case for C17.
+
 ---
 
 ## 8. Implementation Log  ·  _Builder_
@@ -480,7 +546,7 @@ and "a short end-lag"; the rest is in §10 Q1).
 |---|---|---|---|---|
 | Q1 | Lead | → Lucas, at Gate B: the starting values. Camera smoothing speed 8 (`data/tunables/camera.tres`), dash recovery 0.12 s (`data/classes/warrior.tres`), room sizes and layouts (C9). In the town you approved the size and the gate on the north wall; where you start (just below the gate, so it is on screen) and the six blocks are the lead's layout (C11). | no | |
 | Q2 | Lead | → Lucas, at Gate B: the Juggernaut's room and the brute rooms now have blocks to charge into, because an open 56 × 32 room leaves no wall within a charge's reach (C10 b). The old Juggernaut room was open with no interior walls. Is that the fight you want? | no | |
-| Q3 | Lead | → Lucas, at Gate B: the Hexer stands at the centre of a 56 × 32 room, so it is not on screen when you enter (the boss bar is). Move it closer, or keep the walk-in? | no | |
+| Q3 | Lead | → Lucas, at Gate B: the Hexer stands at the centre of a 56 × 32 room, so it is not on screen when you enter (the boss bar is). Move it closer, or keep the walk-in? | no | Withdrawn by the lead (plan review PR-16): from the start tile the camera shows 40 columns, so the Hexer at the centre is on screen when you enter. Nothing to decide. |
 
 ---
 
