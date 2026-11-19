@@ -6,6 +6,9 @@ extends GutTest
 
 const MENU_SCENE: PackedScene = preload("res://src/ui/town/gate_menu.tscn")
 const LIST_PATH: NodePath = ^"Panel/List"
+## A real stick passes through every value on its way: these cross the two deadzones of an up or a
+## down (`move_*` 0.2, built-in `ui_*` 0.5) on different events (F-012/CR-3, review round 2).
+const RAMP: Array[float] = [0.1, 0.3, 0.45, 0.7, 1.0]
 const HANDLED_ACTIONS: Array[StringName] = [
 	&"ui_up",
 	&"ui_down",
@@ -445,6 +448,82 @@ func test_ac23_a_motion_on_the_other_axis_is_not_a_new_push() -> void:
 	_send_stick(JOY_AXIS_RIGHT_X, 1.0, 2)
 	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)
 	assert_eq(_menu.get_focus_index(), 1)
+
+
+func test_ac23_a_ramped_push_up_moves_exactly_one_step() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	for strength: float in RAMP:
+		_send_stick(JOY_AXIS_LEFT_Y, -strength, 1)
+	assert_eq(_menu.get_focus_index(), 1, "crossing 0.2 and then 0.5 is one push")
+
+
+func test_ac23_a_ramped_push_down_moves_exactly_one_step() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_UP)
+	_press_key(KEY_UP)
+	assert_eq(_menu.get_focus_index(), 0)
+	for strength: float in RAMP:
+		_send_stick(JOY_AXIS_LEFT_Y, strength, 1)
+	assert_eq(_menu.get_focus_index(), 1, "crossing 0.2 and then 0.5 is one push")
+
+
+func test_ac23_a_stick_resting_between_the_deadzones_when_the_list_opens_is_not_a_push() -> void:
+	_spawn_menu()
+	_send_stick(JOY_AXIS_LEFT_Y, -0.4, 1)  # Past move_up's 0.2, short of ui_up's 0.5.
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, -0.9, 1)
+	assert_eq(_menu.get_focus_index(), 2, "it was already held up")
+	_send_stick(JOY_AXIS_LEFT_Y, 0.0, 1)
+	_send_stick(JOY_AXIS_LEFT_Y, -0.9, 1)
+	assert_eq(_menu.get_focus_index(), 1, "after a full release a push is a push")
+
+
+func test_ac23_a_stick_easing_off_and_back_without_letting_go_is_not_a_new_push() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_UP)
+	_press_key(KEY_UP)
+	_send_stick(JOY_AXIS_LEFT_Y, 1.0, 1)
+	assert_eq(_menu.get_focus_index(), 1)
+	_send_stick(JOY_AXIS_LEFT_Y, 0.4, 1)  # ui_down lets go, move_down still holds.
+	_send_stick(JOY_AXIS_LEFT_Y, 0.6, 1)
+	assert_eq(_menu.get_focus_index(), 1, "the stick never came back inside the smallest deadzone")
+
+
+func test_ac23_a_stick_that_comes_back_inside_the_smallest_deadzone_pushes_anew() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_UP)
+	_press_key(KEY_UP)
+	_send_stick(JOY_AXIS_LEFT_Y, 1.0, 1)
+	assert_eq(_menu.get_focus_index(), 1)
+	_send_stick(JOY_AXIS_LEFT_Y, 0.1, 1)
+	_send_stick(JOY_AXIS_LEFT_Y, 1.0, 1)
+	assert_eq(_menu.get_focus_index(), 2)
+
+
+func test_ac23_a_slow_release_moves_nothing_on_the_way_back() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 1)
+	assert_eq(_menu.get_focus_index(), 1)
+	for strength: float in [0.6, 0.3, 0.1]:
+		_send_stick(JOY_AXIS_LEFT_Y, -strength, 1)
+	assert_eq(_menu.get_focus_index(), 1)
+	_send_stick(JOY_AXIS_LEFT_Y, 1.0, 1)  # Straight over to the other side is a push down.
+	assert_eq(_menu.get_focus_index(), 2)
+
+
+func test_ac23_a_ramped_diagonal_push_moves_exactly_one_step_up() -> void:
+	_spawn_menu()
+	_menu.open(_three_entries())
+	for strength: float in RAMP:
+		_send_stick(JOY_AXIS_LEFT_X, -strength, 1)
+		_send_stick(JOY_AXIS_LEFT_Y, -strength, 1)
+	assert_eq(_menu.get_focus_index(), 1, "one step up, and nothing sideways")
+	_assert_still_open_with_no_outcome()
 
 
 func test_ac23_left_and_right_keys_leave_the_focus_alone() -> void:

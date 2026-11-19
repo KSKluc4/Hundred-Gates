@@ -36,8 +36,9 @@ var _entries: Array[TowerEntry] = []
 var _buttons: Array[Button] = []
 var _focus_index: int = 0
 var _is_open: bool = false
-## F-012/CR-3: per action, whether the stick was already past its deadzone when the last joypad
-## motion event came in. A push counts once: on the event that crosses.
+## F-012/CR-3: per direction (up, down), whether the stick held it when the last joypad motion event
+## came in; the key is the family's first action. A direction is held while any action of its family
+## is, so a push that crosses the 0.2 deadzone of `move_*` and later the 0.5 of `ui_*` is one push.
 var _stick_held: Dictionary[StringName, bool] = {}
 
 @onready var _panel: PanelContainer = $Panel
@@ -88,9 +89,7 @@ func open(entries: Array[TowerEntry]) -> void:
 	_add_button(STAY_TEXT, cancel)
 	_is_open = true
 	visible = true
-	_stick_held.clear()
-	for action: StringName in _watched_actions():
-		_stick_held[action] = Input.is_action_pressed(action)  # A stick held now is not a push.
+	_track_stick_directions()  # A stick held now, even only a little, is not a push.
 	_set_focus(maxi(_entries.size() - 1, 0))
 
 
@@ -146,10 +145,13 @@ func _action_for(event: InputEvent) -> Callable:
 
 
 ## Key repeat is not a press (is_action_pressed ignores echoes): a key held while walking into the
-## gate does not choose. A stick is a press only on the event that crosses its deadzone (CR-3).
+## gate does not choose. A stick is a press only on the event that takes its direction from not
+## held to held (CR-3).
 func _is_pressed(event: InputEvent, actions: Array[StringName]) -> bool:
+	if event is InputEventJoypadMotion and _stick_held.get(actions[0], false):
+		return false
 	for action: StringName in actions:
-		if event.is_action_pressed(action) and not _is_stick_already_held(event, action):
+		if event.is_action_pressed(action):
 			return true
 	return false
 
@@ -163,29 +165,22 @@ func _is_navigation(event: InputEvent) -> bool:
 	return false
 
 
-## Every joypad motion event past the deadzone says "pressed", not only the first, and
-## Input.is_action_just_pressed is no help: it is true for every event of the same frame.
-func _is_stick_already_held(event: InputEvent, action: StringName) -> bool:
-	return event is InputEventJoypadMotion and _stick_held.get(action, false)
-
-
-## After the event is answered: which actions the stick holds now. The engine has already taken the
-## event into its own action state, and that state also covers a motion on the other axis, which
-## says nothing about this action.
+## After the event is answered: which directions the stick holds now. Every joypad motion event
+## past a deadzone says "pressed", not only the first, and Input.is_action_just_pressed is no help:
+## it is true for every event of the same frame. The engine has already taken the event into its
+## own action state, and that state also covers a motion on the other axis, which says nothing
+## about this direction.
 func _track_stick(event: InputEvent) -> void:
-	if not event is InputEventJoypadMotion:
-		return
-	for action: StringName in _watched_actions():
-		_stick_held[action] = Input.is_action_pressed(action)
+	if event is InputEventJoypadMotion:
+		_track_stick_directions()
 
 
-func _watched_actions() -> Array[StringName]:
-	var actions: Array[StringName] = []
-	actions.append_array(PREVIOUS_ACTIONS)
-	actions.append_array(NEXT_ACTIONS)
-	actions.append_array(CHOOSE_ACTIONS)
-	actions.append(CANCEL_ACTION)
-	return actions
+func _track_stick_directions() -> void:
+	for actions: Array[StringName] in [PREVIOUS_ACTIONS, NEXT_ACTIONS]:
+		var held: bool = false
+		for action: StringName in actions:
+			held = held or Input.is_action_pressed(action)
+		_stick_held[actions[0]] = held
 
 
 ## Clamped: the list doesn't wrap.
