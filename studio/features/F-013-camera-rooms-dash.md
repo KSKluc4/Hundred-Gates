@@ -1,8 +1,8 @@
 ---
 id: F-013
 title: Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair)
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-19
 updated: 2026-11-19
 depends_on: [F-001, F-011, F-012, D-010, D-012, D-014, D-015]
@@ -534,16 +534,16 @@ Gate A: Lucas's go-ahead in chat on the lead's proposal (D-015), so the file goe
 **Started:** 2026-11-19  ·  **Branch:** `feature/F-013-camera-rooms-dash` (cut from `feature/F-012-the-loop`, D-015)
 
 ### Progress
-- [ ] T1
-- [ ] T2
-- [ ] T3
-- [ ] T4
-- [ ] T5
-- [ ] T6
-- [ ] T7
-- [ ] T8
-- [ ] T9
-- [ ] T10
+- [x] T1 — fdd1fba (camera limits, smoothing, strips; 54 tests)
+- [x] T2 — 4af5617 (town and floor 1 redrawn; `max_room_size` 80 × 46)
+- [x] T3 — 163265b (floor 2 redrawn)
+- [x] T4 — 777f978 (floor 3 redrawn; C10 b and c tests)
+- [x] T5 — 0b0b458 (`TowerData.screen_size_tiles`; 17 tests)
+- [x] T6 — 1aca47b (the shipped tower sets 40 × 23; AC9; AC2 on shipped rooms)
+- [x] T7 — 627e530 (dash recovery; 44 tests)
+- [x] T8 — 5c7ebb8 (`NavGrid` lazy field and clipped line check; 9 equivalence tests)
+- [x] T9 — final gate on 5c7ebb8 + e90b2d2, results under "How to test"
+- [x] T10 — e90b2d2 (`design/floors.md`, `design/combat.md`, `GLOSSARY.md`)
 
 ### Deviations from plan
 - DEV-1: the two implementers were started on T1 and T2 while plan review round 3 (a
@@ -552,12 +552,123 @@ Gate A: Lucas's go-ahead in chat on the lead's proposal (D-015), so the file goe
   finding was a one-line fix in a later task's row. — **Impact:** none; round 3 approved
   with one wording note, fixed before any task was committed.
 - DEV-2: the file skips `APPROVED` (D-015: Lucas's go-ahead in chat is Gate A).
+- DEV-3: the full suite was not run before each commit. Each task was committed after its
+  own tests, the suites its files touch, lint and format; the full suite ran once, after T8.
+  — **Why:** two implementers wrote in one checkout, so a full run in between would have
+  tested the other one's half-written files. — **Impact:** none found: the full run after
+  the last task passed 1751/1751.
+- DEV-4: `Room` gained two public getters the spec does not name, `get_camera()` and
+  `get_outside_strips()`, and the strips sit under a holder node `OutsideStrips`. — **Why:**
+  the tests need the camera and the strips, and code that scans `Room`'s children (the boss
+  bar layer) stays unaffected. — **Impact:** two more methods on `Room`.
+- DEV-5: `test_pin_every_room_is_within_two_tiles_of_the_design_table` was renamed
+  `test_pin_every_room_has_exactly_the_c9_table_size` when C16 (3) changed what it asserts.
+  — **Why:** the old name would be false. — **Impact:** none.
+- DEV-6: `tests/core/floors/test_tower_data.gd` gained `# gdlint:disable=max-public-methods`
+  on its first line (17 appended tests), as other long test files have (F-012 DEV-5).
+- DEV-7: commit e90b2d2 (T10, docs) also carries `tests/core/player/test_f013_dash_recovery.gd`
+  with its line endings normalised (the working copy had CRLF; the committed content was
+  already LF). No content change.
+- DEV-8: T8's "before" timings were taken from the reference copy in the same run as the
+  "after" ones, not from a separate run of the old file. The reference differs from the old
+  `nav_grid.gd` in three lines (the class name).
+
+**Pre-existing tests changed (C16), all of them:**
+- C16 (1): `tests/core/player/motor_harness.gd` and `tests/core/combat/combat_arena.gd`, one
+  line each: their copy of the Warrior has `dash_recovery_duration = 0.0`. Without those two
+  lines exactly five core tests fail (`test_player_attack` AC5, `test_player_dash_cancel`
+  AC27, `test_player_motor_buffer` zero cooldown, `test_player_motor_dash` AC10,
+  `test_combat_sim` AC22), as plan review PR-4 predicted. `tests/scenes/test_f003_physics.gd`,
+  `_place_for_ac22()`: the recovery is zeroed on a duplicate of the player's class data (the
+  fourth hit of F-003's AC22 run would otherwise come at 1.75 s, not 1.6833 s). No other scene
+  test of F-001 to F-009 failed because of the recovery.
+- C16 (2), (3) in `tests/core/floors/test_shipped_tower.gd`: the constants follow the new
+  town; `…town_is_24_by_14…`, `…player_start_is_in_the_lower_half`,
+  `…town_has_exactly_two_two_by_two_blocks`, `…blocks_are_symmetric_about_the_gate_centre_line`
+  and `…blocks_flank_the_path…` were replaced by five `test_c11_*` tests.
+- C16 (2), (3) in `tests/core/floors/test_shipped_floors.gd`: `SIZES`; `DIVIDER_X` 14 → 27;
+  `test_pin_every_room_fits_one_screen` removed; the size test (DEV-5);
+  `test_ac27_juggernaut_room_has_no_interior_wall_and_enough_open_floor` replaced by
+  `test_c10c_…`. New: `test_c10a_…`, `test_c10b_…`, `test_c10d_…`.
+- C16 (4): `tests/core/floors/test_floor_tunables.gd`, the shipped `max_room_size` pin.
+- No scene test pinned a shipped coordinate, so none changed for the rooms.
 
 ### Assumptions made (small, reversible)
+- ASSUMPTION-1: the class default of `FloorTunables.max_room_size` in code stays 40 × 22;
+  only the shipped `floors.tres` says 80 × 46. — **Why:** C8 names the shipped value, and two
+  tests build `FloorTunables.new()` and rely on the default.
+- ASSUMPTION-2: C10 (a)'s bounds are inclusive, and its test skips boss rooms.
+- ASSUMPTION-3: for C10 (b) only `#` counts as a wall tile (`E` does not).
+- ASSUMPTION-4: where the C9 table left a position open the implementer chose (pillar and
+  spawn tiles; the lead approved each grid from its ASCII dump before the commit). Spawns are
+  staggered, not stacked on one column, from floor 2 on. Every passage in floor 3 is at
+  least 4 tiles wide (a brute is up to 1.2).
+- ASSUMPTION-5: the north and south strips take the corners; a margin of 0 builds no strip;
+  the strips are built first so the room draws over them.
+- ASSUMPTION-6: the view size is read once, when the room is built.
+- ASSUMPTION-7: a zero on one axis of `screen_size_tiles` means no minimum on that axis; the
+  screen errors come after the room's own errors (town) or the floor's own errors.
+- ASSUMPTION-8: a hit with no knockback during a recovery leaves the player `IDLE`, not back
+  in the recovery. The attack chain's window does not advance during a recovery (the dash
+  reset the chain).
+- ASSUMPTION-9: no view shows the recovery. The debug overlay prints `DASH_RECOVERY`.
+  `TownScene._can_move_on_its_own()` was left as it is: a recovering player cannot move, and
+  a dash buffered in the recovery is still seen by `has_buffered_dash()`.
+- ASSUMPTION-10: "the centre" of a shipped room in AC2's shipped pass is the walkable tile
+  nearest the middle (the middle of some rooms is inside a block), and the town counts as a
+  candidate for smallest and largest room.
 
 ### Things the Auditor should look at closely
+- `NavGrid._settle_around()`: the claim that a tile's cost is final once it leaves the queue,
+  and that the neighbours `direction_toward()` reads are all final when it stops. Three
+  mutations did not fail the proof and were judged not to be result changes (the extra `- 1`
+  on the left clip column; a `WANTED` flag left set when the queue runs dry; one heap
+  tie-break between equal-cost entries): check that judgement.
+- `has_clear_line()`'s clipping: that no tile the old box scan could have found blocked is
+  skipped (`CLIP_MARGIN`).
+- `PlayerMotor._run_phases()`: the freeze is read from the state at the segment's start.
+- Every scene that uses the player scene now has the recovery, the debug scenes included.
+- The camera was checked by numbers and by screenshots, never by a person playing: smoothing
+  feel, and the look of the strips during a shake at a wall, are unverified.
+- The rooms hold the old enemy counts in three to five times the floor (§3, costs).
+- The suite takes longer: 510 s, from about 450 s.
 
 ### How to test
+```
+tools/test                      # 129 scripts, 1751 tests, all passing (510 s)
+.venv/Scripts/gdlint src tests  # no problems
+.venv/Scripts/gdformat --check src tests   # 256 files unchanged
+tools/check_core_purity         # core purity ok
+godot --headless --path . res://scenes/main.tscn --quit-after 120   # no error line
+```
+Final gate (T9), on the tree of 5c7ebb8 plus the docs commit: all of the above, with no
+"Orphans" line in the suite's output.
+
+**Measurements (lead, this machine's console binary, a debug build, machine otherwise idle):**
+
+| Navigation, 64 × 36 room with blocks | Before | After |
+|---|---|---|
+| New goal, asker 8 tiles away | 21.8 ms | 0.23 ms |
+| New goal, asker 24 tiles away | 21.8 ms | 1.25 ms |
+| New goal, asker across the room | 21.7 ms | 2.99 ms |
+| Same goal asked again | 0.010 ms | 0.005 ms |
+| `has_clear_line()`, diagonal across the empty room | 0.48 ms | 0.031 ms |
+| **C17's worst case on room 3-5** (goal tile changes every call, asker behind a pillar on the far side, 30 calls) | median 22.0, max 28.7 ms | median 3.2, max 3.3 ms |
+
+The 8 ms target is met. `test_shipped_tower.gd` went from 58 s to 6 s (implementer's number).
+
+- **Camera jitter (C3).** A scripted walk with the real D key in room 1-1, headless, at fixed
+  30, 60, 100 and 144 frames a second: while the camera follows, the player's place on screen
+  moves from x 320 to 330 px (the smoothing's lag at walking speed) and then stays at 330.00
+  in every frame, with no step back. Positions only; nobody looked at it.
+- **Dash in the running game.** The real dodge key in the town at 60 ticks a second: 9 frames
+  of 5.3 px (3 tiles), then 7 frames of no movement with the state `DASH_RECOVERY`, then the
+  walk speeds up again.
+- **Screenshots** of the town (start, south-east corner), rooms 1-1, 1-2, 2-4, the Hexer's
+  room, 3-1, 3-5 and the Juggernaut's room, with the player put at walls and corners: the
+  room fills the window in each, no empty space, HUD and boss bar in place.
+
+Manual: §5, "How to verify manually".
 
 ---
 
