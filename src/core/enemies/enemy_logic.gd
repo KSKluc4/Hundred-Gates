@@ -9,9 +9,11 @@ extends Combatant
 signal state_restored
 ## F-007/C7: once per stage entered, after the state changed.
 signal stage_changed(stage_index: int)
+## F-014/C5: once per arrive(), after the state changed.
+signal arrived
 
-## F-007/C7: STAGE_SHIFT appended, so saved state ints keep their meaning.
-enum State { IDLE, CHASE, WINDUP, ACTIVE, RECOVERY, KNOCKBACK, DEAD, STAGE_SHIFT }
+## F-007/C7: STAGE_SHIFT appended, so saved state ints keep their meaning. F-014/C5: so is WAITING.
+enum State { IDLE, CHASE, WINDUP, ACTIVE, RECOVERY, KNOCKBACK, DEAD, STAGE_SHIFT, WAITING }
 
 const TIME_EPSILON: float = CombatTiming.TIME_EPSILON
 const INITIAL_AIM: Vector2 = Vector2.DOWN
@@ -159,6 +161,9 @@ func is_ai_enabled() -> bool:
 func sense(view: CombatView) -> void:
 	_clear_intent()
 	_clear_charge_report()
+	if _state == State.WAITING:  # F-014/C5: decides nothing, and nothing of it is in the step.
+		_tick_displacement = Vector2.ZERO
+		return
 	# F-005/C4, C5: the step start. Spent and landed projectiles go before this step advances.
 	_projectiles.begin_step()
 	_tick_displacement = Vector2.ZERO  # A windup of 0 launches here, from where it stands.
@@ -182,6 +187,8 @@ func step(duration: float) -> void:
 		return
 	_tick_displacement = Vector2.ZERO
 	_charge_segment = PackedVector2Array()
+	if _state == State.WAITING:
+		return  # F-014/C5: nothing advances, and the runner never moves its hidden body.
 	_projectiles.advance(duration)  # F-005/C4: the sim clock, never this enemy's hitstop.
 	var remaining: float = _combat.consume_hitstop(duration)  # F-003/C7, C15: hitstop first.
 	while remaining > TIME_EPSILON and _state != State.DEAD:
@@ -229,6 +236,8 @@ func end_step() -> void:
 ## F-004/C7. Everything a hit needs from CombatState runs there. get_knockback_scale() has
 ## already made a committed enemy's distance 0, so this only has to leave its state alone.
 func apply_hit(event: HitEvent, tunables: PlayerCombatTunables) -> void:
+	if _state == State.WAITING:
+		return  # F-014/C5: not there. No damage, no aggro, no state change.
 	_aggroed = true  # From the next step start (C5).
 	if not _is_planted():
 		_state = State.KNOCKBACK if event.knockback_tiles > 0.0 else State.IDLE
@@ -242,11 +251,55 @@ func get_knockback_scale() -> float:
 
 ## F-004/C4.
 func is_alive() -> bool:
-	return super.is_alive() and _state != State.DEAD
+	return super.is_alive() and _state != State.DEAD and _state != State.WAITING  # F-014/C5.
 
 
 func get_state() -> State:
 	return _state
+
+
+## F-014/C5: held in reserve, not there yet: see hold_in_reserve() and arrive().
+func is_waiting() -> bool:
+	return _state == State.WAITING
+
+
+## F-014/C5: puts a freshly set-up enemy (idle, not aggroed, nothing running) in WAITING, where
+## it is not alive to anyone, cannot be hit and does nothing. At any other moment it changes
+## nothing and reports an error. Returns whether it did.
+func hold_in_reserve() -> bool:
+	if not _is_fresh():
+		push_error(
+			(
+				"EnemyLogic %s: hold_in_reserve refused in state %s"
+				% [_combat_id, State.find_key(_state)]
+			)
+		)
+		return false
+	_state = State.WAITING
+	_tick_displacement = Vector2.ZERO
+	return true
+
+
+## F-014/C5: a waiting enemy comes in at `position_tiles`: idle, aggroed, with a fresh combat
+## state. It senses for the first time at the next step start. On an enemy that is not waiting
+## it changes nothing and reports an error. Returns whether it did.
+func arrive(position_tiles: Vector2) -> bool:
+	if _state != State.WAITING:
+		push_error(
+			"EnemyLogic %s: arrive refused in state %s" % [_combat_id, State.find_key(_state)]
+		)
+		return false
+	_position = position_tiles
+	_tick_displacement = Vector2.ZERO  # The director arrives it before the bodies move.
+	_state = State.IDLE
+	_aggroed = true  # Reinforcements come for the player at once.
+	_target_id = &""
+	_clear_attack()
+	_clear_intent()
+	_clear_charge_report()
+	_combat.setup(_data.max_hp, false)  # As setup(): full HP, no hitstop, no knockback.
+	arrived.emit()
+	return true
 
 
 func get_data() -> EnemyData:
@@ -406,6 +459,11 @@ func restore_errors(snapshot: Dictionary) -> PackedStringArray:
 	var errors: PackedStringArray = []
 	if not snapshot.has("stage_index"):
 		return errors  # from_dict() refuses missing keys itself.
+	if snapshot.has_all(["state", "aggroed"]):  # F-014/C5.
+		if snapshot["state"] < 0 or snapshot["state"] > State.WAITING:
+			errors.append("%s: snapshot in unknown state %s" % [_combat_id, snapshot["state"]])
+		elif snapshot["state"] == State.WAITING and snapshot["aggroed"]:
+			errors.append("%s: snapshot waiting but aggroed" % _combat_id)
 	var listed: int = _data.stages.size() if _data != null else 0
 	if snapshot["stage_index"] > listed:
 		errors.append(
@@ -430,7 +488,8 @@ func _accepts(data: EnemyData, enemy_tunables: EnemyCombatTunables, step_rate: i
 
 
 func _is_protected() -> bool:
-	return _state == State.DEAD  # F-004/C11: not a hit it can take, ever.
+	# F-004/C11: not a hit it can take, ever. F-014/C5: nor one that is not there yet.
+	return _state == State.DEAD or _state == State.WAITING
 
 
 ## F-004/C12: while the window can still be lost, like AttackChain's.
@@ -485,6 +544,19 @@ func _extra_rate_errors(step_rate: int) -> PackedStringArray:
 ## F-004/C4.
 func _is_free() -> bool:
 	return (_state == State.IDLE or _state == State.CHASE) and not _combat.is_in_hitstop()
+
+
+## F-014/C5: what hold_in_reserve() accepts: as setup() leaves an enemy, with nothing running.
+func _is_fresh() -> bool:
+	return (
+		_data != null
+		and _state == State.IDLE
+		and not _aggroed
+		and _attack == null
+		and _projectiles.get_projectiles().is_empty()
+		and not _combat.is_in_hitstop()
+		and not _combat.has_knockback()
+	)
 
 
 func _is_committed() -> bool:
