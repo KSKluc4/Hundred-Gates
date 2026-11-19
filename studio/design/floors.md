@@ -26,6 +26,8 @@ Rules (enforced by `RoomData.validate()`, F-011/C16):
 - Border is wall, except the exit: one straight run of `E`, at least 2 tiles, not on a corner.
 - Exactly one `P`. Every floor tile reachable from it.
 - No 1-tile corridors and no 1-tile-thick interior walls.
+- No 1-tile pinch either: two walkable tiles side by side must share a walkable 2 × 2 block,
+  so two wall corners can't leave a 1-tile opening (bodies are up to 1.2 tiles wide).
 - Spawns at least 4 tiles from `P`. 1–6 enemies per combat room; exactly 1 in a boss room.
 
 Guidelines (not enforced):
