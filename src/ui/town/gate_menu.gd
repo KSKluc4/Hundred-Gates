@@ -36,11 +36,12 @@ var _entries: Array[TowerEntry] = []
 var _buttons: Array[Button] = []
 var _focus_index: int = 0
 var _is_open: bool = false
-## F-012/CR-3, CR-15, CR-16: what the stick does, from its own joypad motion events alone (keys and
-## the d-pad never touch it), tracked while the list is closed too. Per action: does the stick press
-## it now. Per direction (up, down; the key is the family's first action): is a push going on. A
-## push starts when every action of the direction is pressed (past the larger deadzone, 0.5) and
-## ends when none is (back inside the smaller, 0.2); the band between is the hysteresis.
+## F-012/CR-3, CR-15, CR-16, CR-18: what the stick does. Only the stick itself speaks: the joypad
+## motion events while the list is open, and the stick's own axes when it opens (keys and the d-pad
+## never touch it). Per action: does the stick press it now. Per direction (up, down; the key is
+## the family's first action): is a push going on. A push starts when every action of the direction
+## is pressed (past the larger deadzone, 0.5) and ends when none is (back inside the smaller, 0.2);
+## the band between is the hysteresis.
 var _stick_pressed: Dictionary[StringName, bool] = {}
 var _stick_pushing: Dictionary[StringName, bool] = {}
 ## The directions the event being handled started a push in.
@@ -65,9 +66,9 @@ func _ready() -> void:
 ## While open and nothing else has used the event, the keys are the menu's alone (AC23). Every
 ## outcome goes through choose() or cancel(), the same two a click on a button reaches.
 func _input(event: InputEvent) -> void:
-	_track_stick(event)
 	if not _is_open:
 		return
+	_track_stick(event)
 	var action: Callable = _action_for(event)
 	if action.is_valid():
 		get_viewport().set_input_as_handled()
@@ -94,6 +95,7 @@ func open(entries: Array[TowerEntry]) -> void:
 	_add_button(STAY_TEXT, cancel)
 	_is_open = true
 	visible = true
+	_seed_stick()
 	_set_focus(maxi(_entries.size() - 1, 0))
 
 
@@ -166,6 +168,50 @@ func _is_navigation(event: InputEvent) -> bool:
 		if event.is_action(action):
 			return true
 	return false
+
+
+## F-012/CR-18: a stick held at one value sends no event, and a new town (so a new menu) is built on
+## every return from a floor. So when the list opens the stick is read as it is: a direction it is
+## past the smaller deadzone in counts as already pushed, and neither that nor letting go of it is a
+## push. The axes come from the bindings of the list's own actions. Every connected pad is asked,
+## and device 0, which is where an event with no device (a synthetic one, the first pad) lands; the
+## axis's largest reading wins. The player's own input asks the connected pads only, but a test has
+## none connected.
+func _seed_stick() -> void:
+	_stick_pressed.clear()
+	_stick_pushing.clear()
+	_fresh_pushes.clear()
+	var devices: Array[int] = Input.get_connected_joypads()
+	if not devices.has(0):
+		devices.append(0)
+	for axis: JoyAxis in _bound_axes():
+		var reading: float = 0.0
+		for device: int in devices:
+			var value: float = Input.get_joy_axis(device, axis)
+			if absf(value) > absf(reading):
+				reading = value
+		var motion: InputEventJoypadMotion = InputEventJoypadMotion.new()
+		motion.axis = axis
+		motion.axis_value = reading
+		_track_stick(motion)
+	for actions: Array[StringName] in [PREVIOUS_ACTIONS, NEXT_ACTIONS]:
+		var held: bool = false
+		for action: StringName in actions:
+			held = held or _stick_pressed.get(action, false)
+		_stick_pushing[actions[0]] = held
+	_fresh_pushes.clear()
+
+
+## The axes the up and down actions have a stick binding on.
+func _bound_axes() -> Array[JoyAxis]:
+	var axes: Array[JoyAxis] = []
+	for actions: Array[StringName] in [PREVIOUS_ACTIONS, NEXT_ACTIONS]:
+		for action: StringName in actions:
+			for bound: InputEvent in InputMap.action_get_events(action):
+				var motion: InputEventJoypadMotion = bound as InputEventJoypadMotion
+				if motion != null and not axes.has(motion.axis):
+					axes.append(motion.axis)
+	return axes
 
 
 ## Every joypad motion event past a deadzone says "pressed", not only the first, and

@@ -1,4 +1,4 @@
-# gdlint:disable=max-public-methods
+# gdlint:disable=max-public-methods,max-file-lines
 extends GutTest
 ## F-012 T5 (AC23): the gate menu. The keys and the stick go through the engine's input path
 ## (Input.parse_input_event), so `_input` is what answers them. The town scene's use of the menu
@@ -9,6 +9,10 @@ const LIST_PATH: NodePath = ^"Panel/List"
 ## A real stick passes through every value on its way: these cross the two deadzones of an up or a
 ## down (`move_*` 0.2, built-in `ui_*` 0.5) on different events (F-012/CR-3, review round 2).
 const RAMP: Array[float] = [0.1, 0.3, 0.45, 0.7, 1.0]
+## F-012/CR-18: a new town, so a new menu, is built on every return from a floor, and a stick held
+## at a constant value sends no event. Some tests push the stick BEFORE the menu exists and then
+## let go like this.
+const RELEASE: Array[float] = [0.8, 0.4, 0.1, 0.0]
 const HANDLED_ACTIONS: Array[StringName] = [
 	&"ui_up",
 	&"ui_down",
@@ -473,18 +477,17 @@ func test_ac23_a_ramped_push_down_moves_exactly_one_step() -> void:
 	assert_eq(_menu.get_focus_index(), 1, "crossing 0.2 and then 0.5 is one push")
 
 
-func test_ac23_a_stick_resting_short_of_the_larger_deadzone_when_the_list_opens_has_not_pushed(
-) -> void:
-	# Past move_up's 0.2, short of ui_up's 0.5: a push starts at the larger one (CR-16), so
-	# this stick is not yet pushing, and the push that follows is one.
-	_spawn_menu()
+func test_ac23_a_stick_resting_between_the_deadzones_when_the_list_opens_is_not_a_push() -> void:
+	# Past move_up's 0.2, short of ui_up's 0.5: when the list opens, a stick past the smaller
+	# deadzone counts as already pushed (CR-18). Later pushes start at the larger one (CR-16).
 	_send_stick(JOY_AXIS_LEFT_Y, -0.4, 1)
+	_spawn_menu()
 	_menu.open(_three_entries())
-	assert_eq(_menu.get_focus_index(), 2)
 	_send_stick(JOY_AXIS_LEFT_Y, -0.9, 1)
-	assert_eq(_menu.get_focus_index(), 1, "the push that crosses 0.5 is the push")
-	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)
-	assert_eq(_menu.get_focus_index(), 1)
+	assert_eq(_menu.get_focus_index(), 2, "it was already held up")
+	_send_stick(JOY_AXIS_LEFT_Y, 0.0, 1)
+	_send_stick(JOY_AXIS_LEFT_Y, -0.9, 1)
+	assert_eq(_menu.get_focus_index(), 1, "after a full release a push is a push")
 
 
 func test_ac23_a_stick_easing_off_and_back_without_letting_go_is_not_a_new_push() -> void:
@@ -691,6 +694,65 @@ func test_ac23_no_single_press_matches_two_of_the_choose_actions() -> void:
 			if press.is_action(action):
 				matched += 1
 		assert_eq(matched, 1, str(press))
+
+
+func test_ac23_a_menu_born_while_the_stick_is_held_up_stays_put_until_a_new_push() -> void:
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 3)
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, -0.98, 1)
+	assert_eq(_menu.get_focus_index(), 2, "a small change is not a push")
+	for strength: float in RELEASE:
+		_send_stick(JOY_AXIS_LEFT_Y, -strength, 1)
+		assert_eq(_menu.get_focus_index(), 2, "letting go moves nothing (%s)" % strength)
+	for strength: float in RAMP:
+		_send_stick(JOY_AXIS_LEFT_Y, -strength, 1)
+	assert_eq(_menu.get_focus_index(), 1, "and the next push is one step")
+
+
+func test_ac23_a_menu_born_while_the_stick_is_held_down_stays_put_until_a_new_push() -> void:
+	_send_stick(JOY_AXIS_LEFT_Y, 1.0, 3)
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_press_key(KEY_UP)
+	_press_key(KEY_UP)
+	assert_eq(_menu.get_focus_index(), 0)
+	_send_stick(JOY_AXIS_LEFT_Y, 0.98, 1)
+	assert_eq(_menu.get_focus_index(), 0, "a small change is not a push")
+	for strength: float in RELEASE:
+		_send_stick(JOY_AXIS_LEFT_Y, strength, 1)
+		assert_eq(_menu.get_focus_index(), 0, "letting go moves nothing (%s)" % strength)
+	for strength: float in RAMP:
+		_send_stick(JOY_AXIS_LEFT_Y, strength, 1)
+	assert_eq(_menu.get_focus_index(), 1, "and the next push is one step")
+
+
+func test_ac23_a_stick_held_up_at_open_does_not_block_a_push_down_after_it_is_released() -> void:
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, 0.0, 1)
+	_send_stick(JOY_AXIS_LEFT_Y, 1.0, 2)
+	assert_eq(_menu.get_focus_index(), 3, "one step down")
+
+
+func test_ac23_a_stick_held_up_at_open_and_flipped_straight_down_pushes_down() -> void:
+	_send_stick(JOY_AXIS_LEFT_Y, -1.0, 2)
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_send_stick(JOY_AXIS_LEFT_Y, 1.0, 2)
+	assert_eq(_menu.get_focus_index(), 3, "the other direction was never held")
+
+
+func test_ac23_a_menu_born_while_a_key_and_the_stick_are_held_knows_only_the_stick() -> void:
+	_send_key(KEY_W, true)
+	Input.flush_buffered_events()
+	_spawn_menu()
+	_menu.open(_three_entries())
+	_send_key(KEY_W, false)
+	Input.flush_buffered_events()
+	_send_stick(JOY_AXIS_LEFT_Y, -0.9, 2)
+	assert_eq(_menu.get_focus_index(), 1, "no stick was held, so this is a push")
 
 
 func test_ac23_left_and_right_keys_leave_the_focus_alone() -> void:

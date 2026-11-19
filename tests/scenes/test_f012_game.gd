@@ -13,12 +13,20 @@ const BOSS_TEXT: String = "Floor 1 · Boss"
 ## What a probe saw inside a signal handler of the floor scene.
 var _seen: Array[Dictionary] = []
 var _probe_floor: Variant
+var _stick_tilted: bool = false
 
 
 func before_each() -> void:
 	super.before_each()
 	_seen = []
 	_probe_floor = null
+	_stick_tilted = false
+
+
+func after_each() -> void:
+	if _stick_tilted:
+		_send_stick_y(0.0)
+	super.after_each()
 
 
 # --- AC26: the game starts in the town ---
@@ -578,6 +586,32 @@ func test_c5_a_second_death_after_coming_back_works_the_same() -> void:
 		await run_ticks(2)
 
 
+# --- C10, review round 4 (CR-18): the town is built anew, and the stick is already held ---
+
+
+func test_cr18_a_stick_held_up_through_the_death_pause_does_not_move_the_new_towns_list() -> void:
+	set_death_delay(DEATH_DELAY)
+	await spawn_game(TowerFixtures.tower_of(2, 1))
+	await enter_floor_through_gate(1)
+	skip_to_boss()
+	kill_player()
+	await run_ticks(2)
+	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
+	var old_town: TownScene = town()
+	_send_stick_y(-1.0)  # Pushed up during the pause, and held: the new menu gets no event.
+	var back: Callable = func() -> bool: return town() != null and town() != old_town
+	assert_true(await run_until(back, PAUSE_TICKS * 3), "a new town was built")
+	await open_gate_menu()
+	var last: int = menu().get_entry_count() - 1
+	assert_eq(last, 1, "from the start and at the boss")
+	assert_eq(menu().get_focus_index(), last, "the list opens on the last floor entry")
+	for value: float in [-0.8, -0.4, -0.1, 0.0]:  # Plain letting go.
+		_send_stick_y(value)
+		assert_eq(menu().get_focus_index(), last, "letting go moves nothing (%s)" % value)
+	_send_stick_y(-1.0)
+	assert_eq(menu().get_focus_index(), last - 1, "a new push still moves one step")
+
+
 # --- C5, review round 1 (CR-4): the dead player and the keys during the pause ---
 
 
@@ -804,3 +838,12 @@ func _any(errors: PackedStringArray, part: String) -> bool:
 		if error.contains(part):
 			return true
 	return false
+
+
+func _send_stick_y(value: float) -> void:
+	var event: InputEventJoypadMotion = InputEventJoypadMotion.new()
+	event.axis = JOY_AXIS_LEFT_Y
+	event.axis_value = value
+	Input.parse_input_event(event)
+	Input.flush_buffered_events()
+	_stick_tilted = true
