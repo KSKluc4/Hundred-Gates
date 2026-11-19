@@ -150,6 +150,123 @@ func test_ac1_corridor_rejects_a_one_tile_gap() -> void:
 	assert_eq(errors.size(), 2)
 
 
+func test_ac1_pinch_rejects_two_wall_corners_one_tile_apart() -> void:
+	var rows: PackedStringArray = PackedStringArray(
+		[
+			"################",
+			"#..............#",
+			"#.........1....#",
+			"#..............#",
+			"########.......#",
+			"########.......#",
+			"#........#######",
+			"#........#######",
+			"#..............#",
+			"#P.............E",
+			"#..............E",
+			"################",
+		]
+	)
+	# The west wall (rows 4-5, x <= 7) and the east wall (rows 6-7, x >= 9) leave one opening.
+	var errors: PackedStringArray = _room(rows).validate(_rules)
+	_assert_only_rule(errors, "pinch", "(8, 5) and (8, 6)")
+	assert_eq(errors.size(), 1, "one pair, reported once")
+
+
+func test_ac1_pinch_rejects_the_same_opening_turned_on_its_side() -> void:
+	var rows: PackedStringArray = PackedStringArray(
+		[
+			"############",
+			"#...##...P.#",
+			"#...##.....#",
+			"#...##.....#",
+			"#...##.....#",
+			"#...##.....#",
+			"#...##.....#",
+			"#...##.....#",
+			"#..........#",
+			"#.....##...#",
+			"#.1...##...#",
+			"#.....##...#",
+			"#.....##...#",
+			"#.....##...#",
+			"#.....##...#",
+			"#########EE#",
+		]
+	)
+	# The reproduction turned a quarter: the pair is now side by side.
+	var errors: PackedStringArray = _room(rows).validate(_rules)
+	_assert_only_rule(errors, "pinch", "(5, 8) and (6, 8)")
+	assert_eq(errors.size(), 1, "one pair, reported once")
+
+
+func test_ac1_pinch_accepts_a_two_tile_gap() -> void:
+	var rows: PackedStringArray = PackedStringArray(
+		[
+			"################",
+			"#..............#",
+			"#.........1....#",
+			"#..............#",
+			"########.......#",
+			"########.......#",
+			"#.........######",
+			"#.........######",
+			"#..............#",
+			"#P.............E",
+			"#..............E",
+			"################",
+		]
+	)
+	# The east wall moved one tile: the opening is 2 wide.
+	assert_eq(_room(rows).validate(_rules), PackedStringArray())
+
+
+func test_ac1_pinch_reports_each_pair_once() -> void:
+	var rows: PackedStringArray = PackedStringArray(
+		[
+			"################",
+			"#..............#",
+			"#.........1....#",
+			"#..............#",
+			"########.......#",
+			"########.......#",
+			"#........#######",
+			"#........#######",
+			"#..............#",
+			"#..............#",
+			"########.......#",
+			"########.......#",
+			"#........#######",
+			"#........#######",
+			"#..............#",
+			"#P.............E",
+			"#..............E",
+			"################",
+		]
+	)
+	var errors: PackedStringArray = _room(rows).validate(_rules)
+	_assert_only_rule(errors, "pinch", "(8, 5) and (8, 6)")
+	assert_true(_has_error(errors, "pinch", "(8, 11) and (8, 12)"), str(errors))
+	assert_eq(errors.size(), 2, "two pairs, once each: " + str(errors))
+
+
+func test_ac1_pinch_leaves_a_one_tile_corridor_to_the_corridor_rule() -> void:
+	var rows: PackedStringArray = PackedStringArray(
+		[
+			"############",
+			"#....##....#",
+			"#....##....#",
+			"#P.........E",
+			"#....##....E",
+			"#....##..1.#",
+			"#....##....#",
+			"############",
+		]
+	)
+	for error: String in _room(rows).validate(_rules):
+		assert_false(error.begins_with("pinch:"), "a corridor tile is not also a pinch: " + error)
+
+
 func test_ac1_thin_wall_rejects_a_lone_wall_tile() -> void:
 	var rows: PackedStringArray = RoomFixtures.with_tile(RoomFixtures.valid_rows(), 6, 4, "#")
 	_assert_only_rule(_room(rows).validate(_rules), "thin_wall", "(6, 4)")

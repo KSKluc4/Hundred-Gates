@@ -157,7 +157,8 @@ player: **read and dodge** (chaser), **close distance and move under fire** (cas
 ### Chaser — melee pressure (F-004)
 - **Concept:** walks straight at you and swipes. The enemy that teaches the loop: read,
   dodge, punish.
-- **Movement:** chases at 3.0 tiles/s, holds at 1.0 tile. Slides along walls, no pathfinding.
+- **Movement:** chases at 3.0 tiles/s, holds at 1.0 tile. Walks straight at the target; when a wall
+  blocks that line it routes around it on the room's navigation grid (D-012, F-011).
 - **Attack — Lunging swipe:** starts when the target is within 1.6 tiles.
   - Telegraph: 0.50 s windup. Tracks for 0.30 s, then the locked direction shows for 0.20 s.
   - Hitbox: 90° sector, 1.2 tiles, active 0.10 s, lunging 0.8 tiles along the aim.
@@ -171,7 +172,9 @@ player: **read and dodge** (chaser), **close distance and move under fire** (cas
 - **Concept:** keeps its distance and fires slow bolts. Teaches closing in and moving under fire.
 - **Movement:** stays 3–6 tiles from the target: backs off straight away below 3 tiles, walks in
   above 6, holds in between. 2.5 tiles/s both ways (slower than the player, so it can be caught).
-  No memory: no hysteresis band. Aggro radius 8 tiles.
+  No memory: no hysteresis band. Aggro radius 8 tiles. Walking in routes around walls (D-012,
+  F-011); backing off stays a straight line. Inside 6 tiles it holds even with a wall in the way
+  (F-011 §10 Q4).
 - **Attack — Bolt:** starts when the target is within 7 tiles, at any distance. Shooting beats
   backing off, so a cornered caster still shoots.
   - Telegraph: 0.60 s windup with a visible aim line. Tracks for 0.35 s, locked for 0.25 s.

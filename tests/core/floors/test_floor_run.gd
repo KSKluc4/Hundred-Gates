@@ -225,6 +225,42 @@ func test_ac15_other_unfit_snapshots_are_refused_too() -> void:
 	assert_eq_deep(_run.to_dict(), before)
 
 
+func test_ac15_the_snapshot_names_the_floor() -> void:
+	var run: FloorRun = FloorRun.new()
+	run.setup(RoomFixtures.valid_floor(2, 3), _rules, MAX_HP)
+	assert_eq(run.to_dict()[FloorRun.KEY_FLOOR_NUMBER], 3)
+
+
+func test_ac15_a_snapshot_from_another_floor_is_refused_and_changes_nothing() -> void:
+	# Same room count and a room index that fits, so only the floor number differs.
+	var other: FloorRun = FloorRun.new()
+	other.setup(RoomFixtures.valid_floor(2, 3), _rules, MAX_HP)
+	other.report_room_cleared(50)
+	other.advance(80)
+	_run.report_room_cleared(50)
+	var before: Dictionary = _run.to_dict()
+	assert_false(_run.from_dict(other.to_dict()))
+	assert_eq_deep(_run.to_dict(), before)
+	assert_eq(_run.get_room_index(), 0)
+
+
+func test_ac15_a_snapshot_without_a_floor_number_is_refused() -> void:
+	var before: Dictionary = _run.to_dict()
+	var snapshot: Dictionary = before.duplicate()
+	snapshot.erase(FloorRun.KEY_FLOOR_NUMBER)
+	assert_false(_run.from_dict(snapshot))
+	assert_eq_deep(_run.to_dict(), before)
+
+
+func test_ac15_a_floor_number_of_the_wrong_type_is_refused() -> void:
+	var before: Dictionary = _run.to_dict()
+	for bad: Variant in ["1", 1.0, null, true]:
+		var snapshot: Dictionary = before.duplicate()
+		snapshot[FloorRun.KEY_FLOOR_NUMBER] = bad
+		assert_false(_run.from_dict(snapshot), "floor number %s" % str(bad))
+	assert_eq_deep(_run.to_dict(), before)
+
+
 func test_ac15_from_dict_before_setup_is_refused() -> void:
 	assert_false(FloorRun.new().from_dict(_run.to_dict()))
 

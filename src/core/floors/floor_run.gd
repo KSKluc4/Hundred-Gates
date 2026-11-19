@@ -7,6 +7,7 @@ extends RefCounted
 signal room_cleared(room_index: int)
 signal floor_cleared(floor_number: int)
 
+const KEY_FLOOR_NUMBER: String = "floor_number"
 const KEY_ROOM_INDEX: String = "room_index"
 const KEY_ENTRY_HP: String = "entry_hp"
 const KEY_ROOM_CLEARED: String = "room_cleared"
@@ -107,6 +108,7 @@ func restart_room() -> void:
 ## G7.
 func to_dict() -> Dictionary:
 	return {
+		KEY_FLOOR_NUMBER: _floor.floor_number if _floor != null else 0,
 		KEY_ROOM_INDEX: _room_index,
 		KEY_ENTRY_HP: _entry_hp,
 		KEY_ROOM_CLEARED: _room_cleared,
@@ -114,7 +116,8 @@ func to_dict() -> Dictionary:
 	}
 
 
-## C13: a snapshot that doesn't fit this floor is refused and changes nothing.
+## C13: a snapshot that doesn't fit this floor (another floor number, a room index out of range)
+## is refused and changes nothing.
 func from_dict(snapshot: Dictionary) -> bool:
 	if _floor == null or not _is_snapshot_valid(snapshot):
 		return false
@@ -127,10 +130,16 @@ func from_dict(snapshot: Dictionary) -> bool:
 
 
 func _is_snapshot_valid(snapshot: Dictionary) -> bool:
-	for key: String in [KEY_ROOM_INDEX, KEY_ENTRY_HP, KEY_ROOM_CLEARED, KEY_FLOOR_CLEARED]:
+	var keys: Array[String] = [
+		KEY_FLOOR_NUMBER, KEY_ROOM_INDEX, KEY_ENTRY_HP, KEY_ROOM_CLEARED, KEY_FLOOR_CLEARED
+	]
+	for key: String in keys:
 		if not snapshot.has(key):
 			return false
-	if not (snapshot[KEY_ROOM_INDEX] is int and snapshot[KEY_ENTRY_HP] is int):
+	var floor_ints: bool = snapshot[KEY_FLOOR_NUMBER] is int
+	if not (floor_ints and snapshot[KEY_ROOM_INDEX] is int and snapshot[KEY_ENTRY_HP] is int):
+		return false
+	if snapshot[KEY_FLOOR_NUMBER] != _floor.floor_number:  # F-011/C13: G7, CR-8
 		return false
 	if not (snapshot[KEY_ROOM_CLEARED] is bool and snapshot[KEY_FLOOR_CLEARED] is bool):
 		return false

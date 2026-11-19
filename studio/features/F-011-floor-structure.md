@@ -2,7 +2,7 @@
 id: F-011
 title: Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox
 status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Auditor        # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-18
 updated: 2026-11-18
 depends_on: [F-004, F-005, F-006, F-007, F-008, F-009, D-006, D-007, D-008, D-011, D-012]
@@ -116,17 +116,17 @@ loot) needs rooms to exist.
 | C3 | A brain routes only when `NavGrid.has_clear_line(from, to, own radius)` is false; otherwise it uses the straight direction. Attack choice (trigger bands, cooldown, target pick) never reads the `NavGrid`. | Keeps combat design intact |
 | C4 | `NavGrid` is deterministic: same rows + same positions → same answer, whatever the call order or the number of callers. Neighbour order is fixed. No randomness, no time. | G1, co-op later |
 | C5 | Path search is 8-way; a diagonal step is allowed only when both orthogonal neighbours are walkable. The distance field is cached per target tile and rebuilt only when the target's tile changes. The cache is never serialized. | No corner cutting; cost at 120 steps/s |
-| C6 | `RoomData` legend, exactly: `#` wall · `.` floor · `P` player start · `E` exit · `1`–`9` spawn of `enemies[digit − 1]`. Tile `(x, y)` has its centre at `(x + 0.5, y + 0.5)` tiles; the grid's top-left corner is the room's origin `(0, 0)`. | One format for data, glue and nav |
+| C6 | `RoomData` legend, exactly: `#` wall · `.` floor · `P` player start · `E` exit · `1`–`9` spawn of `enemies[digit − 1]`. Tile `(x, y)` has its centre at `(x + 0.5, y + 0.5)` tiles; the grid's top-left corner is the room's origin `(0, 0)`. The floor scene must sit at the world origin: tile positions are read from global positions, and any other origin is refused as a setup error (review round 1, CR-4). | One format for data, glue and nav |
 | C7 | Spawn combat ids are `"<EnemyData.id>_<n>"`, `n` = 1-based index of the spawn in row-major order (top row first, left to right). That order is the registration order, after the player. | F-003/C19 fixed ids and order |
 | C8 | Invalid data is refused, never repaired: `RoomData.validate()` / `FloorData.validate()` return every error; the floor scene builds nothing and logs them when the list isn't empty. | Same rule as enemy data (F-004/C12) |
 | C9 | All numbers are in `data/tunables/floors.tres` (`FloorTunables`): heal fraction, boss full heal, min spawn distance, max enemies per room, room size limits, exit min width. | G2 |
 | C10 | The exit is decided in core: `FloorRun.is_exit_reached(player_position_tiles)`. No `Area2D`. The door is a wall body (layer 1) over the `E` tiles that the glue disables when the room is cleared. | G6 |
 | C11 | "Cleared" is read from logic: every enemy combatant in the room's sim is dead. Never stored in the glue. | Can't go stale |
 | C12 | The heal is `roundi(max_hp × room_clear_heal_fraction)`, applied once per room, capped at max HP, never to a dead player. A boss room clear heals nothing. Entering the boss room sets HP to max when `boss_room_full_heal`. | Lucas's decision, 2026-11-18 |
-| C13 | `FloorRun` has `to_dict()` / `from_dict()`; a restore that doesn't fit the floor (room index out of range) is refused and changes nothing. | G7 |
+| C13 | `FloorRun` has `to_dict()` / `from_dict()`; a restore that doesn't fit the floor (room index out of range) is refused and changes nothing. The snapshot carries the floor number, and one from another floor is refused (review round 1, CR-8). | G7 |
 | C14 | The glue builds each room with a **new** `CombatRunner`, added last, with `combatant_paths` = player, then spawns in C7 order. Nothing is added to or removed from a running sim. | F-003/C19 |
 | C15 | New asset/data paths used from code are constants (`Tunables.*_PATH` or a `const` in the script). | G5 |
-| C16 | Layout rules enforced by `RoomData.validate()`: rectangular; within size limits; border is all `#`/`E`; exactly one `P`; `E` tiles form one straight run on the border, not on a corner, at least `exit_min_width_tiles` long, touching walkable tiles; every walkable tile reachable from `P`; every walkable tile is part of a fully walkable 2×2 block (no 1-tile corridors); every interior wall tile is part of a fully wall 2×2 block (no thin walls); every spawn at least `min_spawn_distance_tiles` from `P`; non-boss rooms have 1 to `max_enemies_per_room` spawns; a boss room has exactly one. | Bodies up to 0.8 tiles; no melee through walls |
+| C16 | Layout rules enforced by `RoomData.validate()`: rectangular; within size limits; border is all `#`/`E`; exactly one `P`; `E` tiles form one straight run on the border, not on a corner, at least `exit_min_width_tiles` long, touching walkable tiles; every walkable tile reachable from `P`; every walkable tile is part of a fully walkable 2×2 block (no 1-tile corridors); every two orthogonally adjacent walkable tiles share a fully walkable 2×2 block (no 1-tile pinch between wall corners; review round 1, CR-2); every interior wall tile is part of a fully wall 2×2 block (no thin walls); every spawn at least `min_spawn_distance_tiles` from `P`; non-boss rooms have 1 to `max_enemies_per_room` spawns; a boss room has exactly one. | Bodies up to 0.8 tiles; no melee through walls |
 | C17 | Sub-agents never run `git` commands that change state, never edit `studio/`, `tools/`, `addons/`, or files outside their task's list, and never use a worktree. | D-011 |
 | C18 | Static typing everywhere; `gdlint` and `gdformat --check` clean; one `class_name` per file. | PROJECT.md code style |
 
@@ -305,6 +305,7 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
 - [x] T5 — bbb765f
 - [x] T6 — 3975aa6
 - [x] T7 — f5837b4
+- [x] Review round 1 fixes — CR-2 fefa482, CR-8 85d7646, CR-4 eb2b7fe, CR-3 6165d01 (replies in §9)
 
 ### Deviations from plan
 - DEV-1: This file went straight to `IN_PROGRESS`; `APPROVED` was never written and the
@@ -332,6 +333,28 @@ _Skipped for this feature by Lucas's instruction (D-011). The code review (§9) 
   `_physics_process`, which is safe only while the floor runs after the runner.
 - DEV-7: test fixtures for the glue are built in code (`tests/fixtures/floors/floor_fixtures.gd`),
   not `.tres` files. — **Why:** easier to vary per test. — **Impact:** none.
+
+- DEV-8: in `studio/design/floors.md` the line "`P` and `E` sit on opposite sides, so the
+  room is crossed" was moved from the rules `RoomData.validate()` enforces to a new
+  "Guidelines (not enforced)" list, in the log commit `c6f0eb6`, and was not logged here until
+  review round 1 (CR-1). — **Why:** C16 never listed it, and "opposite sides" has no exact
+  meaning for an exit on a side wall or a start in a corner (the Hexer room's `P` is in a
+  corner on purpose, ASSUMPTION-8). — **Impact:** the design doc Lucas approved at Gate A said
+  the rule was enforced; it isn't. The shipped rooms all have `P` and `E` on opposite walls
+  (`test_shipped_floors.gd`). §10 Q5 asks Lucas whether it should be enforced.
+- DEV-9: `FloorData.validate()` also rejects `floor_number < 1`, and `FloorTunables.validate()`
+  also rejects a negative `min_spawn_distance_tiles` and `exit_min_width_tiles < 1` (not in
+  AC3/AC4). — **Why:** such data can't be built or makes a rule meaningless. — **Impact:**
+  stricter data only (logged in review round 1, CR-1).
+- DEV-10: `Room` adds, beyond the contracts and AC16, a `PlaceholderShake` camera on the
+  player, a `CombatDebugDraw`, and a `BossBar` in boss rooms. — **Why:** the debug scenes of
+  F-003 to F-009 have them and a floor without them can't be judged at Gate B. — **Impact:**
+  none on logic; all three are existing presentation nodes (logged in review round 1, CR-1).
+- DEV-11: `README.md` got a paragraph in T7's commit, outside T7's file list. — **Why:** the
+  lead added it to T7's brief and not to §6. — **Impact:** none (logged in review round 1, CR-1).
+- DEV-12: after code review round 1 the lead amended C6, C13 and C16 (each marked "review
+  round 1"). — **Why:** CR-2, CR-4 and CR-8. — **Impact:** one more validation rule, one more
+  setup error, one more snapshot key.
 
 ### Assumptions made (small, reversible)
 - ASSUMPTION-1: tile size stays 16 px and rooms are at most 40 × 22 tiles (one 640 × 360
@@ -400,9 +423,195 @@ By hand (Gate B): open `scenes/debug/f011_floor_1.tscn`, `f011_floor_2.tscn` or
 Final gate run by the lead on `f5837b4`: 1135/1135 tests, gdlint clean, gdformat 220 files
 unchanged, core purity ok (self-test: 19 rules).
 
+After the review round 1 fixes (`6165d01`): 1150/1150 tests (15 new), gdlint clean, gdformat 220
+files unchanged, core purity ok.
+
 ---
 
 ## 9. Code Review  ·  _Auditor_
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** a864404
+
+**Date:** 2026-11-18 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+How this round was done (D-014): a fresh reviewer sub-agent that wrote neither the spec nor
+the code read `AGENTS.md`, this file and the whole diff against `main`. It extracted `a864404`
+into a scratch folder and ran its probes against that copy, so every run below is on the
+reviewed commit. The lead then checked each finding against the code and the git history
+before recording it here. `tools/test` (1135 tests), lint and `tools/check_core_purity` had
+passed on this commit and were not rerun.
+
+No functional bug was found in the shipped floors, the navigation, the brains or the room
+flow. The blocking finding is a rule matter: differences from the plan that §8 doesn't log,
+one of them a design-doc rule demoted inside a log commit. Four findings should be fixed: a
+validation hole that lets a room trap a wide enemy, a content test that proves less than it
+reads, a silent dependence on the world origin, and a design doc that now contradicts the code.
+
+Independent checks the reviewer ran, all clean: 3,600 random segments of `has_clear_line`
+against brute-force sampling; 550 random-grid walks along `direction_toward`; the three brains
+of `main` against this commit's with no nav grid over 6,000 random states (C2: 0 differences);
+all 15 shipped rooms with every enemy awake and attacking for 25 s at 30 and 60 ticks/s; 641
+player positions across the rooms with every enemy walking to its stop distance.
+
+### AC evidence
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC1 | ✅ | `room_data.gd:67`; one test per rule in `test_room_data.gd:15` |
+| AC2 | ✅ | `room_data.gd:36`, `:44`, `:50`; `test_room_data.gd:235` |
+| AC3 | ✅ | `floor_data.gd:14`; `test_floor_data.gd:22` |
+| AC4 | ✅ | `floor_tunables.gd:20`; `test_floor_tunables.gd:27` |
+| AC5 | ✅ | `nav_grid.gd:70`; `test_nav_grid.gd:97`; fuzz clean |
+| AC6 | ✅ | `nav_grid.gd:87`; `test_nav_grid.gd:182`, `:368`; fuzz clean |
+| AC7 | ✅ | `nav_grid.gd:125`; `test_nav_grid.gd:246` |
+| AC8 | ✅ | `nav_grid.gd:156`; `test_nav_grid.gd:288` |
+| AC9 | ✅ | `nav_grid.gd:90`, `enemy_brain.gd:65`; `test_nav_grid.gd:348`, `test_brain_nav.gd:222` |
+| AC10 | ✅ | `enemy_brain.gd:55`, the three brains; `test_brain_nav.gd:50`; differential run against `main` clean |
+| AC11 | ✅ | `combat_sim.gd:51`, `:65`; `test_combat_sim_nav.gd:30` |
+| AC12 | ✅ | `combat_state.gd:103`, `:112`; `test_combat_state_heal.gd:14` |
+| AC13 | ✅ | `floor_run.gd:61`, `:87`; `test_floor_run.gd:39` |
+| AC14 | ✅ | `floor_run.gd:78`; `test_floor_run.gd:143` |
+| AC15 | ✅ | `floor_run.gd:108`; `test_floor_run.gd:178` (see CR-8) |
+| AC16 | ✅ | `room.gd:113`–`:202`; `test_f011_room.gd:12` |
+| AC17 | ✅ | `floor_scene.gd:53`, `room.gd:100`; `test_f011_flow.gd:10`, `:25` (a real sword kill) |
+| AC18 | ✅ | `floor_scene.gd:57`, `:114`; `test_f011_flow.gd:60`, `:85` |
+| AC19 | ✅ | `floor_run.gd:66`, `:92`; `test_f011_flow.gd:95`, `:122` |
+| AC20 | ✅ | `floor_scene.gd:50`, `:83`; `test_f011_flow.gd:133`, `:157` |
+| AC21 | ✅ | `floor_scene.gd:32`, `:101`; `test_f011_debug.gd:8` |
+| AC22 | ✅ | `test_f011_navigation.gd:16` (chaser at 30/60/120; brute and caster at 30 and 120, and the brute "reaches" by starting a charge with a clear line, as §8 says) |
+| AC23 | ✅ | `floor_debug_label.gd:13`, `floor_scene.gd:62`; `test_f011_debug.gd:65` |
+| AC24 | ✅ | `data/floors/**`; `test_shipped_floors.gd:81`; the 15 rooms were also checked by hand against `floors.md` |
+| AC25 | ✅ | `test_shipped_floors.gd:165` |
+| AC26 | ✅ | By its words only: `test_f011_shipped_floors.gd:42`, `:116`. The test proves much less than it reads (CR-3). |
+| AC27 | ✅ | `test_shipped_floors.gd:181` |
+
+### Checks
+
+- **Rejected options (§3):** none implemented. No `Navigation*` or `Area2D` in the new code or
+  scenes; the exit is decided in `FloorRun.is_exit_reached`; one sim per room; no flasks; a
+  linear chain; the door stays locked until the clear.
+- **Constraints C1–C18:** met by their wording. C2 verified by the differential run; only
+  `tests/test_input_map.gd` changed among existing tests (DEV-5). C16 is implemented as
+  written, and as written it lets a broken room through (CR-2). C11 holds for
+  `Room.is_cleared()`, but the door and `FloorRun`'s flag are latches (CR-6).
+- **G1–G9:** no violation found. Nothing in the navigation or the room flow reads time or a
+  frame count. G7: see CR-8.
+- **Deviations:** DEV-1 to DEV-7 are justified (DEV-6 checked by about 700 scene runs with no
+  engine error on a swap or a restart). Unlogged ones: CR-1.
+- **Assumptions:** 1–8 reasonable and reversible. ASSUMPTION-4 is what opens CR-2, and
+  ASSUMPTION-8 is what empties AC26's test (CR-3).
+- **Tick rates:** first-hit times agree at 30/60/120. Long fights with several enemies drift
+  slightly between rates, and by the same amount with the nav grid removed: it comes from the
+  existing physics glue, not from this feature.
+
+### Findings
+
+**CR-1 🔴 Differences from the plan that §8 doesn't log.** Verified in the git history.
+- (a) `studio/design/floors.md`, commit `c6f0eb6` (a log commit): the line "`P` and `E` sit on
+  opposite sides, so the room is crossed" moved from "Rules (enforced by
+  `RoomData.validate()`)" to a new "Guidelines (not enforced)" list. At the spec commit
+  `82a82a5` the binding design doc said the rule was enforced; C16 never listed it. The
+  contradiction was settled by editing the design doc, with nothing in §8.
+- (b) `floor_data.gd:16` rejects `floor_number < 1`: not in AC3.
+- (c) `floor_tunables.gd:24`, `:34` reject a negative `min_spawn_distance_tiles` and
+  `exit_min_width_tiles < 1`: not in AC4.
+- (d) `room.gd:155`, `:173` give every room a `PlaceholderShake` camera and a
+  `CombatDebugDraw`, and boss rooms a `BossBar`: not in the contracts or AC16.
+- (e) `README.md` changed in T7's commit `f5837b4`, outside T7's file list.
+- **Why it matters:** (b)–(e) are harmless. (a) is the real one: Gate A was given on a design
+  doc that said the rule was enforced. The shipped rooms do comply
+  (`test_shipped_floors.gd:279`).
+- **Suggested fix:** log each in §8; for (a), enforce the rule or ask Lucas to confirm it is a
+  guideline. No code change needed for the others.
+
+> **Builder reply (lead):** logged in `616b3d9` as DEV-8 (the design-doc rule), DEV-9, DEV-10 and DEV-11. For (a) the rule stays a guideline for now: "opposite sides" has no exact meaning for a side exit or a corner start, and §10 Q5 asks Lucas whether to enforce it. No code change.
+
+**CR-2 🟡 A room that passes validation can trap a wide enemy for good.** Verified by running.
+- **Where:** `src/core/floors/room_data.gd:226` (`_check_corridors`) and C16's wording.
+- **Problem:** "every walkable tile is part of a walkable 2×2 block" does not make every
+  passage 2 tiles wide: two wall corners one tile apart pass. A 16 × 12 room with a wall from
+  the west at rows 4–5 (x ≤ 7) and a wall from the east at rows 6–7 (x ≥ 9) validates with no
+  error, leaving a 1-tile opening at (8, 5)–(8, 6). A chaser gets through; a brute (1.2 tiles
+  wide) routes into the opening and stays there, 8.1 tiles from the player, for the whole 40 s.
+- **Why it matters:** the exit is locked until every enemy is dead, and validation is the only
+  guard for rooms authored later. No shipped room has this.
+- **Suggested fix:** also require that every two orthogonally adjacent walkable tiles share a
+  fully walkable 2×2 block; add the test; state the rule in `floors.md`.
+
+> **Builder reply (lead):** fixed in `fefa482`. New rule `pinch` in `RoomData.validate()`: two walkable tiles side by side must share a walkable 2×2 block; each pair is reported once, and a tile the `corridor` rule already refuses is not reported twice. All 15 shipped rooms and every fixture pass it unchanged. C16 and `floors.md` state the rule (`616b3d9`).
+
+**CR-3 🟡 AC26's test runs almost every room with sleeping enemies.** Verified by reading; the
+rooms themselves verified by running.
+- **Where:** `tests/scenes/test_f011_shipped_floors.gd:116` (`_walk_floor`), `:150`, `:205`.
+- **Problem:** the player idles at `P`, and `test_shipped_floors.gd:271` pins every spawn
+  outside its own aggro radius from `P`. For the 2 s no enemy decides, routes or attacks; "AI
+  on" only checks the toggle. `_wake_room` wakes one non-boss room per floor. No boss room and
+  9 of the 12 combat rooms are ever awake in the floor scene in any test.
+- **Why it matters:** a broken interaction between a room's walls and its enemies (Hexer bolts
+  and cover, Juggernaut charges, casters in alcoves) would pass the suite. The reviewer's own
+  run of all 15 rooms awake was clean, so the content is fine; the test is the gap.
+- **Suggested fix:** wake every room, boss rooms included, in `_walk_floor`, with the same
+  no-error and no-stray-body asserts.
+
+> **Builder reply (lead):** fixed in `6165d01`. `_walk_floor` now wakes every enemy of every room, boss rooms included, and asserts that each one was aggroed, left its idle state and left its spawn tile, with the old asserts kept. All 15 rooms were clean. Limit: in 2 s from `P` no hit lands, so the test proves that every enemy decides and moves, not that a full fight is error-free.
+
+**CR-4 🟡 The floor only works at the world origin, and nothing says or checks it.** Verified
+by running.
+- **Where:** `src/world/floors/room.gd:154`, `:168`, `:211`; `floor_scene.gd:57`; C6.
+- **Problem:** bodies take their logic position from `global_position`, while the `NavGrid` and
+  `FloorRun.is_exit_reached` use room-local tiles. With `FloorScene.position = (160, 64)`, `P`
+  at (1.5, 4.5) became logic position (11.5, 8.5): the door opened after the clear, the player
+  walked through it, the room never swapped.
+- **Why it matters:** the debug scenes sit at the origin, so nothing breaks today. It is a
+  silent soft lock for whoever places the scene elsewhere.
+- **Suggested fix:** refuse a non-zero origin as a setup error, or subtract the room's origin
+  where positions are read; say which in C6.
+
+> **Builder reply (lead):** fixed in `eb2b7fe`. A floor scene whose global transform is not the identity is a setup error and builds nothing; C6 says so (`616b3d9`).
+
+**CR-5 🟡 `studio/design/combat.md` now contradicts the code.** Verified by reading.
+- **Where:** `combat.md:160` ("Slides along walls, no pathfinding"), `:172` (caster movement).
+- **Problem:** D-012 changed how every enemy walks; the binding Combat doc still describes the
+  old behaviour. `PHASE1.md` still lists F-011 as "Not started".
+- **Suggested fix:** update the movement lines to point at D-012. §10 Q4(b) (a brute that
+  charges a pillar and stuns itself is a free punish) deserves an explicit answer at Gate B.
+
+> **Builder reply (lead):** fixed in `616b3d9`: the chaser and caster movement lines in `combat.md` now point at D-012 and F-011 §10 Q4. `PHASE1.md` is Direction's and was not touched; Lucas has been told its rows are stale.
+
+**CR-6 🔵 "Cleared" can go stale after a sim restore.** Verified by running.
+`floor_scene.gd:53`, `room.gd:100`: the door and `FloorRun._room_cleared` latch on the first
+clear. A snapshot taken with the enemy alive and restored after the clear leaves the enemy
+alive and the door open. No key reaches this in the floor scene.
+
+> **Builder reply (lead):** not changed. Nothing restores a sim snapshot in a floor room (the debug scenes with restore keys are F-003 to F-009's, not the floor scene), so the latch can't go stale today. It is noted here for whoever adds restore to a room.
+
+**CR-7 🔵 The boss room's door opens onto nothing.** Verified by running. After the boss dies
+the door opens, `advance()` is refused, and the player can walk out of the grid.
+
+> **Builder reply (lead):** not changed here. F-012 uses the opened boss door as the way back to town (`floor_exited`); in F-011's own debug scenes the player can still walk out, which harms nothing.
+
+**CR-8 🔵 A `FloorRun` snapshot doesn't say which floor it is.** From reading.
+`floor_run.gd:108`, `:129`: a floor 3 snapshot is accepted by a floor 2 run when the room
+index fits (G7).
+
+> **Builder reply (lead):** fixed in `85d7646`. The snapshot has `floor_number`; a missing, non-int or different one is refused and changes nothing. C13 says so (`616b3d9`).
+
+**CR-9 🔵 `GLOSSARY.md` has no entry for room, exit, room clear, floor run or nav grid.**
+
+> **Builder reply (lead):** fixed on the F-012 branch, where the glossary already gained Floor, Room, Safe room and Town: exit, room clear, floor run and nav grid are added there, to avoid two branches appending to the same lines.
+
+**CR-10 🔵 A bad enemy file is found only when its room is built.** Suspected, from reading.
+`FloorScene._collect_setup_errors()` validates rooms, not their `EnemyData`. The room's
+`CombatRunner` then stops itself and logs, but the floor keeps ticking: a frozen room with a
+locked door and nothing on the label.
+
+> **Builder reply (lead):** not changed (🔵). Shipped enemy files are validated by their own data tests, and in the game the debug label is hidden; a floor-setup check belongs with content tooling.
+
+**Not checked in this round:** anything by hand (keyboard, gamepad, a rendered frame; feel,
+room sizes, the heal, the camera); a moving player in the soak runs; debug scenes `f001`–`f009`
+(untouched by the diff, not run).
 
 ---
 
@@ -414,6 +623,7 @@ unchanged, core purity ok (self-test: 19 rules).
 | Q2 | Lead | → Combat: a caster with no clear line still shoots (its bolt hits the wall). Kept on purpose: walls are cover. Should it reposition instead? | no | |
 | Q4 | Lead | → Combat: found in T5's scene tests. (a) A caster inside its stop distance (6 tiles) never routes: behind a wall it holds and shoots the wall for as long as the player stays put. Not a softlock (the player can walk to it), but it never repositions for a clear line. (b) A brute whose target is 3–7 tiles away behind a pillar charges the pillar and stuns itself, then walks round. Both follow from C3 (attack choice ignores walls). Keep as cover play, or teach attack choice about line of sight? | no | |
 | Q3 | Lead | → Lucas: starting values to judge at Gate B — heal 30 %, room sizes, enemy counts per room (`studio/design/floors.md`). | no | |
+| Q5 | Lead | → Lucas: should "`P` and `E` sit on opposite sides of the room" be enforced by validation? It was listed as enforced when you gave Gate A and is a guideline now (DEV-8, review CR-1). All 15 shipped rooms comply. Enforcing it means defining "opposite" (opposite walls only?) and limits rooms like a loop or an L. | no | |
 
 ---
 

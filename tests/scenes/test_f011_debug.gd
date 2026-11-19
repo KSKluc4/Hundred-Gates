@@ -44,6 +44,53 @@ func test_ac21_a_floor_number_below_1_is_refused() -> void:
 	assert_null(_floor.get_room())
 
 
+func test_ac21_a_floor_scene_moved_off_the_world_origin_is_refused() -> void:
+	await spawn_floor(
+		_three_room_floor(1), 0, func(scene: FloorScene) -> void: scene.position = Vector2(160, 64)
+	)
+	_expect_origin_refused()
+	assert_string_contains(_floor.get_setup_errors()[0], "(160.0, 64.0)", "says where it is")
+
+
+func test_ac21_a_floor_scene_under_a_moved_parent_is_refused() -> void:
+	var parent: Node2D = Node2D.new()
+	parent.position = Vector2(32, 0)
+	await _spawn_under(parent)
+	_expect_origin_refused()
+
+
+func test_ac21_a_floor_scene_under_a_scaled_parent_is_refused() -> void:
+	var parent: Node2D = Node2D.new()
+	parent.scale = Vector2(2, 2)
+	await _spawn_under(parent)
+	_expect_origin_refused()
+
+
+func test_ac21_a_scaled_floor_scene_is_refused() -> void:
+	await spawn_floor(
+		_three_room_floor(1), 0, func(scene: FloorScene) -> void: scene.scale = Vector2(2, 2)
+	)
+	_expect_origin_refused()
+
+
+func test_ac21_a_rotated_floor_scene_is_refused() -> void:
+	await spawn_floor(
+		_three_room_floor(1), 0, func(scene: FloorScene) -> void: scene.rotation = 0.5
+	)
+	_expect_origin_refused()
+
+
+func test_ac21_a_floor_scene_at_the_origin_builds_with_or_without_a_parent() -> void:
+	await spawn_floor(_three_room_floor(1))
+	assert_eq(_floor.get_setup_errors(), PackedStringArray())
+	assert_not_null(room())
+	var parent: Node2D = Node2D.new()
+	await _spawn_under(parent)
+	assert_eq(_floor.get_setup_errors(), PackedStringArray())
+	assert_not_null(room(), "built under a parent at the origin")
+	assert_eq(_floor.get_run().get_room_index(), 0)
+
+
 func test_ac21_the_keys_do_nothing_without_a_room() -> void:
 	await spawn_floor(null)
 	assert_push_error("floor_data: not set")
@@ -139,6 +186,28 @@ func _three_room_floor(floor_number: int) -> FloorData:
 		FloorFixtures.one_enemy_room(&"solo_2", &"grunt2"),
 	]
 	return FloorFixtures.floor_of(rooms, floor_number)
+
+
+## A fresh floor scene as the child of `parent`, which joins the tree with it.
+func _spawn_under(parent: Node2D) -> void:
+	_floor = (load(FLOOR_SCENE_PATH) as PackedScene).instantiate()
+	_floor.floor_data = _three_room_floor(1)
+	_floor.player_input_enabled = false
+	parent.add_child(_floor)
+	add_child_autofree(parent)
+	await get_tree().physics_frame
+
+
+## F-011/C6: the one setup error is about the origin, and nothing was built or runs.
+func _expect_origin_refused() -> void:
+	var errors: PackedStringArray = _floor.get_setup_errors()
+	assert_eq(errors.size(), 1, str(errors))
+	assert_string_contains(errors[0], "origin: the floor scene must sit at the world origin")
+	assert_push_error("origin: the floor scene must sit at the world origin")
+	assert_null(_floor.get_room(), "no room")
+	assert_null(_floor.get_run())
+	assert_false(_floor.is_physics_processing(), "nothing steps")
+	assert_eq(_count_rooms(), 0, "and nothing was added to the tree")
 
 
 func _find_label() -> void:
