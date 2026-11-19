@@ -1,7 +1,8 @@
 extends F011SceneTest
 ## F-011 T7 (AC26): the three shipped floors, run from their real debug scenes. Every room loads
-## with no setup error, steps 2 s with the AI on and a scripted idle player without an engine
-## error or a body on a wall tile; a woken-up room per floor; one end-to-end clear of floor 1.
+## with no setup error, then steps 2 s with every enemy awake (boss rooms too) and a scripted idle
+## player, without an engine error or a body on a wall tile, and every enemy must have acted; a
+## longer woken-up room per floor; one end-to-end clear of floor 1.
 
 const SCENE_PATH_FORMAT: String = "res://scenes/debug/f011_floor_%d.tscn"  # G5
 const FLOOR_PATH_FORMAT: String = "res://data/floors/floor_%d.tres"  # G5
@@ -10,7 +11,7 @@ const BOSSES: Dictionary = {1: &"warden", 2: &"hexer", 3: &"juggernaut"}
 const PLAYER_ID: StringName = &"player_1"
 const LABEL_PATH: NodePath = ^"DebugLayer/FloorDebugLabel"
 const BOSS_LAYER_PATH: NodePath = ^"BossBarLayer"
-## Seconds stepped in every room, with the player idle at P.
+## Seconds stepped in every room, with every enemy awake and the player idle at P.
 const ROOM_SECONDS: float = 2.0
 ## Seconds stepped in a woken-up room.
 const WAKE_SECONDS: float = 4.0
@@ -23,6 +24,11 @@ const WAKE_HIT_DAMAGE: int = 1
 ## The wake spot keeps this far from every spawn: never on top of an enemy.
 const SPAWN_CLEARANCE_TILES: float = 1.5
 const E2E_EXTRA_TICKS: int = 240
+
+## Per enemy of the room being walked, indexed like its spawns (reset by _watch_awake).
+var _acted: Array[bool] = []
+var _left: Array[bool] = []
+var _topups: int = 0
 
 # --- AC26: every room of every floor ---
 
@@ -112,7 +118,9 @@ func _label() -> String:
 	return (_floor.get_node(LABEL_PATH) as FloorDebugLabel).get_text_now()
 
 
-## F-011/AC26: room by room with skip_room(), each stepped ROOM_SECONDS.
+## F-011/AC26 (CR-3): room by room with skip_room(), each stepped ROOM_SECONDS with every enemy
+## woken. Every spawn starts outside its own aggro radius from P (ASSUMPTION-8), so without the
+## wake no enemy would decide, route or attack in this run.
 func _walk_floor(number: int) -> void:
 	await _spawn_shipped(number)
 	var data: FloorData = _floor.floor_data
@@ -120,15 +128,68 @@ func _walk_floor(number: int) -> void:
 	for index: int in data.get_room_count():
 		var room_data: RoomData = data.rooms[index]
 		_check_loaded(number, index)
-		var problem: String = await _step_clean(ROOM_SECONDS, room_data)
+		var spawns: Array[RoomSpawn] = room_data.get_spawns()
+		for body: Enemy in room().get_enemies():
+			_wake(body)
+		var watch: Callable = _watch_awake(spawns)
+		var problem: String = await _step_clean(ROOM_SECONDS, room_data, watch)
 		assert_eq(problem, "", "%s: %s" % [room_data.id, problem])
 		assert_eq(get_errors().size(), 0, "%s: %s" % [room_data.id, str(get_errors())])
+		_check_acted(room_data, spawns)
 		if index == data.get_room_count() - 1:
 			break
 		if data.rooms[index + 1].is_boss_room:
 			set_hp(SKIP_HP)  # The boss room must refill it.
 		_floor.skip_room()
 		assert_eq(_floor.get_run().get_room_index(), index + 1, "skipped out of %s" % room_data.id)
+
+
+## Called every tick of a walked room: keeps the player alive (a death would swap the room) and
+## records which enemies left their spawn tile and which were seen deciding.
+func _watch_awake(spawns: Array[RoomSpawn]) -> Callable:
+	_acted.resize(spawns.size())
+	_acted.fill(false)
+	_left.resize(spawns.size())
+	_left.fill(false)
+	_topups = 0
+	return func() -> void:
+		var max_hp: int = player().motor.get_combat_state().get_max_hp()
+		if hp() < max_hp:
+			set_hp(max_hp)  # Whole again each tick: the run is about the enemies, not a death.
+			_topups += 1
+		for spawn_index: int in spawns.size():
+			var logic: EnemyLogic = enemy(spawn_index).logic
+			if _tile_of(logic.get_position_tiles()) != _tile_of(spawns[spawn_index].position_tiles):
+				_left[spawn_index] = true
+			if _is_acting(logic.get_state()):
+				_acted[spawn_index] = true
+
+
+## Chasing or attacking: what an enemy that decided is doing (not idle, hit-stunned or dead).
+func _is_acting(state: EnemyLogic.State) -> bool:
+	return (
+		state == EnemyLogic.State.CHASE
+		or state == EnemyLogic.State.WINDUP
+		or state == EnemyLogic.State.ACTIVE
+		or state == EnemyLogic.State.RECOVERY
+	)
+
+
+## Every enemy of the room was awake and left its idle state during the run.
+func _check_acted(data: RoomData, spawns: Array[RoomSpawn]) -> void:
+	var report: PackedStringArray = []
+	for spawn_index: int in spawns.size():
+		var logic: EnemyLogic = enemy(spawn_index).logic
+		var tag: String = "%s: %s" % [data.id, spawns[spawn_index].combat_id]
+		assert_true(logic.is_aggroed(), "%s was awake" % tag)
+		assert_true(_acted[spawn_index], "%s never chased or attacked" % tag)
+		report.append(
+			(
+				"%s acted %s, left spawn %s"
+				% [spawns[spawn_index].combat_id, _acted[spawn_index], _left[spawn_index]]
+			)
+		)
+	gut.p("%s awake: %s (HP top-ups: %d)" % [data.id, "; ".join(report), _topups])
 
 
 ## F-011/AC26: what a room must have on entry, before any tick.
