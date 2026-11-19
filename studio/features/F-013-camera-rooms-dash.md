@@ -639,8 +639,10 @@ Gate A: Lucas's go-ahead in chat on the lead's proposal (D-015), so the file goe
 - The suite takes longer: 510 s, from about 450 s.
 
 ### How to test
-After code review round 1 (4f20879, e5800b6): the numbers below changed to 129 scripts and
-1767 tests; the navigation timings did not move.
+After code review round 1 (4f20879, e5800b6): the full suite on e5800b6 is 129 scripts, 1768
+tests, all passing (539 s), with no "Orphans" line; lint, format and purity are clean and the
+game boots with no error line. The navigation timings did not move. The block below is the
+first gate's.
 
 ```
 tools/test                      # 129 scripts, 1751 tests, all passing (510 s)
