@@ -1,8 +1,8 @@
 ---
 id: F-015
 title: Menus — title screen, pause menu, death screen, settings
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-20
 updated: 2026-11-20
 depends_on: [F-003, F-012, F-014, D-006, D-010, D-014, D-016]
@@ -807,6 +807,11 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
   `test_ac26_main_after_start_is_in_the_town_with_the_hud_showing_town_and_full_hp` (the game's
   parent is the shell, the shell's is `Main`); `test_ac26_main_still_holds_the_debug_overlay`
   now counts the overlay and the shell. `tests/scenes/test_f014_shipped.gd`: not edited.
+- Review fixes (9625676), `tests/scenes/f012_scene_test.gd`, **a file C18 does not list**: the
+  comment on `hold_key_between_ticks()` only (it said a tap is never "just pressed"; measured
+  otherwise, code review CR-7). No code of that helper changed. In the same commit
+  `tests/scenes/f012_game_test.gd` lost the dead constant `GAME_NODE`, got the process id in
+  `spawn_main()`'s file name and a corrected comment (CR-7, CR-9, CR-12).
 
 ### Assumptions made (small, reversible)
 - ASSUMPTION-1 (T1): `get_settings_origin()` is TITLE before the settings were ever opened and
@@ -1109,6 +1114,108 @@ it did not differ); a buffered dash across a pause with real keys; the stick hel
 into the gate list; the debug scenes were booted, not driven; the camera with the tick rate held
 at 1 (DEV-9); `test_f015_menu_panel.gd`, `test_game_settings.gd` and most of
 `test_f015_session.gd` beyond their names and spot checks; the full suite.
+
+<!-- review-round: 2 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 3ed383d (the fixes 9625676 and 8429634: the diff `8f51d37..3ed383d` under `src` and `tests`)
+
+**Date:** 2026-11-20 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+The same two reviewers, read-only, on new private copies of `3ed383d`, each with a `user://` of
+its own. The reader checked every fix against its finding and re-ran the mutations; the other
+re-ran its three defects, then attacked the fixes: 96 paused-and-unpaused twins with 4 to 20
+pauses of 10 kinds each (wall walks in the fixture and the shipped town, shipped floor 1 with
+room changes and with a fight, a walk after a death and after a leave) at 120, 60 and 30 ticks/s;
+its random bot with real clicks (13 runs, 34,000 steps, 79,427 ticks, 4,588 clicks); a click
+probe outside GUT; settings files; 21 mutations of the new code.
+
+**Round 1 findings:**
+- CR-1 ✔ resolved. The reviewer's ten single-pause schedules and its 24 random slide twins (23
+  differed before) are identical without its experiment switch; 96 new twins, 0 differ. With
+  `_keep_bodies_in_space()` removed six of the suite's slide twins fail. See CR-19 for what the
+  suite's own twins still miss.
+- CR-2 ✔ resolved as far as it went: all 84 double clicks of round 1 (0 to 120 ms apart, every
+  height) now do only what the first click does, and 2,341 bot clicks that landed in the guard
+  did nothing. What is left is new: CR-15.
+- CR-3 ✔ resolved (DEV-12 is accurate). CR-4 ✔ resolved (with `_space_follows` never cleared both
+  new tests fail). CR-5 ✔ resolved. CR-6 ✔ resolved (the spy test fails without
+  `set_input_as_handled()`). CR-7 ✔ resolved, but see CR-14. CR-8 ✔ resolved (a nit: CR-20).
+  CR-9 ✔ resolved. CR-10 ✔ for what the reply said; CR-17 for what it did not reach.
+  CR-11 mitigated, still not verified (it needs the editor). CR-12 partly, as replied; accepted.
+  CR-13 noted.
+
+### CR-14 🔴 by the rule (🔵 in substance): an existing test file was edited and §8 does not name it  ·  `tests/scenes/f012_scene_test.gd:143-149`
+9625676 corrected the comment on `hold_key_between_ticks()` (CR-7). The file is not on C18's
+list and appears nowhere in §8. The edit is a comment and it is right.
+
+### CR-15 🟡 A second click later than the guard still acts on the menu that opened  ·  `src/ui/menus/menu_panel.gd:26`, `:149-156`
+Real positional clicks. A slow double click, the second click 310, 350 or 500 ms after the first:
+on the title's "Settings" Fullscreen is switched on; 1 px below the top of "Quit to title" in the
+town's pause menu the game quits with no confirmation. At 250 and 290 ms nothing happens. A
+triple click whose third click comes after the guard does the same. The guard measured 312 ms at
+144 fps, 328 at 60, 366 at 30; Windows' default double-click time is 500 ms. And a stall ends the
+guard early: with the thread blocked for 500 ms in the frame of the first click, the queued
+second click arrived after the guard's real time and acted.
+
+### CR-16 🟡 A double press of Enter, Space or pad A on "Settings" switches Screen shake off and saves it  ·  `src/ui/menus/shell_menus.gd:156`, `src/ui/menus/list_menu.gd`
+Title: Down, Enter, Enter. Pause menu: Down, pad A twice. A click on Settings, then Space 80 ms
+later. The settings menu opens with the focus on `shake` and a choice by key has no guard. Not
+new with the fixes: round 1's code did the same and nobody reported it. (A double Enter on "Quit
+to title" lands on Cancel.)
+
+### CR-17 🟡 The settings file is read by a parser that builds what the file names  ·  `src/autoload/user_settings.gd:23-32`, `:44`
+`_drop_objects()` cleans up after `ConfigFile`, and cannot be complete: an object followed by a
+line the parser refuses, an object inside a list with a bad item, or `Object(Node)` with no
+property list makes `load_from()` return before the cleanup (one orphan a load, a leak line at
+exit); an object inside another object's property is not found; and
+`Object(RefCounted,"script":Resource("user://x.gd"))` runs that script's `_init` inside
+`ConfigFile.load()`, before any cleanup (the reviewer's planted script wrote its marker file).
+Hand-written files only, and acceptable for a local settings file; a save file must never be read
+this way (slice 4).
+
+### CR-18 🟡 The double-click tests can fail on a busy machine, and assume the headless window  ·  `tests/scenes/test_f015_clicks.gd:24-26`, `:266-323`
+The second click is posted 2, 8 or 20 frames or 100 ms after the first and must land inside the
+0.3 s guard; nothing checks that it did. Idle, 9 of 9 pass; with 24 busy loops on 12 cores one
+failed (the frames outlasted the guard and Fullscreen switched on): a false failure, in the gate.
+The tests also post canvas positions as window positions, right only while the root's final
+transform is the identity.
+
+### CR-19 🟡 Two holes in the twins  ·  `tests/scenes/test_f015_shell.gd`, `src/world/shell.gd:337`
+`DISABLE_MODE_MAKE_STATIC` in place of `KEEP_ACTIVE` passes all 69 tests of `test_f015_shell.gd`,
+while the reviewer's fight on shipped floor 1 differs under it in 2 of 4 seeds (by 0.06 px at
+tick 976, by 60.8 px at tick 756): enemies force their server body to static, and that mode
+resets it on enable. And every slide in the suite is in the town built at Start: nothing slides
+in a town built after a death or after a leave, where the reviewer's twins differ on the code
+before the fix in 5 of 6. 16 of 21 mutations were killed; two more survivors are in code CR-17
+removes, and two could not be told from the real code by any run (only `StaticBody2D` kept; the
+keep done after the disable).
+
+### CR-20 🔵 `Shell._enter_tree` uses the current viewport's space, the rest the one cached in `_ready`  ·  `src/world/shell.gd:94`, `:110-116`
+
+### CR-21 🔵 Measured, for the record
+Clicks are ignored for 0.3 s after any menu appears: on Start right after the launch, and on the
+death screen's entry when a death delay shorter than the guard has already enabled it. A new
+entry under a cursor that does not move is not drawn as hovered until the mouse moves, but takes
+a click at once (also with no guard: the engine's doing). A double click on Resume attacks when
+its second click comes two or more ticks later (the game is running again by then). A
+`Resource("res://…")` value in the settings file is left alone.
+
+**Tried, found nothing:** the pointer guard closed, hidden, reopened or set to 0 during a guard
+(no button is left ignoring the mouse); a button held across a key-driven menu change and
+released on the new menu; a press at +100 ms held to +450 ms; a drag from Start to Settings;
+right and middle clicks; the gate list (no guard, a click chooses at once, as before); the death
+entry under a resting cursor with delays of 0, 0.1 and 0.6 s; bodies after Start, after a room
+change and after repeated stops (33 of 33 and 27 of 27 kept and in the space; `Game` alone never
+gets the mode); the bot's clicks outside the guard on an enabled entry (2,016, all acted) and no
+setting flipped by a click on another entry; settings files holding a Node, a plain Object, a
+Window, a Button, a body, a camera, a project script or 1,000 objects (no orphan, no leak line);
+the round 1 sequences again (12 of 12), Start and Quit and die and return 20 times each with no
+growth; the 11 debug scenes and the main scene booted with no error or warning line. C2, C8, C9
+and C12 still hold after the fixes; DEV-11 to DEV-13 and ASSUMPTION-17 are accurate.
+
+**Not checked:** a real mouse, keyboard or pad and a real window (hover and stall results are
+headless); the editor's embedded window (CR-11); a stall produced by the game itself; twins
+longer than 16 s and floors other than shipped floor 1; a windowed GUT run; the full suite.
 
 ---
 
