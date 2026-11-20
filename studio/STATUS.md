@@ -2,7 +2,7 @@
 
 > Updated by whoever changes a feature's status. Lucas checks this first.
 
-**Last updated:** 2026-11-19
+**Last updated:** 2026-11-20
 
 | ID | Feature | Status | Next actor | Blocked by |
 |---|---|---|---|---|
@@ -21,9 +21,11 @@
 | F-012 | The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene | DONE | — | — |
 | F-013 | Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair) | DONE | — | — |
 | F-014 | Waves — reinforcements arrive in a room until its kill target is reached (Gate B playtest, third fix) | DONE | — | — |
+| F-015 | Menus — title screen, pause menu, death screen, settings (slice 3, first part) | PLAN_REVIEW | Auditor | — |
 
 ## Open questions waiting on Lucas
 - **Gate B for F-011 to F-014: passed on 2026-11-19.** Lucas answered the F-013 and F-014 questions ("I liked how the map is and the room, dash everything"; everything stays as shipped) and said "Yes, merge". The four features are DONE and merged into `main`, in order, and pushed to GitHub on the same day (`f6302eb`); the four feature branches are kept locally. The questions below were not blocking and are still open.
+- **Slice 3 (D-016)** is built one part at a time. First: F-015 menus (Lucas chose the death screen that waits for a button, and Return to town in the pause menu, on 2026-11-20). The tutorial is its own later feature. Still his to decide before their parts start: the order of tutorial, loot, export, sprites and audio; the loot design; the art style and pixel scale.
 - F-011 §10 Q5: should validation enforce "start and exit on opposite sides of a room"? Q3: the 30 % heal, room sizes, enemy counts. Q4: casters behind walls, brutes charging pillars (→ Combat).
 - F-013 §10 Q4: a small view jump when a shake starts while the camera is catching up.
 - F-012 §10 Q1: a way to leave a floor mid-run? Q2: death pause 1.5 s, banners 2.5 s. Q6: Space is dodge and accept. Q8: is a menu choice a player action under G8?

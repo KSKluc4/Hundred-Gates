@@ -20,6 +20,38 @@
 
 ---
 
+## D-016 — Slice 3 is several features cut from `main`, built as D-013 and D-014 set
+- **Status:** ACCEPTED
+- **Date:** 2026-11-20 · **Decided by:** Lucas (instruction in chat)
+- **Context:** With F-011 to F-014 done and merged, Lucas answered "Yes, start" to "Start slice
+  3 now?". Slice 3 is the phase 1 finish from the lead's plan of 2026-11-18: basic loot and
+  equip, title, pause and death screens, a dash tutorial, sprites, audio, export builds and the
+  outside playtest. That is too much for one feature, and parts of it are Lucas's own work
+  (art, audio, choosing the playtester). Asked which part comes first, he chose "Menus +
+  tutorial", then split the tutorial off: "No tutorial yet create kind like a new slice for
+  tutorial only". D-011, D-013 and D-015 cover F-011 to F-014 only.
+- **Chosen:** Slice 3 is built as one feature per part, each on its own branch cut from `main`
+  (nothing waits in review, so nothing is stacked). The first is F-015 "Menus". The tutorial is
+  its own later feature. For each part the lead first brings Lucas the decisions that are his;
+  his answers and go-ahead in chat are Gate A, so the file skips `APPROVED`. The rest is as
+  D-013 and D-014 set: the lead writes the spec, a plan review by fresh reviewers runs before
+  any code, up to two Sonnet implementers write on disjoint file lists, only the lead gates
+  and commits, the lead runs the code review, and Lucas's playtest is Gate B.
+- **Rejected:**
+  - *One feature for the whole slice* — one spec and one review for seven unrelated parts, and
+    nothing could be played until all were done. Tempting because slices 1 and 2 were one
+    feature each.
+  - *Keep stacking branches* — only needed while the feature below is unmerged. Tempting
+    because it is what the last four features did.
+  - *Tutorial inside the menus feature* — Lucas split it off. Tempting because both are "what a
+    stranger needs in the first minute".
+- **Consequences:** The order of the remaining parts (tutorial, loot, export, sprites, audio,
+  playtest) is Lucas's to set, one at a time. Loot needs the Items & Economy department opened
+  and a design; sprites need the art style and pixel scale decision that `PHASE1.md` lists as
+  owed. `PHASE1.md`'s rows are still out of date (Direction's file).
+- **Revisit if:** two parts turn out to need each other's code before either can be played.
+
+
 ## D-015 — Gate B fixes that are new work get their own stacked feature, built as D-013 sets
 - **Status:** ACCEPTED
 - **Date:** 2026-11-19 · **Decided by:** Lucas (instruction in chat)
