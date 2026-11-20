@@ -1,8 +1,8 @@
 ---
 id: F-015
 title: Menus — title screen, pause menu, death screen, settings
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-20
 updated: 2026-11-20
 depends_on: [F-003, F-012, F-014, D-006, D-010, D-014, D-016]
@@ -756,6 +756,10 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
   a mouse button event the OS marks as a double click never chooses, at any time. So keys and
   the pad ARE delayed now, by the same 0.3 s. The scene tests' helper sets the guard to 0; the
   panel's tests and the click tests run with the default.
+  **`ListMenu` changed for this, a second addition to the moved code (C9 names one; code
+  review CR-22):** a hook `_may_choose_by_key()`, true in the base, asked at the top of
+  `_press_focused()`. `MenuPanel` answers false during its guard. `GateMenu` and its tests are
+  untouched and the gate list chooses by key at once, as before.
 - DEV-12 (code review CR-3): from T7 (4bfec51) to 9625676 `test_f015_guard.gd` and
   `test_f015_main.gd` put the main scene in the tree with spawners of their own, against C12's
   letter — **Why:** `spawn_main()` chooses Start with the input off, and T7's brief told the
@@ -1278,6 +1282,9 @@ its second click comes two or more ticks later (the game is running again by the
 > **Builder reply (lead):** noted. With 936e9ad a double click the OS marks never chooses, so
 > the Resume case needs two deliberate clicks; and since ec7b44b the settings file's values are
 > never parsed as anything but `true` and `false`.
+> **Correction (lead, after round 3, CR-26):** the sentence about Resume is wrong. The first
+> click closes the panel, so on 936e9ad the flagged second press is not consumed and the player
+> attacks. See CR-26's reply for what was done.
 
 **Tried, found nothing:** the pointer guard closed, hidden, reopened or set to 0 during a guard
 (no button is left ignoring the mouse); a button held across a key-driven menu change and
@@ -1295,6 +1302,102 @@ and C12 still hold after the fixes; DEV-11 to DEV-13 and ASSUMPTION-17 are accur
 **Not checked:** a real mouse, keyboard or pad and a real window (hover and stall results are
 headless); the editor's embedded window (CR-11); a stall produced by the game itself; twins
 longer than 16 s and floors other than shipped floor 1; a windowed GUT run; the full suite.
+
+<!-- review-round: 3 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 1606865 (the fixes 936e9ad and ec7b44b: the diff `3ed383d..1606865` under `src` and `tests`)
+
+**Date:** 2026-11-20 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+The same two reviewers, read-only, on new private copies of `1606865`. The reader checked every
+fix against its finding, read the new settings reader as a parser and re-ran mutations. The other
+re-ran its round 2 findings, fuzzed the settings reader (13,314 files against a reference reader
+of its own, written from the doc comment alone: 0 mismatches, no engine line, no script run, no
+orphan, slowest load 41 ms), attacked the choose guard with keys, pad and real positional clicks,
+ran its random bot with the guard at 0.3 (13 runs, 34,000 steps, 94,759 ticks: no violation) and
+32 mutations of the new code (26 killed). The reader calls the round blocking "by the log rule
+alone"; the two 🟡 about clicks below are the lead's reason to fix before Gate B.
+
+**Round 2 findings:**
+- CR-14 ✔ resolved. CR-17 ✔ resolved (every object shape and the planted script: nothing built,
+  nothing run, no engine line). CR-19 ✔ resolved (`MAKE_STATIC` fails both fight twins, at ticks
+  454 and 244; the six twins compare a snapshot hash and the positions at every tick over a fixed
+  number of ticks, so none can pass on an empty or short trace). CR-20 ✔ resolved.
+- CR-15 ✔ resolved for the double click: a flagged second press at 100, 310, 350 and 500 ms does
+  nothing; with the rule switched off five click tests fail. Two things are left, both new:
+  CR-23 and CR-24.
+- CR-16 ✔ resolved: Down, Enter, Enter; Down, pad A, pad A; a click then Space: nothing at 20,
+  80, 250 and 290 ms, a choice at 310 and 350 ms. A key held across the guard's end (700 ms of key
+  repeat) never chooses; Escape, pad B and pad Start act at once on all seven menus; 701 bot
+  key presses inside a guard did nothing and 1,018 outside it all acted.
+- CR-18 ✔ resolved as designed: the verdict is no longer wrong under load, only honest (CR-25).
+- CR-21: noted, and one sentence of the reply is wrong: CR-26.
+
+### CR-22 🔴 by the rule (🔵 in substance): `ListMenu` got a second addition and §8 does not say so  ·  `src/ui/menus/list_menu.gd:226-233`
+C9 says "One addition" (the disabled entry). 936e9ad adds the hook `_may_choose_by_key()` and a
+check in `_press_focused()`; only §9's reply to CR-16 mentions it. Harmless: the base answers
+true, `gate_menu.gd` and the gate list's two test files are untouched (empty diff), the 77 gate
+tests pass, and the gate list behaves the same on `main` and on the branch for Enter, Space, E,
+pad A, pad Y, a click and a flagged click.
+
+### CR-23 🟡 A quick second click on the same entry is dropped  ·  `src/ui/menus/menu_panel.gd:66-70`
+Every mouse button event flagged as a double click is consumed while the panel is open, also when
+no menu opened between the two clicks. In the settings menu a click on "Fullscreen" and a second
+one 100 to 480 ms later, flagged as a real mouse would send it, flips it once; 2, 3, 4, 5 quick
+clicks give 1, 2, 2, 3 toggles; a flagged press on Back does nothing however long the menu has
+been open. `test_two_slow_clicks_on_fullscreen_toggle_twice` passes because its second click is
+not flagged.
+
+### CR-24 🟡 The third click of a triple click still acts on the menu that opened  ·  `src/ui/menus/menu_panel.gd`
+Three clicks on one spot at +200/+400 ms or +280/+560 ms, the second flagged and the third not:
+on the title's "Settings" Fullscreen is switched on; 1 px below the top of "Quit to title" in the
+town's pause menu the game quits with no confirmation. At +100/+200 ms nothing happens. The same
+goes for a second click the OS does not flag (the mouse moved past its double-click rectangle)
+310 ms or more after the first. Which presses Windows flags is reasoned from the Win32 documents,
+not measured: no real mouse was used in any round.
+
+### CR-25 🟡 Three holes in the tests  ·  `tests/autoload/test_user_settings.gd`, `tests/scenes/test_f015_clicks.gd:359-375`
+`rfind("=")` in `UserSettings._read_line` passes all 52 settings tests, and then reads
+`fullscreen=a=b` as true. The fast double-click cases count frames (8 and 20) and under 24 busy
+loops those outlasted the guard: one case failed after three tries with its numbers (an honest
+failure, but a red gate for a reason that is not the code); eight copies of the file at once all
+passed. And the two mutations nobody could tell from the real code in round 2 (only
+`StaticBody2D` kept; the keep done after the disable) still pass the new twins.
+
+### CR-26 🔵 The reply to CR-21 is wrong about Resume  ·  §9
+A double click on Resume still attacks: the first click closes the panel, so the flagged second
+press is not consumed and reaches the game (both reviewers ran it: IDLE, then ATTACKING within 10
+ticks, at 60, 100, 150 and 400 ms).
+
+### CR-27 🔵 Two choices that could bite later  ·  `src/autoload/user_settings.gd:114`, `src/ui/menus/menu_panel.gd:33`
+The settings file is written by `ConfigFile` and read by hand: if Godot changes how it writes a
+bool, saved settings would read as defaults (two tests would notice). `choose_guard_seconds` is
+an export with its default in code; C17 allows that, and `data/tunables/shell.tres` would put it
+beside the other shell values.
+
+### CR-28 🔵 Measured, for the record
+The choose keys are dropped for 0.3 s after any menu opens: five Spaces 20 ms apart from the
+opening toggle nothing; Enter 200 ms after a death screen with a 0.1 s delay does nothing though
+the entry is enabled; Back by Enter inside the 0.3 s does nothing while Escape goes back at once.
+A flagged press in the game with no menu open attacks, as it must. A BOM file with real settings
+is now read; a 16.5 MB file is refused in 22 ms with one warning.
+
+**Tried, found nothing:** the settings reader with `\r`-only line ends, bytes above 0x7F, several
+`=`, tabs, `[settings]` twice and after another section, a bare, a partial and a double BOM, a
+60,000-character line, files of 65,535, 65,536, 65,537 and 131,072 bytes; the shell started on an
+empty file, garbage, a directory at the path, a read-only file and a missing folder, and a later
+change saved and read back in all four combinations; nothing else in `src` reads a user file;
+Enter down at +100 ms and up at +450 ms; Enter, Down, Enter inside the guard (the focus moved,
+nothing chosen); five Enters after the guard (five toggles); 72 flagged presses on every entry of
+the seven menus at 0, 100, 400 and 1,000 ms; flagged right, middle and wheel events and clicks on
+empty space; Space 100 ms after an Escape resume (it dashes: the game runs); 24 twins of round 2's
+scenarios at 120 ticks/s (0 differ). C2, C8, C10, C12, C13, G5 and G6 hold; the additions to
+DEV-11 and DEV-14 and ASSUMPTION-18 are accurate apart from CR-22 and CR-23; no existing test file
+was edited in the two commits.
+
+**Not checked:** a real mouse (which presses the OS flags), a real pad, a real window, the
+editor's embedded window; the branch for a settings file that exists and cannot be opened; twins
+at 60 and 30 ticks/s in this round; the stalled frame and hover of round 2 again; the full suite.
 
 ---
 
