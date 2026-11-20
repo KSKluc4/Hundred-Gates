@@ -664,10 +664,101 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
 **Started:** 2026-11-20  ·  **Branch:** `feature/F-015-menus`
 
 ### Progress
+- [x] T1 — e546137
+- [x] T2 — b89f7b5
+- [x] T3 — 24a8b78
+- [x] T4 — 25c1b88
+- Full suite on 24a8b78 (T1 to T4): 151 scripts, 2274 tests, all passing (726 s), no "Orphans" line.
 
 ### Deviations from plan
+- DEV-1: the file went from `PLAN_REVIEW` to `IN_PROGRESS` without `APPROVED` — **Why:** D-016,
+  Lucas's answers and go-ahead in chat are Gate A — **Impact:** none on the code.
+- DEV-2: T4 has two files §6 does not list: `src/ui/menus/menu_entry.gd` (`MenuEntry`: id, text,
+  enabled) and `tests/ui/test_f015_list_menu.gd` — **Why:** the lead added them in the task's
+  brief: `MenuPanel.open()` takes typed entries instead of dictionaries, and the base class's one
+  addition (the disabled entry) needed a test of its own, since `MenuPanel.choose()` checks
+  `disabled` too and hid a mutation of the base — **Impact:** `ShellMenus.entries()` returns
+  `Array[MenuEntry]`.
+- DEV-3: T4 ran beside T2 and T3 beside T4's end, not in the pairs §6 names — **Why:** T4 only
+  needed T1 — **Impact:** none; the files of the three are disjoint and each was gated alone.
+- DEV-4: in T3 the code was written before its new tests — **Why:** the implementer's order —
+  **Impact:** each new test was then shown to fail for the right reason by 10 mutations in a
+  private copy (old timed return, `can_confirm_death()` ignoring the time, `leave_floor()` in the
+  death pause, progress reset on leave, the three `is_pause_allowed()` conditions, no
+  `hide_banner()`, no feed of the death tick, no clamp at 0); all were caught.
+- DEV-5: `GateMenu` changed in two ways beyond losing the moved code: its `_ready` sets the
+  base's `_panel` and `_list` and calls `super` (the `@onready` vars are gone), and
+  `_clear_buttons()` no longer clears `_entries` (`open()` reassigns it on the next line) —
+  **Why:** the base cannot know the subclass's node paths or its entry type — **Impact:** none
+  that a test or a caller can see; the 77 gate tests and the town's 59 pass unedited.
+
+**Existing tests edited (C18), all in T3.** No test was deleted; seven were renamed.
+- `tests/scenes/f012_game_test.gd`: new helper `confirm_death_when_ready(limit)` (ticks until
+  `can_confirm_death()`, then `game().confirm_death()`). Nothing else.
+- `tests/core/floors/test_tower_session.gd`: the helper `_tick_until_town` became
+  `_tick_and_confirm` (used by `test_ac11_a_cleared_visit_followed_by_a_death_still_returns_to_town_with_progress`
+  and `test_ac12_a_boss_reached_before_dying_is_still_reached`). Renamed and changed to the new
+  rule: `test_ac12_ticking_allows_the_return_within_one_step_of_the_delay`,
+  `test_ac12_the_pause_counts_down_and_the_town_comes_once_it_is_confirmed`,
+  `test_ac12_after_the_confirmed_pause_the_floor_is_gone_and_the_timer_is_zero`,
+  `test_ac12_a_delay_of_zero_still_waits_in_the_pause_for_the_confirmation`.
+  `test_ac13_a_death_pause_round_trips_with_the_time_left` now also checks that the restored
+  pause stays at 0, can be confirmed and goes to the town.
+- `tests/scenes/test_f012_game.gd`: a confirm before the wait for the town in
+  `test_ac27_the_full_loop_on_a_fixture_tower`,
+  `test_ac29_the_location_follows_the_town_every_room_the_boss_and_the_way_back`,
+  `test_ac29_the_health_bar_shows_the_current_rooms_player_after_every_swap`,
+  `test_ac29_the_provider_never_answers_with_a_freed_player_through_the_whole_loop`,
+  `test_ac30_inside_the_player_died_handler_the_floor_is_still_shown_and_the_pause_keeps_it`,
+  `test_c5_dying_in_the_boss_room_keeps_the_boss_reached`,
+  `test_c5_a_player_and_a_boss_dying_in_the_same_tick_is_a_death_and_the_floor_is_not_cleared`,
+  `test_c5_a_second_death_after_coming_back_works_the_same`,
+  `test_cr18_a_stick_held_up_through_the_death_pause_does_not_move_the_new_towns_list`,
+  `test_cr4_during_the_death_pause_nothing_the_person_does_has_any_effect`. "You died" checks
+  became "no banner" there and in three renamed tests:
+  `test_c5_the_death_shows_no_banner_and_the_return_shows_none_either`,
+  `test_ac33_a_heal_in_the_death_pause_shows_no_banner`,
+  `test_ac33_dying_after_a_heal_hides_the_heal_banner`.
+- `tests/scenes/test_f013_camera_game.gd`: `test_ac5_the_town_after_a_death_in_a_floor` confirms
+  before it waits for the town.
+- `tests/scenes/test_f014_game.gd`:
+  `test_ac20_after_a_death_and_the_town_the_same_room_starts_its_waves_again` confirms before it
+  waits for the town.
+- `tests/core/floors/test_tower_tunables.gd`: not edited.
 
 ### Assumptions made (small, reversible)
+- ASSUMPTION-1 (T1): `get_settings_origin()` is TITLE before the settings were ever opened and
+  keeps the last origin after `close_settings()`; `state_changed` is emitted after the state has
+  changed, so a listener that asks `get_state()` sees the new one.
+- ASSUMPTION-2 (T2): `GameSettings.new(defaults)` takes the `ShellTunables` and `reset()` goes
+  back to them; `from_dict()` puts a setting whose key is missing or not a bool at its default
+  even when its current value was different, so a partial file gives the same values every time.
+- ASSUMPTION-3 (T2): `load_from()` returns true for any file that was read as a `ConfigFile`,
+  also one with no `settings` section (the defaults); false only for a missing or unreadable one.
+- ASSUMPTION-4 (T2): `ShellTunables` has no `validate()`: two bools cannot be invalid.
+- ASSUMPTION-5 (T2): for a malformed settings file Godot prints its own
+  `ERROR: ConfigFile parse error` before the one warning C12 asks for; it will be in the real
+  game's log too. "One warning" and "no warning" are checked by reading: GUT cannot count
+  `push_warning`.
+- ASSUMPTION-6 (T2): the camera's own flag (`shake_enabled`: K, a data reload) and the player's
+  setting are two values that are never copied into each other; `shake()` needs both, and
+  `is_shake_on()` (the debug overlay's line) still reports the node's flag only.
+- ASSUMPTION-7 (T2): AC8's tests build the F-011 floor fixture, not a `Game`: same camera, same
+  `restart_room()`.
+- ASSUMPTION-8 (T4): `ListMenu` ignores a focus index out of range and a press with no buttons
+  (the old `GateMenu` would have crashed there; its list always has the stay entry).
+- ASSUMPTION-9 (T4): the base's cancel is a virtual method (`_on_cancel_pressed()`), not a
+  signal; the three exports (font size, minimum width, separation) live in `ListMenu`, and
+  `MenuPanel` adds `heading_font_size` and `content_separation_px`; `set_body()`,
+  `set_entry_text()` and `set_entry_enabled()` also work on a closed panel, and an unknown id
+  does nothing.
+- ASSUMPTION-10 (T4): `ShellMenus.focus(TITLE, previous)` is `settings` only when `previous` is
+  SETTINGS and `start` otherwise; `START_FAILED_FORMAT` reads
+  "Could not start: the game data has %d error(s). See the log."
+- ASSUMPTION-11 (T3): `Hud.hide_banner()` also zeroes the banner's time, so the next banner runs
+  its own full time; `is_pause_allowed()` in the town answers true if there is no valid town
+  node while the shown scene is not stale (not reachable: the gate list cannot be open then);
+  the `Hud.hide_banner()` tests are in `tests/scenes/test_f015_game.gd`.
 
 ### Things the Auditor should look at closely
 
