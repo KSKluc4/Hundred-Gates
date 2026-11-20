@@ -3,8 +3,8 @@
 > Living document. Owned by the Floors & Level Design department (opened 2026-11-18 for
 > F-011; brief still to be written by Direction).
 > Source of truth for how floors and rooms are built. Specs must match it.
-> **Status:** phase 1 structure and loop set (2026-11-18, F-011, F-012). All numbers are starting values for
-> the first playtest.
+> **Status:** phase 1 structure and loop set (2026-11-18, F-011, F-012); camera and room sizes
+> changed after the first playtest (2026-11-19, F-013). All numbers are starting values.
 
 ## Fixed so far (Lucas, 2026-11-18)
 - A floor is a **linear chain of rooms ending in a boss room**. No branching in phase 1.
@@ -19,6 +19,9 @@
   restarts the room at full HP.
 - **The town sits between every floor** (Lucas, 2026-11-18, F-012): when a boss dies a door
   opens in its room and leads back to town, with the next floor unlocked.
+- **The game world fills the screen** (Lucas, 2026-11-19, F-013): a typical 2D camera that
+  follows the player and stops at the room's walls. Every room and the town is larger than
+  one screen, so there is space for detail later. Empty space outside a room is never shown.
 - **The tower gate is a floor list** (Lucas, 2026-11-18, F-012): walking into the gate lists
   the unlocked floors; a floor whose boss room was reached offers "from the start" and "at
   the boss"; cleared floors can be replayed.
@@ -28,7 +31,8 @@ Legend: `#` wall · `.` floor · `P` player start · `E` exit · `1`–`9` spawn
 `enemies[digit − 1]`. One character = one tile (16 px, CX1 pending).
 
 Rules (enforced by `RoomData.validate()`, F-011/C16):
-- Rectangular, 8 × 6 to 40 × 22 tiles (40 × 22 is one screen).
+- Rectangular, 8 × 6 to 80 × 46 tiles. (One screen is 40 × 22.5 tiles; the one-screen minimum
+  is a rule of the shipped tower, below, because these rules also apply to test rooms.)
 - Border is wall, except the exit: one straight run of `E`, at least 2 tiles, not on a corner.
 - Exactly one `P`. Every floor tile reachable from it.
 - No 1-tile corridors and no 1-tile-thick interior walls.
@@ -36,9 +40,35 @@ Rules (enforced by `RoomData.validate()`, F-011/C16):
   so two wall corners can't leave a 1-tile opening (bodies are up to 1.2 tiles wide).
 - Spawns at least 4 tiles from `P`. 1–6 enemies per combat room; exactly 1 in a boss room.
 
-Guidelines (not enforced):
+Guidelines (not enforced by validation; true of every shipped room and checked by tests):
 - `P` and `E` sit on opposite sides, so the room is crossed.
 - Spawns at least 1.5 tiles apart, so bodies don't start overlapping.
+
+## Camera and screen (F-013)
+- The camera is the player's. It follows with light smoothing (`data/tunables/camera.tres`)
+  and its limits are the room's outer walls. A room smaller than the screen on an axis (test
+  rooms, debug scenes) is centred on that axis.
+- A room change is a hard cut: the new room's camera starts on its target (FX4 still open).
+- Wall-coloured strips just outside the room hide what a screen shake would uncover.
+- The camera is presentation only. No rule depends on what is on screen.
+
+## Shipped-room rules (F-013)
+Checked by tests over the shipped tower, on top of the format rules:
+- **At least one screen.** `data/floors/tower.tres` names its screen, 40 × 23 tiles, and the
+  game does not start on a tower with a smaller room or town.
+- **A first target near the start.** In a combat room at least one spawn is within 18 tiles
+  horizontally and 9 vertically of `P`.
+- **Every spawn outside its own aggro radius** from `P`: the fight starts with a read.
+- **Something to put behind you.** In a room with a brute or the Juggernaut no floor tile is
+  more than 8 tiles (the larger of the x and y distance) from a wall tile. A rule of thumb for
+  spacing, not a proof that every charge can be baited.
+- **No attack starts off screen.** The longest range at which any enemy starts an attack is
+  below 11 tiles (half a screen's height is 11.25; today's longest is 9).
+- In a floor's room `P` is on the west side and the 2-tile `E` on the east border (the town
+  has its own layout, below). Free-standing pillars and blocks are at least 2 × 2 and at
+  least 2 tiles from a wall or another block.
+- Casters start behind cover from `P`, or behind the chasers in an open room (2-1); the two
+  walking bosses stand 12 to 18 tiles east of `P`; the Hexer's room has exactly four blocks.
 
 ## The tower loop (F-012)
 - Floor `n` is unlocked when `n` is 1 or floor `n − 1` is cleared.
@@ -54,38 +84,44 @@ Guidelines (not enforced):
 ## Town (phase 1)
 One safe room (`is_safe_room`): no enemies, never a boss room, every other room rule
 applies. Its `E` run is the **tower gate**.
-- Size 24 × 14 tiles, border included.
+- Size 64 × 36 tiles, border included (F-013; it was 24 × 14).
 - The gate is 4 tiles wide, centred on the north border: the tower is "up".
-- `P` is in the lower half, centred, so the first thing the player does is walk up to it.
-- Two 2 × 2 blocks flank the path to the gate, only to make the room read as a place.
+- `P` is the tile (32, 9), just below the gate, so the gate is on screen when the game starts
+  and the rest of the town lies to the south and the sides (F-013; it was in the lower half).
+- Two 2 × 2 blocks flank the path to the gate, and four 3 × 3 blocks stand in the south half,
+  only to make the room read as a place and to show the camera moving.
 - Nothing else: NPCs, shops and storage arrive with their own features.
 
 ## Encounter tables (phase 1)
 Enemy mix follows `design/combat.md` (CX6): floor 1 chasers; floor 2 adds casters; floor 3
-adds brutes. Each room adds one idea; the boss is that floor's exam.
+adds brutes. Each room adds one idea; the boss is that floor's exam. Sizes and layouts were
+redrawn in F-013; the enemy lists did not change, so the rooms are sparse until rooms are filled
+by waves (F-012 §10 Q11).
 
 | Floor | Room | Enemies | Layout idea | Size (tiles) |
 |---|---|---|---|---|
-| 1 | 1 | 2 chasers | Open room. Learn: telegraph → dash → punish. | 20 × 12 |
-| 1 | 2 | 3 chasers | Two 2 × 2 pillars. Enemies come around them. | 24 × 14 |
-| 1 | 3 | 4 chasers, in two pairs more than 7 tiles apart | A dividing wall with two gaps: pull one pair at a time. | 28 × 14 |
-| 1 | Boss | Warden | Open, no interior walls. | 22 × 14 |
-| 2 | 1 | 2 chasers, 1 caster | Open. The caster stands behind the chasers. | 22 × 12 |
-| 2 | 2 | 2 chasers, 2 casters | Four pillars: cover from bolts. | 26 × 14 |
-| 2 | 3 | 1 chaser, 3 casters | A long room; casters at the far end, blocks to advance between. | 32 × 12 |
-| 2 | 4 | 3 chasers, 2 casters | Two alcoves holding the casters. | 28 × 16 |
-| 2 | Boss | Hexer | Four 2 × 2 cover blocks in a square around the centre. | 24 × 16 |
-| 3 | 1 | 1 brute | Open room with long walls: learn the wall stun. | 22 × 12 |
-| 3 | 2 | 1 brute, 2 chasers | Two pillars. | 26 × 14 |
-| 3 | 3 | 1 brute, 2 casters | Casters behind blocks; the brute owns the middle. | 28 × 14 |
-| 3 | 4 | 2 brutes | Open, wide. Two lanes to read at once. | 28 × 16 |
-| 3 | 5 | 1 brute, 2 chasers, 2 casters | Everything: pillars and a back row. | 32 × 16 |
-| 3 | Boss | Juggernaut | Open, no interior walls, at least 20 × 12 of clear floor. | 26 × 16 |
+| 1 | 1 | 2 chasers | Open room. Learn: telegraph → dash → punish. | 48 × 28 |
+| 1 | 2 | 3 chasers | Four 3 × 3 pillars around the middle. Enemies come around them. | 52 × 28 |
+| 1 | 3 | 4 chasers, in two pairs more than 7 tiles apart | A dividing wall with two gaps: pull one pair at a time. | 56 × 30 |
+| 1 | Boss | Warden | Open, no interior walls. | 56 × 32 |
+| 2 | 1 | 2 chasers, 1 caster | Open. The caster stands behind the chasers. | 48 × 28 |
+| 2 | 2 | 2 chasers, 2 casters | Six pillars in two rows: cover from bolts. | 52 × 30 |
+| 2 | 3 | 1 chaser, 3 casters | A long room; casters at the far end, blocks to advance between. | 64 × 28 |
+| 2 | 4 | 3 chasers, 2 casters | Two alcoves, formed by wall slabs, holding the casters. | 56 × 32 |
+| 2 | Boss | Hexer | Four 2 × 2 cover blocks in a square around the centre. The start is in the north-west corner, so a block breaks the first line of fire. | 56 × 32 |
+| 3 | 1 | 1 brute | Two long interior walls and the lane between them: learn the wall stun. | 48 × 28 |
+| 3 | 2 | 1 brute, 2 chasers | Six pillars in two rows. | 52 × 30 |
+| 3 | 3 | 1 brute, 2 casters | Casters behind blocks; the brute owns the middle. | 56 × 30 |
+| 3 | 4 | 2 brutes | A row of blocks along the middle makes two lanes to read at once. | 60 × 32 |
+| 3 | 5 | 1 brute, 2 chasers, 2 casters | Everything: pillars throughout and a back row. | 64 × 36 |
+| 3 | Boss | Juggernaut | A clear floor of at least 20 × 12 around the boss, with blocks around it to charge into. | 56 × 32 |
 
 Notes:
 - Chaser aggro is 6 tiles, caster 8, brute 7: a room wider than that lets the player start a
   fight in pieces. Room 1-3 relies on it.
-- The Juggernaut's charge runs 7 tiles; its room must let a charge reach a wall from the centre.
+- A charge runs up to 6 tiles for the brute and 7 for the Juggernaut. An open room of these
+  sizes would leave no wall within reach, so the floor 3 rooms have blocks (shipped-room rules).
+  The Juggernaut's room was open before F-013; whether that is the fight wanted is F-013 §10 Q2.
 - Sizes include the border walls.
 
 ## Open questions (cross-department)
@@ -97,3 +133,6 @@ Notes:
 | FX4 | → Direction | Room transitions are hard cuts. Is a fade or a short corridor wanted (F-012/F-015)? | No |
 | FX5 | → Direction | Should the player be able to leave a floor mid-run without dying (F-012 §10 Q1)? | No |
 | FX6 | → Items & Economy | What does replaying a cleared floor give (F-012 ASSUMPTION-4)? | No |
+| FX7 | → Direction | The floor 3 rooms and the Juggernaut's room now have blocks to charge into (F-013 §10 Q2). Keep, or open them up again? | No |
+| FX8 | → Art & Game Feel | Room detail: a visual-only decoration layer and solid props. The rooms have the space now (F-013); the format has no layer for either yet. | No |
+| FX9 | → Art & Game Feel | A shake that starts while the camera is still catching up makes the view jump a little (F-013 code review CR-4, §10 Q4): the placeholder shake writes the camera's offset every frame, and each write advances the smoothing. To settle when the shake gets its real look (CX2). | No |

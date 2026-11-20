@@ -25,7 +25,7 @@
 |---|---|---|
 | CQ1 | Phase 1 class | **Warrior — sword, melee arcs** (D-005). Other classes (e.g. spear, bow) deferred to phase 2 (CQ9). |
 | CQ2 | Movement feel | **Near-instant** start/stop with a tiny accel/decel (tunable; 0 = fully instant). |
-| CQ3 | Dodge | **Dash with i-frames on its first part only.** Short cooldown, no stamina. Input buffered. |
+| CQ3 | Dodge | **Dash with i-frames on its first part only.** Short cooldown, no stamina. Input buffered. Since F-013 (Lucas, 2026-11-19: "a short end-lag") a short rooted recovery follows it. |
 | CQ4 | Attack aiming | **Mouse** on KB/M. Gamepad: **right stick**, fallback to movement direction, fallback to last facing. Never auto-aim. |
 | CQ5 | Health model | **Integer HP with a bar.** Tuned so a correctly geared player dies in ~4–6 hits from same-floor enemies. |
 | CQ6 | Death (phase 1) | **Return to town** (promoted to D-006). Cleared floors stay cleared. Once a floor's boss room is reached, the player may re-enter **directly at that boss**. Loot is kept (phase 1 default; loss rules → Items & Economy). |
@@ -83,7 +83,8 @@
 - Cooldown starts when the dash ends. A dash interrupted by a hit ends at that instant, so its full cooldown starts there.
 - A dash pressed during cooldown or an attack's active frames is **buffered** and fires as soon as allowed, if within the buffer window.
 - Can cancel the **recovery** of any attack, once it can fire: cooldown still applies. A dash buffered during recovery cancels nothing until it fires. Cannot cancel windup or active frames.
-- When the dash ends, no dash momentum carries over: velocity continues from current movement input with normal accel.
+- **Recovery (F-013).** A dash that runs its full length is followed by a recovery of `dash_recovery_duration`: the player is rooted and can neither attack nor dash. There are no i-frames in it. Presses are buffered and the buffers' clocks stop while it lasts, so an attack pressed during the dash (within the buffer window of its end) or during the recovery fires the instant the recovery ends. The cooldown counts from the dash's end, through the recovery. A dash ended by a hit has no recovery, and a hit ends a recovery. A duration of 0 means no recovery.
+- When the dash and its recovery end, no dash momentum carries over: velocity continues from current movement input with normal accel.
 - During a dash, movement input is ignored; the direction is fixed at dash start. Facing still updates.
 - The dash is the `dodge` input action (F-000). There is no separate `dash` action.
 
@@ -378,6 +379,7 @@ boss rooms, doors and floor gates belong to Direction.
 | `dash_duration` | 0.15 s | `data/classes/warrior.tres` |
 | `dash_iframe_duration` | 0.11 s (from dash start) | `data/classes/warrior.tres` |
 | `dash_cooldown` | 0.35 s | `data/classes/warrior.tres` |
+| `dash_recovery_duration` | 0.12 s | `data/classes/warrior.tres` |
 | `input_buffer_window` | 0.12 s | `data/tunables/player_combat.tres` |
 | `stick_deadzone` | 0.2 (0–1) | `data/tunables/player_combat.tres` |
 | `max_hp` | 100 | `data/classes/warrior.tres` |

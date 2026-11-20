@@ -9,7 +9,8 @@
 | Tick | One fixed-timestep logic update | `tick` / `_physics_process` |
 | Tunable | A number Lucas may adjust for game feel; lives in config | `Tunables.*` |
 | Vertical slice | First playable build containing one full gameplay loop | — |
-| Dash | The player's dodge: a fixed-distance burst with a short invulnerable start. The input action is `dodge` | `dash_*`, `DashCommand` |
+| Dash | The player's dodge: a fixed-distance burst with a short invulnerable start, followed by a dash recovery. The input action is `dodge` | `dash_*`, `DashCommand` |
+| Dash recovery | The short time after a dash that ran its full length in which the player is rooted and can neither attack nor dash. Presses are buffered and fire when it ends. Not an attack's recovery phase | `dash_recovery_duration`, `PlayerMotor.State.DASH_RECOVERY` |
 | I-frames | The exact time window in which an entity can't be hit. The dash's window ends before the dash does | `dash_iframe_duration`, `get_iframe_window()` |
 | Facing | The unit direction the player points in. Comes from aim, not movement, unless there is no aim | `get_facing()` |
 | Input buffer | Holds a dash or attack pressed too early, so it fires when allowed if still within the window. One press per action, the newest | `input_buffer_window` |
@@ -59,7 +60,9 @@
 | Gap | The recovery of a pattern attack that has a follow-up. Hittable, but not the punish window | `has_pending_follow_up()`, `gap_color` |
 | Volley | All the projectiles one attack launches at the same instant, one per listed angle from the locked aim. From launch on each is an ordinary projectile | `volley_angles_deg`, `max_volley_size` |
 | Floor | One level of the tower: a linear chain of rooms ending in a boss room | `FloorData` |
-| Room | One screen of a floor, written as an ASCII tile grid. One room is one combat sim | `RoomData`, `Room` |
+| Room | One enclosed space of a floor, written as an ASCII tile grid. One room is one combat sim. A shipped room is at least one screen large | `RoomData`, `Room` |
+| Screen | What the camera shows at once: 640 × 360 px, 40 × 22.5 tiles. A tower names its screen in whole tiles, rounded up, and none of its rooms may be smaller | `TowerData.screen_size_tiles` |
+| Camera limits | The rectangle the room's camera may show: the room's outer walls, or a screen centred on the room where the room is smaller | `Room.camera_limits_px()` |
 | Safe room | A room with no enemies that is not part of a floor. The town is one | `is_safe_room` |
 | Town | The safe room between floors, where every run starts and every death returns (D-006) | `TownScene`, `TowerData.town` |
 | Tower gate | The town's exit tiles. Walking onto them opens the list of floors that can be entered | `TownGate`, `GateMenu` |

@@ -8,7 +8,9 @@ const WARRIOR_PATH: String = "res://data/classes/warrior.tres"
 
 
 static func warrior() -> ClassData:
-	return (load(WARRIOR_PATH) as ClassData).duplicate()
+	var data: ClassData = (load(WARRIOR_PATH) as ClassData).duplicate()
+	data.dash_recovery_duration = 0.0  # F-013/C16
+	return data
 
 
 static func rules() -> PlayerCombatTunables:

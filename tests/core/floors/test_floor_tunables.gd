@@ -19,7 +19,7 @@ func test_shipped_file_is_valid_and_matches_the_design() -> void:
 	assert_true(Tunables.floors.boss_room_full_heal)
 	assert_eq(Tunables.floors.max_enemies_per_room, 6)
 	assert_eq(Tunables.floors.min_room_size, Vector2i(8, 6))
-	assert_eq(Tunables.floors.max_room_size, Vector2i(40, 22))
+	assert_eq(Tunables.floors.max_room_size, Vector2i(80, 46))
 	assert_eq(Tunables.floors.exit_min_width_tiles, 2)
 	assert_almost_eq(Tunables.floors.min_spawn_distance_tiles, 4.0, 0.0001)
 

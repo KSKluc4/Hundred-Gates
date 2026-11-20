@@ -13,6 +13,8 @@ extends Resource
 @export var dash_duration: float = 0.0
 @export var dash_iframe_duration: float = 0.0
 @export var dash_cooldown: float = 0.0
+## F-013/C12: seconds the player stands still after a dash that ran its full length. 0 is none.
+@export var dash_recovery_duration: float = 0.0
 ## D-005: the chain is data, one resource per hit, in order.
 @export var attack_chain: Array[AttackData] = []
 @export var attack_chain_window: float = 0.0
@@ -38,6 +40,8 @@ func validate() -> PackedStringArray:
 		errors.append("dash_iframe_duration must be > 0 and < dash_duration")
 	if not dash_cooldown >= 0.0:
 		errors.append("dash_cooldown must be >= 0")
+	if not dash_recovery_duration >= 0.0:
+		errors.append("dash_recovery_duration must be >= 0")
 	return errors
 
 

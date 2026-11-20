@@ -4,6 +4,10 @@ extends Resource
 
 @export var town: RoomData
 @export var floors: Array[FloorData] = []
+## F-013/C7: the screen this tower is built for, in tiles, rounded up. Every room and the town must
+## be at least this large on both axes. Zero is no rule. Not a FloorTunables rule on purpose
+## (F-013 §3): those also apply to test fixtures, this one is about shipped content.
+@export var screen_size_tiles: Vector2i = Vector2i.ZERO
 
 
 func get_floor_count() -> int:
@@ -29,6 +33,7 @@ func validate(rules: FloorTunables) -> PackedStringArray:
 			errors.append("town: the town must be a safe room")
 		for error: String in town.validate(rules):
 			errors.append("town: " + error)
+		_check_screen(town, "town", errors)
 		owners[town.id] = "town"
 	if floors.is_empty():
 		errors.append("floors: a tower needs at least 1 floor")
@@ -47,6 +52,8 @@ func validate(rules: FloorTunables) -> PackedStringArray:
 			)
 		for error: String in floor_data.validate(rules):
 			errors.append("%s: %s" % [floor_name, error])
+		for room: RoomData in floor_data.rooms:
+			_check_screen(room, floor_name, errors)
 		_check_room_ids(floor_data, floor_name, owners, errors)
 	return errors
 
@@ -69,3 +76,18 @@ func _check_room_ids(
 			)
 		else:
 			owners[room.id] = floor_name
+
+
+## F-013/C7: one error for a room narrower or lower than `screen_size_tiles`, on either axis.
+## A room exactly one screen large is fine. A null room or a zero screen is skipped.
+func _check_screen(room: RoomData, owner_name: String, errors: PackedStringArray) -> void:
+	if room == null or screen_size_tiles == Vector2i.ZERO:
+		return
+	var size: Vector2i = room.get_size()
+	if size.x < screen_size_tiles.x or size.y < screen_size_tiles.y:
+		errors.append(
+			(
+				"%s: screen: room %s is %d x %d, smaller than one screen (%d x %d)"
+				% [owner_name, room.id, size.x, size.y, screen_size_tiles.x, screen_size_tiles.y]
+			)
+		)

@@ -1,18 +1,31 @@
 # gdlint:disable=max-public-methods
 extends GutTest
 ## F-012 T6 (AC25): the shipped town and tower pass validation with the shipped rules and match
-## studio/design/floors.md "Town (phase 1)". The numbers below are written out on purpose: a change
-## to the data must change them too.
+## studio/design/floors.md "Town (phase 1)", as F-013/C11 overrides it. The numbers below are
+## written out on purpose: a change to the data must change them too.
 
-const TOWN_SIZE: Vector2i = Vector2i(24, 14)
-## The gate is 4 tiles wide, centred on the north border: x 10..13 on row 0.
+## F-013/C11: 64 x 36, a tile is 16 px, so the town is 1024 x 576 px and the view is 640 x 360.
+const TOWN_SIZE: Vector2i = Vector2i(64, 36)
+## The gate is 4 tiles wide on the north border: x 30..33 on row 0.
 const GATE_TILES: Array[Vector2i] = [
-	Vector2i(10, 0), Vector2i(11, 0), Vector2i(12, 0), Vector2i(13, 0)
+	Vector2i(30, 0), Vector2i(31, 0), Vector2i(32, 0), Vector2i(33, 0)
+]
+## F-013/C11: `P` is the tile (32, 9), so the gate is on screen at the start.
+const PLAYER_START_TILE: Vector2i = Vector2i(32, 9)
+## The gate must be at most this many rows above `P` (the view is 22.5 rows high).
+const GATE_MAX_ROWS_ABOVE_P: int = 9
+## F-013/C11: the two 2 x 2 blocks that flank the path to the gate.
+const FLANK_BLOCK_RECTS: Array[Rect2i] = [Rect2i(26, 4, 2, 2), Rect2i(36, 4, 2, 2)]
+## F-013/C11: the four 3 x 3 blocks in the lower half.
+const BIG_BLOCK_RECTS: Array[Rect2i] = [
+	Rect2i(14, 20, 3, 3), Rect2i(47, 20, 3, 3), Rect2i(14, 28, 3, 3), Rect2i(47, 28, 3, 3)
 ]
 const FLOOR_PATHS: Array[String] = [
 	Tunables.FLOOR_1_PATH, Tunables.FLOOR_2_PATH, Tunables.FLOOR_3_PATH
 ]
-const BLOCK_SIZE: Vector2i = Vector2i(2, 2)
+const BIG_BLOCK_SIZE: Vector2i = Vector2i(3, 3)
+## F-013/C7: the shipped value, rounded up from the 640 x 360 view in 16 px tiles.
+const SHIPPED_SCREEN_TILES: Vector2i = Vector2i(40, 23)
 ## A walk toward the gate moves this far per step, and gives up after this many steps.
 const WALK_STEP_TILES: float = 0.25
 const WALK_MAX_STEPS: int = 400
@@ -54,7 +67,7 @@ func test_ac25_town_has_no_enemies_and_no_spawns() -> void:
 			assert_false(row.contains(digit), "no spawn digit %s in '%s'" % [digit, row])
 
 
-func test_ac25_town_is_24_by_14_tiles_border_included() -> void:
+func test_c11_town_is_64_by_36_tiles_border_included() -> void:
 	assert_eq(_town().get_size(), TOWN_SIZE)
 
 
@@ -88,10 +101,17 @@ func test_ac25_gate_is_centred_on_the_north_border() -> void:
 		assert_eq(tile.y, 0, "gate tile %s on the north border" % tile)
 
 
-func test_ac25_player_start_is_in_the_lower_half() -> void:
-	var start: Vector2 = _town().get_player_start_tiles()
-	assert_gt(start.y, float(TOWN_SIZE.y) / 2.0, "P below the middle row")
-	assert_lt(start.y, float(TOWN_SIZE.y - 1), "P inside the south wall")
+func test_c11_player_start_is_tile_32_9_and_the_gate_is_on_screen_at_the_start() -> void:
+	var town: RoomData = _town()
+	var start: Vector2 = town.get_player_start_tiles()
+	assert_eq(Vector2i(floori(start.x), floori(start.y)), PLAYER_START_TILE, "the P tile")
+	assert_eq(start, Vector2(32.5, 9.5), "its centre")
+	for tile: Vector2i in town.get_exit_tiles():
+		assert_lte(
+			PLAYER_START_TILE.y - tile.y,
+			GATE_MAX_ROWS_ABOVE_P,
+			"gate tile %s is near P's row" % tile
+		)
 
 
 func test_ac25_player_start_is_horizontally_under_the_gate() -> void:
@@ -101,53 +121,67 @@ func test_ac25_player_start_is_horizontally_under_the_gate() -> void:
 	var gate_centre_x: float = (gate[0].x + gate[-1].x + 1) / 2.0
 	assert_gte(floori(start.x), gate[0].x, "P is not left of the gate")
 	assert_lte(floori(start.x), gate[-1].x, "P is not right of the gate")
-	# A 4-wide gate in a 24-wide room has its centre on a tile edge: P sits half a tile off it.
+	# A 4-wide gate in a 64-wide room has its centre on a tile edge: P sits half a tile off it.
 	assert_lte(absf(start.x - gate_centre_x), 0.5, "P within half a tile of the gate's centre line")
 
 
-func test_ac25_town_has_exactly_two_two_by_two_blocks() -> void:
-	var blocks: Array[Rect2i] = _interior_wall_blocks(_town())
-	assert_eq(blocks.size(), 2, "separate interior wall components")
+func test_c11_town_has_exactly_the_six_blocks_at_c11s_tiles() -> void:
+	var town: RoomData = _town()
+	var blocks: Array[Rect2i] = _interior_wall_blocks(town)
+	assert_eq(blocks.size(), 6, "separate interior wall components")
+	for block: Rect2i in FLANK_BLOCK_RECTS + BIG_BLOCK_RECTS:
+		assert_true(blocks.has(block), "a block at %s" % block)
+	# 2 x 2 blocks and 3 x 3 blocks only: their bounding boxes are full, so no tile is extra.
+	assert_eq(_interior_wall_tiles(town).size(), 2 * 4 + 4 * 9, "the interior walls are only those")
+	var two_by_two: int = 0
+	var three_by_three: int = 0
 	for block: Rect2i in blocks:
-		assert_eq(block.size, BLOCK_SIZE, "block at %s is 2 x 2" % block.position)
-	assert_eq(_interior_wall_tiles(_town()).size(), 8, "the interior walls are only those blocks")
+		two_by_two += 1 if block.size == Vector2i(2, 2) else 0
+		three_by_three += 1 if block.size == BIG_BLOCK_SIZE else 0
+	assert_eq(two_by_two, 2, "2 x 2 blocks")
+	assert_eq(three_by_three, 4, "3 x 3 blocks")
 
 
-func test_ac25_blocks_are_symmetric_about_the_gate_centre_line() -> void:
+func test_c11_blocks_are_symmetric_about_the_gate_centre_line() -> void:
 	var town: RoomData = _town()
 	var gate: Array[Vector2i] = town.get_exit_tiles()
 	var gate_centre_x: float = (gate[0].x + gate[-1].x + 1) / 2.0
-	var blocks: Array[Rect2i] = _interior_wall_blocks(town)
-	assert_eq(blocks.size(), 2, "two blocks")
-	var left: Rect2i = blocks[0] if blocks[0].position.x < blocks[1].position.x else blocks[1]
-	var right: Rect2i = blocks[1] if blocks[0].position.x < blocks[1].position.x else blocks[0]
-	assert_eq(left.position.y, right.position.y, "same row")
-	assert_lt(float(left.end.x), gate_centre_x, "left block is left of the centre line")
-	assert_gt(float(right.position.x), gate_centre_x, "right block is right of the centre line")
-	assert_eq(
-		gate_centre_x - float(left.end.x),
-		float(right.position.x) - gate_centre_x,
-		"both blocks are the same distance from the centre line"
-	)
+	assert_eq(_interior_wall_blocks(town).size(), 6, "six blocks")
 	for tile: Vector2i in _interior_wall_tiles(town):
 		# Mirror across x = gate_centre_x: tile column x maps to (2 * centre - 1) - x.
 		var mirrored: Vector2i = Vector2i(int(2.0 * gate_centre_x) - 1 - tile.x, tile.y)
 		assert_eq(town.rows[mirrored.y][mirrored.x], RoomData.WALL, "mirror of wall %s" % tile)
+	var blocks: Array[Rect2i] = _interior_wall_blocks(town)
+	for block: Rect2i in blocks:
+		var mirrored_x: int = int(2.0 * gate_centre_x) - block.end.x
+		assert_true(
+			blocks.has(Rect2i(mirrored_x, block.position.y, block.size.x, block.size.y)),
+			"block %s has a mirror image of its own size" % block
+		)
 
 
-func test_ac25_blocks_flank_the_path_from_the_player_to_the_gate() -> void:
+func test_c11_the_two_by_two_blocks_flank_the_path_from_the_player_to_the_gate() -> void:
 	var town: RoomData = _town()
 	var gate: Array[Vector2i] = town.get_exit_tiles()
 	var start: Vector2i = Vector2i(town.get_player_start_tiles())
+	var west: int = 0
+	var east: int = 0
 	for block: Rect2i in _interior_wall_blocks(town):
+		if block.size != Vector2i(2, 2):
+			continue
+		var is_west: bool = block.end.x <= gate[0].x
+		var is_east: bool = block.position.x > gate[-1].x
 		assert_true(
-			block.end.x <= gate[0].x or block.position.x > gate[-1].x,
-			"block %s is beside the gate, not in front of it" % block.position
+			is_west or is_east, "block %s is beside the gate, not in front of it" % block.position
 		)
+		west += 1 if is_west else 0
+		east += 1 if is_east else 0
 		assert_true(
 			block.position.y >= 1 and block.end.y <= start.y,
 			"block %s is between the gate row and P" % block.position
 		)
+	assert_eq(west, 1, "one 2 x 2 block west of the gate")
+	assert_eq(east, 1, "one 2 x 2 block east of the gate")
 
 
 func test_ac25_every_column_under_the_gate_is_open_down_to_the_player_row() -> void:
@@ -271,6 +305,42 @@ func test_ac25_the_town_is_not_a_room_of_any_floor() -> void:
 
 func test_ac25_shipped_tower_tunables_validate() -> void:
 	assert_eq(Tunables.tower.validate(), PackedStringArray())
+
+
+# --- F-013 AC9: the one-screen rule on the shipped tower ---
+
+
+func test_ac9_the_shipped_tower_is_valid_with_the_one_screen_rule_on() -> void:
+	var tower: TowerData = _tower()
+	assert_ne(tower.screen_size_tiles, Vector2i.ZERO, "the rule is on")
+	assert_eq(tower.validate(_rules), PackedStringArray())
+
+
+func test_ac9_the_shipped_screen_size_is_40_by_23_tiles() -> void:
+	assert_eq(_tower().screen_size_tiles, SHIPPED_SCREEN_TILES)
+
+
+func test_ac9_the_shipped_screen_size_covers_the_project_viewport() -> void:
+	var view: Vector2i = Vector2i(
+		int(ProjectSettings.get_setting("display/window/size/viewport_width")),
+		int(ProjectSettings.get_setting("display/window/size/viewport_height"))
+	)
+	var needed: Vector2i = Vector2i(
+		ceili(float(view.x) / Units.TILE_SIZE_PX), ceili(float(view.y) / Units.TILE_SIZE_PX)
+	)
+	assert_eq(_tower().screen_size_tiles, needed, "the viewport %s, rounded up in tiles" % view)
+
+
+func test_ac9_every_shipped_room_and_the_town_is_at_least_one_screen() -> void:
+	var tower: TowerData = _tower()
+	var rooms: Array[RoomData] = [tower.town]
+	for floor_data: FloorData in tower.floors:
+		rooms.append_array(floor_data.rooms)
+	assert_eq(rooms.size(), 16, "the town and the 15 floor rooms")
+	for room: RoomData in rooms:
+		var size: Vector2i = room.get_size()
+		assert_gte(size.x, tower.screen_size_tiles.x, "%s width" % room.id)
+		assert_gte(size.y, tower.screen_size_tiles.y, "%s height" % room.id)
 
 
 # --- helpers ---

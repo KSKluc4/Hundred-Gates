@@ -18,6 +18,7 @@ dash_distance = 3.0
 dash_duration = 0.15
 dash_iframe_duration = 0.11
 dash_cooldown = 0.35
+dash_recovery_duration = 0.12
 attack_chain = Array[ExtResource("2")]([ExtResource("3"), ExtResource("4"), ExtResource("5")])
 attack_chain_window = 0.25
 max_hp = 100

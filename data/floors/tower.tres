@@ -11,3 +11,4 @@
 script = ExtResource("1")
 town = ExtResource("3")
 floors = Array[ExtResource("2")]([ExtResource("4"), ExtResource("5"), ExtResource("6")])
+screen_size_tiles = Vector2i(40, 23)
