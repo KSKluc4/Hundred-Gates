@@ -421,12 +421,15 @@ func test_ac17_pause_does_nothing_in_the_death_pause() -> void:
 	kill_player()
 	await run_ticks(2)
 	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
+	# T6 (C21): the shell has opened the death screen by now; `pause` does nothing on it.
+	assert_eq(flow().get_state(), ShellFlow.State.DEAD)
 	watch_signals(flow())
 	await tap_key(ESCAPE)
 	await tap_pad(PAD_START)
-	assert_eq(flow().get_state(), ShellFlow.State.PLAYING, "no pause menu over the death pause")
+	assert_eq(flow().get_state(), ShellFlow.State.DEAD, "no pause menu over the death screen")
 	assert_signal_not_emitted(flow(), "state_changed")
-	assert_false(panel().is_open())
+	assert_true(panel().is_open())
+	assert_eq(panel().get_heading(), ShellMenus.DEAD_HEADING, "still the death screen")
 	assert_ne(game().process_mode, Node.PROCESS_MODE_DISABLED)
 	assert_true(space_is_active())
 

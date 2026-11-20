@@ -19,6 +19,10 @@ const SHELL_SCENE_PATH: String = "res://src/world/shell.tscn"
 const TEST_DIR: String = "user://test_f015"
 ## Frames a wait for the input guard may take before the test calls it stuck.
 const GUARD_LIMIT_FRAMES: int = 20
+## T6: ticks the game may take, after a leave or a death was confirmed, to show the town.
+const TOWN_LIMIT_TICKS: int = 12
+## T6: where a held click lands: on no entry of any menu.
+const CLICK_POSITION: Vector2 = Vector2(1.0, 1.0)
 
 var _shell: Shell
 var _settings_file: String = ""
@@ -26,6 +30,7 @@ var _file_count: int = 0
 var _window_modes: Array[int] = []
 var _quit_calls: int = 0
 var _held_pad_buttons: Array[JoyButton] = []
+var _click_held: bool = false
 
 
 func before_each() -> void:
@@ -194,3 +199,78 @@ func _record_window_mode(mode: DisplayServer.WindowMode) -> void:
 
 func _record_quit() -> void:
 	_quit_calls += 1
+
+
+# --- T6: the menus' own steps ---
+
+
+## Between two ticks: Escape pauses the game and the test checks the pause menu is open.
+func pause_with_escape() -> void:
+	await tap_key(KEY_ESCAPE)
+	assert_eq(flow().get_state(), ShellFlow.State.PAUSED, "Escape paused the game")
+
+
+## Moves the focus to entry `id` with the Up and Down keys, as a person does, one press each.
+func focus_entry_by_keys(id: StringName) -> void:
+	var ids: Array[StringName] = panel().get_entry_ids()
+	var target: int = ids.find(id)
+	assert_gte(target, 0, "the menu has an entry %s" % id)
+	for _i: int in ids.size():
+		var at: int = ids.find(panel().get_focus_id())
+		if at == target:
+			break
+		await tap_key(KEY_DOWN if at < target else KEY_UP)
+	assert_eq(panel().get_focus_id(), id, "the focus is on %s" % id)
+
+
+## The instance ids of the panel's buttons: they change when the panel is opened again, and only
+## then.
+func entry_button_ids() -> Array[int]:
+	var ids: Array[int] = []
+	for node: Node in panel().find_children("*", "Button", true, false):
+		ids.append(node.get_instance_id())
+	return ids
+
+
+## Waits, one physics tick at a time, until `condition` holds (at most `limit` ticks), with no
+## commands submitted. Returns whether it held.
+func tick_until(condition: Callable, limit: int = TOWN_LIMIT_TICKS) -> bool:
+	for _i: int in limit:
+		if condition.call():
+			return true
+		await get_tree().physics_frame
+	return condition.call()
+
+
+## After a leave or a death was confirmed: waits for the guard, then until the game has swapped the
+## old floor for the town. The test is then between two ticks of the running game.
+func wait_for_town() -> void:
+	await wait_for_guard()
+	var shown: Callable = func() -> bool: return town() != null and floor_scene() == null
+	assert_true(await tick_until(shown), "the town is shown")
+
+
+## The left mouse button goes down between two ticks and stays down until release_click(): `attack`
+## is "just pressed" for the next tick, as for a click on an entry (a positional click cannot reach
+## a control under GUT's layer, so the test calls choose() next, in the same frame).
+func hold_click_between_ticks() -> void:
+	await get_tree().process_frame
+	_send_click(true)
+	_click_held = true
+
+
+func release_click() -> void:
+	if _click_held:
+		_send_click(false)
+		_click_held = false
+
+
+func _send_click(pressed: bool) -> void:
+	var event: InputEventMouseButton = InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.pressed = pressed
+	event.position = CLICK_POSITION
+	event.global_position = CLICK_POSITION
+	event.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed else 0
+	Input.parse_input_event(event)
+	Input.flush_buffered_events()

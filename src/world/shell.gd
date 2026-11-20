@@ -1,11 +1,19 @@
 class_name Shell
 extends Node
-## The node above the game (F-015, C2, C6-C8, C14-C16): the title screen, Start, the pause and the
-## resume, and the guard that keeps a menu key from acting in the game. It shows what the
-## `ShellFlow` says (C2): when the flow changes state it opens the panel with what `ShellMenus` has
-## for that state, or closes it in PLAYING. It keeps no variable about which menu is open or where
-## it came from. It decides nothing about the game either: the game is built, disabled and enabled
-## here, and everything inside it is its own.
+## The node above the game (F-015, C2, C6-C8, C12, C14-C16, C21): the title screen, Start, the pause
+## and the resume, the settings, the two confirms, the death screen, and the guard that keeps a menu
+## key from acting in the game. It shows what the `ShellFlow` says (C2): when the flow changes state
+## it opens the panel with what `ShellMenus` has for that state, or closes it in PLAYING. It keeps
+## no variable about which menu is open or where it came from. It decides nothing about the game
+## either: the game is built, disabled, enabled and freed here, and everything inside it is its own.
+## Where a choice changes the session (leave a floor, confirm a death) the game is asked first and
+## the flow moves only when it said yes (C21).
+##
+## The shell follows the session by polling, never by a signal (C21): in its own tick, after the
+## game's, it sees the death pause and opens the death screen, and while that is up it enables its
+## one entry when the session says the delay has passed. It follows in both directions: if
+## something other than the entry ended the pause (a direct `confirm_death()`, a restored session),
+## the flow leaves DEAD in that tick, through the guard (C21, amended by the lead after T6).
 ##
 ## Pausing is `Game.process_mode = PROCESS_MODE_DISABLED` and the 2D physics space inactive, always
 ## together (`_set_game_running`): with the space still stepping a pause shifts later wall contact
@@ -96,6 +104,7 @@ func _physics_process(_delta: float) -> void:
 		_guard_ticks_left -= 1
 		if _guard_ticks_left == 0:
 			_set_game_running(true)
+	_follow_the_session()
 
 
 ## C8: `pause` is this node's alone; the menus handle `ui_cancel` and nothing of `pause`. In PLAYING
@@ -138,13 +147,18 @@ func _on_state_changed(state: ShellFlow.State, previous: ShellFlow.State) -> voi
 		_dim.visible = false
 		_begin_guard()
 		return
+	if state == ShellFlow.State.TITLE and previous == ShellFlow.State.CONFIRM_QUIT:
+		_free_game()  # Before the title is shown: its dim is the opaque one (C15).
 	_show_menu(state, previous)
 	if _flow.is_game_paused():
 		_guard_ticks_left = 0
 		_set_game_running(false)
 
 
+## What a choice means, by its id and where the flow is: `settings`, `confirm` and `cancel` are in
+## more than one menu.
 func _on_entry_chosen(id: StringName) -> void:
+	var state: ShellFlow.State = _flow.get_state()
 	match id:
 		ShellMenus.START:
 			_start_game()
@@ -152,6 +166,26 @@ func _on_entry_chosen(id: StringName) -> void:
 			quit_handler.call()
 		ShellMenus.RESUME:
 			_flow.resume()
+		ShellMenus.SETTINGS:
+			_flow.open_settings()
+		ShellMenus.BACK:
+			_flow.close_settings()
+		ShellMenus.SHAKE:
+			if state == ShellFlow.State.SETTINGS:
+				_flip_shake()
+		ShellMenus.FULLSCREEN:
+			if state == ShellFlow.State.SETTINGS:
+				_flip_fullscreen()
+		ShellMenus.LEAVE:
+			_flow.ask_leave(_is_on_floor())
+		ShellMenus.QUIT_TO_TITLE:
+			_flow.ask_quit()
+		ShellMenus.CONFIRM:
+			_confirm(state)
+		ShellMenus.CANCEL:
+			_flow.cancel_confirm()
+		ShellMenus.RETURN:
+			_confirm_death(state)
 
 
 ## `ui_cancel` on a menu: one step back, which the flow refuses in TITLE.
@@ -182,6 +216,79 @@ func _start_game() -> void:
 	_flow.start_game()
 
 
+## C21: the game is asked first, the flow follows only when it said yes; a refusal changes nothing
+## and the menu stays. The leave goes through the guard like every way into PLAYING (C7).
+func _confirm(state: ShellFlow.State) -> void:
+	match state:
+		ShellFlow.State.CONFIRM_LEAVE:
+			if _game.leave_floor():
+				_flow.confirm_leave()
+		ShellFlow.State.CONFIRM_QUIT:
+			_flow.confirm_quit()
+
+
+## C21: the death screen's one entry. The session may say no (the entry is disabled meanwhile).
+func _confirm_death(state: ShellFlow.State) -> void:
+	if state == ShellFlow.State.DEAD and _game.confirm_death():
+		_flow.death_confirmed()
+
+
+## C12, C14: flips the setting, rewrites its entry in place (the focus stays) and saves. The shell
+## does not listen to the settings' `changed`: it applies what it changed itself.
+func _flip_shake() -> void:
+	var settings: GameSettings = UserSettings.settings
+	settings.screen_shake_enabled = not settings.screen_shake_enabled
+	_menu.set_entry_text(ShellMenus.SHAKE, ShellMenus.shake_text(settings.screen_shake_enabled))
+	_save_settings()
+
+
+## As _flip_shake(), and the window is told once, with the new mode.
+func _flip_fullscreen() -> void:
+	var settings: GameSettings = UserSettings.settings
+	settings.fullscreen = not settings.fullscreen
+	_menu.set_entry_text(ShellMenus.FULLSCREEN, ShellMenus.fullscreen_text(settings.fullscreen))
+	window_mode_applier.call(_window_mode_of(settings.fullscreen))
+	_save_settings()
+
+
+## C12: nothing is written with an empty path. A failed write is the autoload's warning and changes
+## nothing else: the setting stays as it is for this run.
+func _save_settings() -> void:
+	if not settings_path.is_empty():
+		UserSettings.save_to(settings_path)
+
+
+## C21: after the game's own tick (priority 3). In PLAYING, when the game is running and the session
+## is in the death pause, the death screen opens in this very tick, with the lines the game fed into
+## the HUD in its tick. In DEAD, when the session is no longer in the death pause (something other
+## than the entry ended it) the flow leaves DEAD at once; otherwise the entry follows what the
+## session says, every tick.
+func _follow_the_session() -> void:
+	if _game == null:
+		return
+	var session: TowerSession = _game.get_session()
+	match _flow.get_state():
+		ShellFlow.State.PLAYING:
+			if not is_guarding() and session.get_place() == TowerSession.Place.DEATH_PAUSE:
+				_flow.player_died()
+		ShellFlow.State.DEAD:
+			if session.get_place() != TowerSession.Place.DEATH_PAUSE:
+				_flow.death_confirmed()
+			else:
+				_menu.set_entry_enabled(ShellMenus.RETURN, session.can_confirm_death())
+
+
+## C15: out of the tree first, freed at the end of the frame, never from a signal of the game. The
+## physics space is active again at once.
+func _free_game() -> void:
+	var old: Game = _game
+	_game = null
+	_guard_ticks_left = 0
+	remove_child(old)
+	old.queue_free()
+	_set_game_running(true)
+
+
 ## C7: the game stays (or becomes) disabled and is enabled in this node's second tick from now.
 func _begin_guard() -> void:
 	_set_game_running(false)
@@ -205,11 +312,23 @@ func _set_game_running(running: bool) -> void:
 ## behind it, so its dim is the opaque one.
 func _show_menu(state: ShellFlow.State, previous: ShellFlow.State) -> void:
 	var settings: GameSettings = UserSettings.settings
+	var location: String = ""
+	var kills: String = ""
+	var can_confirm_death: bool = false
+	if state == ShellFlow.State.DEAD:
+		# C5, C21: the HUD's two lines as the game left them in this tick.
+		location = _game.get_hud().get_location()
+		kills = _game.get_hud().get_kills_text()
+		can_confirm_death = _game.get_session().can_confirm_death()
 	_menu.open(
 		ShellMenus.heading(state),
-		ShellMenus.body(state, "", "", _start_error_count),
+		ShellMenus.body(state, location, kills, _start_error_count),
 		ShellMenus.entries(
-			state, _is_on_floor(), settings.screen_shake_enabled, settings.fullscreen, false
+			state,
+			_is_on_floor(),
+			settings.screen_shake_enabled,
+			settings.fullscreen,
+			can_confirm_death
 		),
 		ShellMenus.focus(state, previous)
 	)
