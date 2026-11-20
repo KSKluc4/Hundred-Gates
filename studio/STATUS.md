@@ -23,7 +23,7 @@
 | F-014 | Waves — reinforcements arrive in a room until its kill target is reached (Gate B playtest, third fix) | DONE | — | — |
 
 ## Open questions waiting on Lucas
-- **Gate B for F-011 to F-014: passed on 2026-11-19.** Lucas answered the F-013 and F-014 questions ("I liked how the map is and the room, dash everything"; everything stays as shipped) and said "Yes, merge". The four features are DONE and merged into `main` locally, in order; nothing is pushed. The questions below were not blocking and are still open.
+- **Gate B for F-011 to F-014: passed on 2026-11-19.** Lucas answered the F-013 and F-014 questions ("I liked how the map is and the room, dash everything"; everything stays as shipped) and said "Yes, merge". The four features are DONE and merged into `main`, in order, and pushed to GitHub on the same day (`f6302eb`); the four feature branches are kept locally. The questions below were not blocking and are still open.
 - F-011 §10 Q5: should validation enforce "start and exit on opposite sides of a room"? Q3: the 30 % heal, room sizes, enemy counts. Q4: casters behind walls, brutes charging pillars (→ Combat).
 - F-013 §10 Q4: a small view jump when a shake starts while the camera is catching up.
 - F-012 §10 Q1: a way to leave a floor mid-run? Q2: death pause 1.5 s, banners 2.5 s. Q6: Space is dodge and accept. Q8: is a menu choice a player action under G8?
