@@ -20,6 +20,60 @@
 
 ---
 
+## D-014 — The lead runs the Auditor's reviews
+- **Status:** ACCEPTED
+- **Date:** 2026-11-18 · **Decided by:** Lucas (instruction in chat)
+- **Context:** F-011 and F-012 were built under D-011 and D-013 with the plan review skipped,
+  and both sat at `CODE_REVIEW` waiting for Codex, which is not installed on the Windows
+  machine the work runs on. Asked what happens to the check Codex normally does, Lucas
+  answered: "continue as your doing you check from now on".
+- **Chosen:** From now on the lead (Claude Code) does the Auditor's checks, starting with the
+  code reviews of F-011 and F-012. How the lead does it (the lead's reading of the
+  instruction, open to correction):
+  - A review is done by **fresh reviewer sub-agents** that wrote neither the spec nor the
+    code. They get `AGENTS.md`, the feature file and the diff, never the lead's conclusions,
+    and they are read-only (D-010).
+  - The lead checks every finding against the code before recording it, writes the round in
+    §7 or §9 in the format `AGENTS.md` sets (machine line, reviewed commit, AC evidence,
+    findings with severity), and signs it "Auditor (lead, D-014)".
+  - Findings are fixed by implementer sub-agents, gated and committed by the lead, who replies
+    under each finding. A second round checks the fixes.
+  - For features specified by the lead, a plan review round (§7) runs the same way before any
+    code is written.
+- **Rejected:**
+  - *Wait for Codex* — two features, and every later one, would queue behind a tool that isn't
+    on this machine. Tempting because it keeps the reviewer a different model from the builder.
+  - *The lead reviews its own work directly* — the lead wrote the specs and directed the build,
+    so its read is anchored. Tempting because it is one step shorter.
+- **Consequences:** No model other than Claude reviews the work, so Lucas's Gate B playtest is
+  the only fully independent check. `AGENTS.md` and `CLAUDE.md` still describe Codex as the
+  Auditor; they are unchanged, and Codex can still review any branch on request. Only Lucas
+  sets `APPROVED` and `DONE`, as before.
+- **Revisit if:** a defect reaches Gate B that a second reviewer should have caught, or Codex
+  becomes available where the work runs.
+
+
+## D-013 — F-012 is built stacked on F-011, by a lead with up to two writing implementers
+- **Status:** ACCEPTED
+- **Date:** 2026-11-18 · **Decided by:** Lucas (instruction in chat)
+- **Context:** Lucas asked for slice 2 ("now i need you to begin slice 2") while F-011 was at
+  `CODE_REVIEW`. Slice 2 needs F-011's code. D-011 covered F-011 only, and the Builder rules
+  say a feature branch is cut from `main`.
+- **Chosen:** Slice 2 is one feature, F-012 "The loop" (progression, one-room town, bare HUD),
+  on `feature/F-012-the-loop`, cut from the tip of `feature/F-011-floor-structure`. D-011's
+  arrangement applies to it unchanged: the lead writes the spec, Lucas's instruction is Gate A,
+  the plan review is skipped, up to two Sonnet implementers write on disjoint file lists, and
+  only the lead gates and commits. The Auditor's code review and Lucas's Gate B are unchanged.
+- **Rejected:**
+  - *Wait for F-011 to be DONE* — the build would sit idle behind two gates. Tempting because
+    nothing would ever need a rebase.
+  - *Three features (F-012, F-013, HUD) as in `PHASE1.md`* — three specs and three reviews for
+    parts that only work together. Tempting because it matches the plan's rows.
+- **Consequences:** F-011 must be reviewed and merged before F-012. A change to F-011's code in
+  review means rebasing F-012. `PHASE1.md` needs its rows merged and renumbered (Direction).
+- **Revisit if:** F-011's review forces a rebase that costs more than the wait would have.
+
+
 ## D-012 — Rooms are data; core routes on a navigation grid built from them
 - **Status:** ACCEPTED
 - **Date:** 2026-11-18 · **Decided by:** Lucas (proposed by the F-011 lead, chosen in chat)

@@ -19,6 +19,9 @@ const BLOCK_ORIGINS: Array[Vector2i] = [
 @export var rows: PackedStringArray = []
 @export var enemies: Array[EnemyData] = []
 @export var is_boss_room: bool = false
+## F-012/C8: a room with no enemies and no spawns, never a boss room (the town). Only a tower's
+## town may be one: FloorData refuses it.
+@export var is_safe_room: bool = false
 
 
 ## Width of the first row by number of rows. validate() refuses a grid that isn't rectangular.
@@ -272,7 +275,8 @@ func _check_thin_walls(errors: PackedStringArray) -> void:
 				errors.append("thin_wall: wall tile %s is not in a 2x2 block of wall" % _name(x, y))
 
 
-## C16: spawn distance from P, and how many spawns a combat or boss room holds.
+## C16: spawn distance from P, and how many spawns a combat or boss room holds (F-012/C8: a safe
+## room holds none).
 func _check_spawns(rules: FloorTunables, errors: PackedStringArray) -> void:
 	var tiles: Array[Vector2i] = _spawn_tiles()
 	var starts: Array[Vector2i] = _tiles_where(_is_player_char)
@@ -286,7 +290,9 @@ func _check_spawns(rules: FloorTunables, errors: PackedStringArray) -> void:
 						% [_name(tile.x, tile.y), distance, rules.min_spawn_distance_tiles]
 					)
 				)
-	if is_boss_room:
+	if is_safe_room:
+		_check_safe_room(tiles.size(), errors)
+	elif is_boss_room:
 		if tiles.size() != 1:
 			errors.append("spawn_count: a boss room needs exactly 1 spawn, found %d" % tiles.size())
 	elif tiles.size() < 1 or tiles.size() > rules.max_enemies_per_room:
@@ -296,6 +302,16 @@ func _check_spawns(rules: FloorTunables, errors: PackedStringArray) -> void:
 				% [rules.max_enemies_per_room, tiles.size()]
 			)
 		)
+
+
+## F-012/C8: replaces the combat and boss spawn counts. Each failure is its own error.
+func _check_safe_room(spawn_count: int, errors: PackedStringArray) -> void:
+	if spawn_count != 0:
+		errors.append("spawn_count: a safe room needs 0 spawns, found %d" % spawn_count)
+	if not enemies.is_empty():
+		errors.append("safe_room: enemies must be empty, has %d entries" % enemies.size())
+	if is_boss_room:
+		errors.append("safe_room: a safe room can't also be a boss room")
 
 
 ## True when some 2x2 block holding `tile` has `test` true on all four tiles.

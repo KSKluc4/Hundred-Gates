@@ -8,9 +8,16 @@ extends Node2D
 signal room_entered(room_index: int)
 ## Forwarded from the FloorRun, which emits it once.
 signal floor_cleared(floor_number: int)
+## F-012/C11: only with `death_restarts_room` off. Emitted once; the floor's flow then stops.
+signal player_died
+## F-012: the cleared boss room's exit was reached, once. Emitted with either death rule.
+signal floor_exited(floor_number: int)
+## F-012/AC33: HP gained between fights, positive only.
+signal healed(amount: int)
 
 const RESET_ACTION: StringName = &"debug_reset"
 const NEXT_ROOM_ACTION: StringName = &"debug_next_room"
+const DEBUG_LAYER_PATH: NodePath = ^"DebugLayer"
 const ROOM_NAME: StringName = &"Room"
 ## Later than the room's CombatRunner (priority 0), so each tick is read right after it ran.
 const AFTER_RUNNER_PRIORITY: int = 1
@@ -21,14 +28,26 @@ const AFTER_RUNNER_PRIORITY: int = 1
 @export var class_data: ClassData
 ## Off for scripted runs: commands then come from whoever calls motor.submit().
 @export var player_input_enabled: bool = true
+## F-012/C11: on is F-011's placeholder (the room starts again). Off, a dead player is reported
+## through `player_died` and the floor stops: whoever owns the floor decides what comes next.
+@export var death_restarts_room: bool = true
+## F-012/C11: off, N and R do nothing. The public skip_room() / restart_room() still work.
+## They also do nothing once a death was reported (C5).
+@export var debug_keys_enabled: bool = true
+## F-012/C11: off hides the debug label's layer.
+@export var debug_label_visible: bool = true
 
 var _run: FloorRun
 var _room: Room
 var _setup_errors: PackedStringArray = []
+## F-012: set when the death was reported, or the exit; restart_room() clears both.
+var _death_reported: bool = false
+var _exit_reported: bool = false
 
 
 func _ready() -> void:
 	process_physics_priority = AFTER_RUNNER_PRIORITY
+	(get_node(DEBUG_LAYER_PATH) as CanvasLayer).visible = debug_label_visible  # F-012/C11
 	_setup_errors = _collect_setup_errors()
 	if not _setup_errors.is_empty():
 		for error: String in _setup_errors:
@@ -45,21 +64,32 @@ func _ready() -> void:
 
 ## F-011/C11: the three steps read the room's logic, in this order, every tick.
 func _physics_process(_delta: float) -> void:
-	if _room == null:
-		return
+	if _room == null or _death_reported:
+		return  # F-012/AC14: after a reported death nothing of the flow runs.
 	if _player_hp() <= 0:
-		restart_room()  # F-011/AC20: placeholder death rule until F-012.
+		# F-012/C5: the death is read first, so a death and a boss kill in one tick is a death.
+		if death_restarts_room:
+			restart_room()  # F-011/AC20: placeholder death rule.
+		else:
+			_death_reported = true
+			# F-012/C5 (CR-4): a dead player takes no input. A rebuilt room has it as built.
+			_room.get_player().input_enabled = false
+			player_died.emit()
 		return
 	if _room.is_cleared() and not _run.is_room_cleared():
 		var heal: int = _run.report_room_cleared(_player_hp())
-		_room.get_player().motor.get_combat_state().heal(heal)
+		var healed_now: int = _room.get_player().motor.get_combat_state().heal(heal)
 		_room.open_door()
+		_report_healed(healed_now)  # F-012/AC33: what heal() really did.
 	if _run.is_exit_reached(_room.get_player().motor.get_position_tiles()):
-		if _run.advance(_player_hp()):
-			_build_room()
+		if not _advance_room(_player_hp()) and _is_boss_exit_reached() and not _exit_reported:
+			_exit_reported = true  # F-012/AC15: once, however long the player stands there.
+			floor_exited.emit(floor_data.floor_number)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not debug_keys_enabled or _death_reported:
+		return  # F-012/C11; C5 (CR-4): after the death N and R do nothing either.
 	if event.is_action_pressed(RESET_ACTION):
 		restart_room()
 	elif event.is_action_pressed(NEXT_ROOM_ACTION):
@@ -79,10 +109,13 @@ func get_setup_errors() -> PackedStringArray:
 	return _setup_errors
 
 
-## F-011/AC20: the current room again, fresh sim, full HP.
+## F-011/AC20: the current room again, fresh sim, full HP. F-012: also lets the floor report a
+## death or an exit again.
 func restart_room() -> void:
 	if _run == null:
 		return
+	_death_reported = false
+	_exit_reported = false
 	_run.restart_room()
 	_build_room()
 
@@ -94,8 +127,7 @@ func skip_room() -> void:
 		return
 	var hp: int = _player_hp()
 	_run.report_room_cleared(hp)  # The heal it returns is dropped on purpose.
-	if _run.advance(hp):
-		_build_room()
+	_advance_room(hp)
 
 
 func _collect_setup_errors() -> PackedStringArray:
@@ -140,6 +172,31 @@ func _build_room() -> void:
 	_room.setup(_run.get_room(), _run.get_entry_hp(), class_data)
 	add_child(_room)
 	room_entered.emit(_run.get_room_index())
+
+
+## Moves the run on with the HP the player carries and builds the room it lands in. F-012/AC33: a
+## room entered with more HP than was carried (the boss room's refill, FloorRun's entry HP) reports
+## the difference, once the new room stands.
+func _advance_room(carried_hp: int) -> bool:
+	if not _run.advance(carried_hp):
+		return false
+	_build_room()
+	_report_healed(_run.get_entry_hp() - carried_hp)
+	return true
+
+
+## F-012/AC33: positive amounts only; zero (full HP, a boss clear) and below say nothing.
+## F-012/CR-21: nor does a floor whose death was reported: a debug skip then carries 0 HP into the
+## next room, and that refill is not HP gained between fights.
+func _report_healed(amount: int) -> void:
+	if amount > 0 and not _death_reported:
+		healed.emit(amount)
+
+
+## F-012/AC15: the last room, cleared, with the player on an exit tile. The FloorRun already
+## answers "cleared and on an exit tile"; advance() has just refused, so this is the last room.
+func _is_boss_exit_reached() -> bool:
+	return _run.get_room().is_boss_room and _run.is_floor_cleared()
 
 
 func _player_hp() -> int:

@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/ui/hud/hud.gd" id="1"]
+[ext_resource type="Script" path="res://src/ui/hud/health_bar.gd" id="2"]
+
+[node name="Hud" type="CanvasLayer"]
+script = ExtResource("1")
+
+[node name="HealthBar" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("2")
+
+[node name="Label" type="Label" parent="HealthBar"]
+layout_mode = 0
+
+[node name="LocationLabel" type="Label" parent="."]
+
+[node name="BannerLabel" type="Label" parent="."]

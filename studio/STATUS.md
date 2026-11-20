@@ -18,9 +18,13 @@
 | F-009 | Floor 3 boss (Juggernaut) | DONE | — | — |
 | F-010 | Studio queue — chained features, auto-drafted specs, opt-in automatic Gate A | PLAN_REVIEW | Auditor | — |
 | F-011 | Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox | CODE_REVIEW | Lucas | — |
+| F-012 | The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene | CODE_REVIEW | Lucas | F-011 (stacked on its branch, D-013; merge F-011 first) |
 
 ## Open questions waiting on Lucas
-- _none_
+- **Gate B, second pass, for F-011 and F-012.** Lucas played on 2026-11-18 and raised six points (F-012 §10 Q9 to Q13). Fixed and reviewed: the room stuck in the corner (camera) and the invisible healing (`+30 HP`). Waiting for his design answers: waves with a kill target (Q11), dash recovery (Q12), full-screen rooms (Q13). No review round used a real device.
+- F-011 §10 Q5: should validation enforce "start and exit on opposite sides of a room"? Q3: the 30 % heal, room sizes, enemy counts. Q4: casters behind walls, brutes charging pillars (→ Combat).
+- F-012 §10 Q1: a way to leave a floor mid-run? Q2: death pause 1.5 s, banners 2.5 s. Q6: Space is dodge and accept. Q8: is a menu choice a player action under G8?
+- `PHASE1.md` rows F-011 to F-015 are out of date (F-012 here covers the plan's F-012, F-013 and part of F-015). Direction's file; not touched.
 
 ## Next up
 See `studio/PHASE1.md`: the order, the target dates and what Lucas still has to decide.

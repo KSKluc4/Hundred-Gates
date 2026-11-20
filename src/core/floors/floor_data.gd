@@ -23,6 +23,8 @@ func validate(rules: FloorTunables) -> PackedStringArray:
 		if room == null:
 			errors.append("rooms[%d] must not be null" % index)
 			continue
+		if room.is_safe_room:  # F-012/C8
+			errors.append("rooms[%d] (%s): a safe room can't be part of a floor" % [index, room.id])
 		var is_last: bool = index == rooms.size() - 1
 		if room.is_boss_room and not is_last:
 			errors.append("rooms[%d] (%s): a boss room must be the last room" % [index, room.id])

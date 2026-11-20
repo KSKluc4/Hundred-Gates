@@ -58,3 +58,18 @@
 | Follow-up | The attack that starts the instant another attack's recovery ends. Its trigger band is not read; its target is re-picked | `EnemyAttackData.follow_up` |
 | Gap | The recovery of a pattern attack that has a follow-up. Hittable, but not the punish window | `has_pending_follow_up()`, `gap_color` |
 | Volley | All the projectiles one attack launches at the same instant, one per listed angle from the locked aim. From launch on each is an ordinary projectile | `volley_angles_deg`, `max_volley_size` |
+| Floor | One level of the tower: a linear chain of rooms ending in a boss room | `FloorData` |
+| Room | One screen of a floor, written as an ASCII tile grid. One room is one combat sim | `RoomData`, `Room` |
+| Safe room | A room with no enemies that is not part of a floor. The town is one | `is_safe_room` |
+| Town | The safe room between floors, where every run starts and every death returns (D-006) | `TownScene`, `TowerData.town` |
+| Tower gate | The town's exit tiles. Walking onto them opens the list of floors that can be entered | `TownGate`, `GateMenu` |
+| Unlocked | A floor that may be entered: floor 1, or a floor whose previous floor is cleared | `is_floor_unlocked()` |
+| Boss reached | The character has entered that floor's boss room at least once, so the floor may be started there (D-006) | `is_boss_reached()` |
+| Tower progress | Which floors a character has cleared and which boss rooms it has reached | `TowerProgress` |
+| Exit | The run of `E` tiles on a room's border. A door covers it until the room is cleared; standing on it then moves the player on. In the town it is the tower gate | `get_exit_tiles()`, `is_exit_reached()` |
+| Room clear | Every enemy in the room's sim is dead. Read from logic each time, never stored in the glue. Opens the exit and gives the room-clear heal | `Room.is_cleared()`, `report_room_cleared()` |
+| Floor run | One visit to a floor: which room the player is in and the HP they carry between rooms | `FloorRun` |
+| Nav grid | A room's walls as walkable tiles, used by enemy brains only to choose a walking direction when the straight line is blocked (D-012) | `NavGrid`, `EnemyBrain.steer()` |
+| Pinch | A 1-tile opening between two wall corners. Refused by room validation: bodies are up to 1.2 tiles wide | `pinch` rule in `RoomData.validate()` |
+| Engaged gate | The tower gate from the moment the floor list opens until it is released: the player is held in place and takes no input | `TownGate.is_engaged()` |
+| Death pause | The short time between the player's death on a floor and the return to town. The player takes no input | `TowerSession.Place.DEATH_PAUSE`, `death_return_delay` |

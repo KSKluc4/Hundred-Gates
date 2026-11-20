@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="TowerTunables" format=3]
+
+[ext_resource type="Script" path="res://src/core/tunables/tower_tunables.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+death_return_delay = 1.5
+banner_duration = 2.5

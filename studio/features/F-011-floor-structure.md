@@ -671,6 +671,10 @@ grid); a JSON round trip of the snapshot (it requires `is int`, and Godot's JSON
 floats, so a JSON save would be refused: this predates the fixes and matters for slice 4);
 anything by hand.
 
+**Correction (2026-11-18, round 3 of F-012's review):** the 15 shipped rooms hold 42
+enemies (10 + 17 + 15), not the 41 written in round 2 above and in the CR-11 reply. The new
+assert holds for all 42.
+
 <!-- review-round: 3 verdict: APPROVE_WITH_NOTES -->
 
 **Reviewed commit:** c40c2a6 (the Gate B camera fix, DEV-13), read on the F-012 branch at 827c631
