@@ -157,6 +157,7 @@ func test_ac20_after_a_death_and_the_town_the_same_room_starts_its_waves_again()
 	kill_player()
 	await run_ticks(2)
 	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
+	assert_true(await confirm_death_when_ready(), "the death was confirmed")
 	var back: Callable = func() -> bool: return town() != null
 	assert_true(await run_until(back, PAUSE_TICKS * 3), "the town came back")
 	await run_ticks(1)

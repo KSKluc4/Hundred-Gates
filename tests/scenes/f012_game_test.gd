@@ -120,6 +120,16 @@ func set_death_delay(seconds: float) -> void:
 	Tunables.tower.death_return_delay = seconds
 
 
+## F-015/C3: the death pause no longer ends by itself. Ticks until the delay has passed, then
+## confirms through the game (what the death screen's button does) and returns what the game said.
+## The town is shown after the game's next tick: wait for it with run_until() or run_ticks().
+func confirm_death_when_ready(limit: int = WALK_LIMIT_TICKS) -> bool:
+	var ready: Callable = func() -> bool: return session().can_confirm_death()
+	if not await run_until(ready, limit):
+		return false
+	return game().confirm_death()
+
+
 ## The hit path every scene test uses: a HitEvent applied to the target's own CombatState.
 func hit(combatant: Combatant, damage: int) -> void:
 	var event: HitEvent = HitEvent.new()

@@ -3,7 +3,9 @@ extends Node
 ## The game loop's glue (F-012, D-012): shows the town or a floor, whichever the TowerSession
 ## says, and the HUD. Every rule of the loop is the session's (C2): this node reports what
 ## happened to it (a floor chosen, a room entered, the floor cleared, the exit reached, the
-## player dead) and shows what it answers. It never frees or replaces the scene that emitted a
+## player dead) and shows what it answers. F-015: the death pause waits for `confirm_death()`, and
+## `leave_floor()` leaves a floor by choice; both only pass the session's answer on, so this node
+## works alone, with or without a shell (C5). It never frees or replaces the scene that emitted a
 ## signal (C12): `place_changed` only marks what is shown as possibly out of date, and the next
 ## `_physics_process`, which runs after the town's and the floor's, makes it match. Data that
 ## fails validation builds nothing (C9).
@@ -16,7 +18,6 @@ const FLOOR_SCENE: PackedScene = preload(FLOOR_SCENE_PATH)
 ## F-012/C12: after FloorScene's and TownScene's 1, which come after the room's runner.
 const AFTER_SCENES_PRIORITY: int = 2
 ## F-012/C16: every player-facing string this node adds to the HUD's own.
-const DEATH_BANNER: String = "You died"
 const CLEARED_UNLOCKED_FORMAT: String = "Floor %d cleared — floor %d unlocked"
 const CLEARED_LAST_FORMAT: String = "Floor %d cleared — no floor above yet"
 const CLEARED_REPLAY_FORMAT: String = "Floor %d cleared"
@@ -73,8 +74,10 @@ func _physics_process(delta: float) -> void:
 			TowerSession.Place.FLOOR:
 				_show_floor()
 			TowerSession.Place.DEATH_PAUSE:
-				# The floor stays on screen through the pause.
-				_hud.show_banner(DEATH_BANNER, Tunables.tower.death_return_delay)
+				# The floor stays on screen through the pause. The death screen says "You
+				# died": no banner, and a "+30 HP" still showing must not sit under it
+				# (F-015/C5).
+				_hud.hide_banner()
 				_feed_kills(true)  # CR-11: once more, so a kill of the death tick counts.
 	_feed_kills()
 
@@ -95,6 +98,32 @@ func get_floor_scene() -> FloorScene:
 
 func get_hud() -> Hud:
 	return _hud
+
+
+## F-015/C5: the person confirmed the death screen. What the session answers; false when the game
+## was not built. The town is shown on this node's next `_physics_process`, as for every change.
+func confirm_death() -> bool:
+	return _session != null and _session.confirm_death()
+
+
+## F-015/C5: the person chose to leave the floor. What the session answers; false when the game
+## was not built. The town is shown on this node's next `_physics_process`.
+func leave_floor() -> bool:
+	return _session != null and _session.leave_floor()
+
+
+## F-015/C5: whether the pause menu may open now. It decides nothing about the game: it says the
+## game was built, the character is in the town or on a floor, what is shown is what the session
+## says (false between a place change and the tick that rebuilds), and the gate list is not open.
+func is_pause_allowed() -> bool:
+	if _session == null or not _setup_errors.is_empty() or _is_shown_stale:
+		return false
+	match _session.get_place():
+		TowerSession.Place.TOWN:
+			return not is_instance_valid(_town) or not _town.get_gate_menu().is_open()
+		TowerSession.Place.FLOOR:
+			return true
+	return false
 
 
 ## F-012/C13: the HUD asks this every frame, so it is never a freed player. Null when nothing is
@@ -246,7 +275,7 @@ func _on_player_died() -> void:
 
 ## F-012/AC33: only says how much came back; the amount is the floor scene's, from core. Not shown
 ## unless the session says the player is on the floor: a debug skip during the death pause also
-## "heals" a dead player into the boss room, and that must not hide "You died".
+## "heals" a dead player into the boss room, and that must not put a banner under the death screen.
 func _on_healed(amount: int) -> void:
 	if _session.get_place() != TowerSession.Place.FLOOR:
 		return

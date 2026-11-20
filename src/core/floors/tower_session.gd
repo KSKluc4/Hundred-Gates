@@ -3,7 +3,8 @@ extends RefCounted
 ## Where the character is in the tower loop: town, on a floor, or in the pause after dying
 ## (F-012/C2, C4-C7, D-006). It owns the TowerProgress and is the only thing that changes it. The
 ## glue reports events here and shows the place this says (C12). Pure logic: no nodes, no time
-## of its own; the pause is ticked by the caller.
+## of its own; the pause is ticked by the caller. F-015: the death pause waits for
+## `confirm_death()`, and a floor can be left by choice with `leave_floor()`.
 
 signal place_changed(place: Place)
 ## `newly_unlocked` is the floor this clear opened, or 0: a replay, or the last floor.
@@ -114,6 +115,16 @@ func report_floor_exited() -> bool:
 	return true
 
 
+## F-015/C4: the person chose to leave the floor: the town, with no change to the progress (a boss
+## room entered or a floor cleared during this visit stays marked). Refused in the town and in the
+## death pause.
+func leave_floor() -> bool:
+	if _place != Place.FLOOR:
+		return false
+	_go_to_town()
+	return true
+
+
 ## C5: the death pause starts; a second report during it changes nothing.
 func report_player_died() -> void:
 	if _place != Place.FLOOR:
@@ -122,18 +133,31 @@ func report_player_died() -> void:
 	_set_place(Place.DEATH_PAUSE)
 
 
-## Counts the death pause down. A delay of 0 reaches the town on the next tick, not before.
+## F-015/C3: counts the death pause down to 0 and stops there. It never leaves the pause by
+## itself: the town comes with `confirm_death()`.
 func tick(delta: float) -> void:
 	if _place != Place.DEATH_PAUSE:
 		return
-	_death_time_left -= delta
-	if _death_time_left <= 0.0:
-		_go_to_town()
+	_death_time_left = maxf(0.0, _death_time_left - delta)
 
 
-## Seconds of pause left. 0 outside the death pause.
+## Seconds of pause left, never below 0. 0 outside the death pause.
 func get_death_time_left() -> float:
 	return _death_time_left
+
+
+## F-015/C3: true in the death pause once the time left is 0 (at once with a delay of 0).
+func can_confirm_death() -> bool:
+	return _place == Place.DEATH_PAUSE and _death_time_left <= 0.0
+
+
+## F-015/C3: the person confirmed the death screen: the town, with the progress as it was. Refused
+## (false, nothing changes, no signal) unless `can_confirm_death()`.
+func confirm_death() -> bool:
+	if not can_confirm_death():
+		return false
+	_go_to_town()
+	return true
 
 
 ## G7: the progress snapshot is part of it. F-012/C7: so is "cleared during this visit", but only
