@@ -203,3 +203,27 @@ func test_cr4_in_the_death_pause_a_debug_skip_changes_neither_the_location_nor_t
 	assert_eq(location(), FIRST_ROOM_TEXT)
 	assert_eq(hud().get_kills_text(), "Kills 1 / 5", "and a few ticks later")
 	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
+
+
+# --- CR-11: a kill that lands in the player's death tick still counts ------------------------
+
+
+func test_cr11_an_enemy_and_the_player_killed_between_the_same_ticks_count_through_the_pause(
+) -> void:
+	set_death_delay(5.0)
+	await _enter_first_room()
+	kill(room().get_enemies()[0])
+	await run_ticks(1)
+	assert_eq(hud().get_kills_text(), "Kills 1 / 5")
+	# A trade: between the same two ticks an enemy falls and so does the player.
+	kill(room().get_enemies()[1])
+	kill_player()
+	await run_ticks(2)
+	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
+	assert_eq(room().get_kill_count(), 2, "the room counts both")
+	assert_eq(hud().get_kills_text(), "Kills 2 / 5", "and so does the line, from the death tick on")
+	await run_ticks(10)
+	assert_eq(hud().get_kills_text(), "Kills 2 / 5", "for the whole pause")
+	floor_scene().skip_room()
+	assert_eq(hud().get_kills_text(), "Kills 2 / 5", "a skip in the pause still changes nothing")
+	assert_eq(location(), FIRST_ROOM_TEXT)

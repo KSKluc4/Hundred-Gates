@@ -75,6 +75,7 @@ func _physics_process(delta: float) -> void:
 			TowerSession.Place.DEATH_PAUSE:
 				# The floor stays on screen through the pause.
 				_hud.show_banner(DEATH_BANNER, Tunables.tower.death_return_delay)
+				_feed_kills(true)  # CR-11: once more, so a kill of the death tick counts.
 	_feed_kills()
 
 
@@ -136,9 +137,10 @@ func _collect_setup_errors() -> PackedStringArray:
 ## F-014/C13: what the HUD's kills line says, read from the shown room every physics frame (and
 ## when a room is entered, so it follows the location text): a combat room of a floor shows its
 ## count and target, the town and a boss room show nothing. The counts are the room's; nothing
-## about waves is decided here. In the death pause it is left as it was (CR-4).
-func _feed_kills() -> void:
-	if _session.get_place() == TowerSession.Place.DEATH_PAUSE:
+## about waves is decided here. In the death pause it is left as it was (CR-4), after the one
+## feed of the tick the pause began in (`at_death`, CR-11).
+func _feed_kills(at_death: bool = false) -> void:
+	if _session.get_place() == TowerSession.Place.DEATH_PAUSE and not at_death:
 		return  # CR-4: the pause keeps what the line last said, as the location text does.
 	if is_instance_valid(_floor):
 		var shown: Room = _floor.get_room()

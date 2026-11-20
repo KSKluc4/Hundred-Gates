@@ -812,3 +812,25 @@ func test_ac27_the_director_asks_the_nav_grid_only_when_it_is_about_to_choose() 
 	rig.wake(rig.placed[0])
 	rig.tick()
 	assert_gt(nav.get_field_builds(), 0, "a choice was made")
+
+
+# --- AC27 (CR-12): a point's walk is to its own nearest player ----------------------------
+
+
+func test_ac27_a_points_walk_is_measured_to_its_own_nearest_player() -> void:
+	# Players on both sides of the wall: the first east at (22.5, 5.5), the second west at (7.5, 5.5).
+	# The point (14.5, 5.5) is 7 from the second one by a short walk and 8 from the first by a walk
+	# of over 18. Asked of the nearest player (the second) it is a short walk and wins as the
+	# nearest; asked of the first player it would be a long one and the east point would win.
+	var rig: WaveFixtures.Rig = _walled_rig(true)
+	rig.arena.add_player(Vector2(7.5, 5.5), &"player_2")
+	var nav: NavGrid = rig.arena.sim.get_nav()
+	var behind_the_wall: Vector2 = Vector2(14.5, 5.5)
+	assert_gt(nav.walk_distance(behind_the_wall, Vector2(22.5, 5.5)), 18.0, "long to the first")
+	assert_lt(nav.walk_distance(behind_the_wall, Vector2(7.5, 5.5)), 18.0, "short to the second")
+	rig.wake(rig.placed[0])
+	rig.tick()
+	assert_eq(rig.recorder.starts.size(), 1)
+	assert_eq(
+		rig.recorder.starts[0]["point"], behind_the_wall, "the walk to its own nearest player"
+	)
