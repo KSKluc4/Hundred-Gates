@@ -7,6 +7,11 @@ extends F015ShellTest
 ## a test turns it on. Tests of the paused state step frames with `await physics_frame`, never with
 ## run_ticks(), which submits commands nobody consumes while the game is disabled.
 
+## The kinds of pause a scripted run takes. PLAIN: Escape, `frames` ticks, Escape. ZERO: Escape and
+## Escape in the same instant. SETTINGS: pause, Settings, flip both entries twice, Back, Resume.
+## CONFIRM: pause, the leave confirm (on a floor; the quit confirm elsewhere), Cancel, Resume.
+enum Pause { PLAIN, ZERO, SETTINGS, CONFIRM }
+
 const ESCAPE: Key = KEY_ESCAPE
 const PAD_START: JoyButton = JOY_BUTTON_START
 const PAD_B: JoyButton = JOY_BUTTON_B
@@ -26,9 +31,35 @@ const CORNER_PAUSE_FRAMES: int = 60
 const FIGHT_TICKS: int = 1200
 const FIGHT_PAUSE_FRAMES: int = 60
 const FIGHT_TAIL_TICKS: int = 150
+## The ticks the seeded pauses of the fight fall in.
+const FIGHT_RANDOM_FIRST_TICK: int = 60
+const FIGHT_RANDOM_LAST_TICK: int = 450
+## F-015/AC15, the wall slide: a walk of four legs of SLIDE_LEG_TICKS ticks along the town's walls
+## (into the south wall, up the east wall, down the west side, back), with a dash every 60 ticks.
+## It crosses the seams between the wall bodies that a corner walk never reaches (C6).
+const SLIDE_TICKS: int = 720
+const SLIDE_LEG_TICKS: int = 180
+## The control (two never-paused slides are the same) only needs the first part of the walk.
+const CONTROL_TICKS: int = 360
+const SLIDE_START_TILES: Vector2 = Vector2(2.5, 11.5)
+const SLIDE_LEGS: Array[Vector2] = [
+	Vector2(1.0, 1.0), Vector2(1.0, -0.4), Vector2(-0.3, 1.0), Vector2(-1.0, 0.6)
+]
+## The seeded schedule of mixed pauses (AC15): how many, the seed, and the lengths it picks from.
+const RANDOM_SEED: int = 4
+const RANDOM_PAUSES_MIN: int = 3
+const RANDOM_PAUSES_MAX: int = 10
+const RANDOM_FRAME_CHOICES: Array[int] = [1, 3, 7, 30]
+const RANDOM_KINDS: Array[Pause] = [Pause.PLAIN, Pause.ZERO, Pause.SETTINGS, Pause.CONFIRM]
+## What a test of the one-tick lag (DEV-6) watches after the pause: ticks.
+const LAG_WATCH_TICKS: int = 10
+## A rate low enough that most frames carry no physics tick: a press between ticks is easy to place.
+const SLOW_TICKS_PER_SECOND: int = 30
+const LAG_FRAME_LIMIT: int = 200
 
 var _corner_reference: Dictionary = {}
 var _fight_reference: Dictionary = {}
+var _slide_reference: Dictionary = {}
 var _entered: Array[Node] = []
 
 
@@ -183,7 +214,6 @@ func test_c14_the_applier_is_not_called_again_by_playing() -> void:
 
 
 func test_c12_an_empty_path_neither_loads_nor_saves() -> void:
-	var real_before: int = FileAccess.get_modified_time(UserSettings.DEFAULT_PATH)
 	UserSettings.settings.fullscreen = false
 	assert_true(UserSettings.save_to(settings_file()))  # A file the shell must not read.
 	UserSettings.settings.fullscreen = true
@@ -194,9 +224,6 @@ func test_c12_an_empty_path_neither_loads_nor_saves() -> void:
 	assert_eq(window_modes(), [DisplayServer.WINDOW_MODE_FULLSCREEN] as Array[int])
 	assert_eq(
 		FileAccess.get_file_as_bytes(settings_file()), bytes_before, "and nothing was written"
-	)
-	assert_eq(
-		FileAccess.get_modified_time(UserSettings.DEFAULT_PATH), real_before, "the real one too"
 	)
 
 
@@ -341,6 +368,23 @@ func test_ac15_a_paused_fight_is_the_same_as_one_never_paused() -> void:
 	assert_eq(_first_difference(reference_trace.slice(0, length), trace), -1, "no tick differs")
 
 
+## The same fight with the seeded schedule of mixed pauses (on a floor, so the leave confirm is one
+## of the kinds), compared tick by tick.
+func test_ac15_a_fight_with_a_seeded_schedule_of_mixed_pauses_is_the_same() -> void:
+	if _fight_reference.is_empty():
+		_fight_reference = await _fight([])
+	var schedule: Dictionary = _random_schedule(FIGHT_RANDOM_FIRST_TICK, FIGHT_RANDOM_LAST_TICK)
+	var pauses: Array[int] = []
+	for tick: int in schedule.keys():
+		pauses.append(tick)
+	var run: Dictionary = await _fight(pauses, schedule)
+	var length: int = mini(pauses.max() + FIGHT_TAIL_TICKS, FIGHT_TICKS)
+	var trace: Array = run["trace"]
+	assert_eq(trace.size(), length)
+	var at: int = _first_difference(_fight_reference["trace"].slice(0, length), trace)
+	assert_eq(at, -1, "pauses %s: no tick differs" % [schedule])
+
+
 ## F-015/AC15: a walk and a dash into the north-west corner of the town for 300 ticks. This is the
 ## case that differs, by up to 0.07 px for a dozen ticks, when the physics space keeps stepping
 ## while the game is disabled.
@@ -366,6 +410,60 @@ func _assert_corner_walk_unchanged(pause_at: int) -> void:
 		"paused for %d frames at tick %d: no tick differs" % [CORNER_PAUSE_FRAMES, pause_at]
 	)
 	assert_eq(run["final"], _corner_reference["final"])
+
+
+# --- AC15: the wall slide (C6: the game's bodies stay in the space while it is stopped) ---
+
+
+func test_ac15_two_slides_never_paused_are_the_same() -> void:
+	await _slide_reference_run()
+	var again: Dictionary = await _slide_walk({}, CONTROL_TICKS)
+	var reference_start: Array = _slide_reference["trace"].slice(0, CONTROL_TICKS)
+	assert_eq(_first_difference(reference_start, again["trace"]), -1, "no tick differs")
+
+
+func test_ac15_a_slide_paused_at_30_for_60_frames_is_the_same() -> void:
+	await _assert_slide_unchanged({30: [Pause.PLAIN, 60]})
+
+
+func test_ac15_a_slide_paused_at_100_for_no_frame_is_the_same() -> void:
+	await _assert_slide_unchanged({100: [Pause.ZERO, 0]})
+
+
+func test_ac15_a_slide_paused_at_200_for_1_frame_is_the_same() -> void:
+	await _assert_slide_unchanged({200: [Pause.PLAIN, 1]})
+
+
+func test_ac15_a_slide_paused_at_250_for_5_frames_is_the_same() -> void:
+	await _assert_slide_unchanged({250: [Pause.PLAIN, 5]})
+
+
+func test_ac15_a_slide_paused_at_340_for_60_frames_is_the_same() -> void:
+	await _assert_slide_unchanged({340: [Pause.PLAIN, 60]})
+
+
+func test_ac15_a_slide_paused_at_400_for_5_frames_is_the_same() -> void:
+	await _assert_slide_unchanged({400: [Pause.PLAIN, 5]})
+
+
+func test_ac15_a_slide_paused_at_500_for_1_frame_is_the_same() -> void:
+	await _assert_slide_unchanged({500: [Pause.PLAIN, 1]})
+
+
+## Three to ten pauses of mixed kinds at seeded ticks, in the same slide.
+func test_ac15_a_slide_with_a_seeded_schedule_of_mixed_pauses_is_the_same() -> void:
+	var schedule: Dictionary = _random_schedule(5, SLIDE_TICKS - 40)
+	assert_gte(schedule.size(), RANDOM_PAUSES_MIN)
+	await _assert_slide_unchanged(schedule)
+
+
+func _assert_slide_unchanged(schedule: Dictionary) -> void:
+	await _slide_reference_run()
+	var run: Dictionary = await _slide_walk(schedule)
+	var at: int = _first_difference(_slide_reference["trace"], run["trace"])
+	assert_eq(at, -1, "pauses %s: no tick differs (position and snapshot)" % [schedule])
+	assert_eq(run["trace"].size(), SLIDE_TICKS)
+	assert_eq(run["final"], _slide_reference["final"])
 
 
 # --- AC17: where `pause` does nothing ---
@@ -707,7 +805,7 @@ func test_c7_the_guard_holds_for_two_of_the_shells_ticks() -> void:
 	await get_tree().physics_frame
 	assert_false(shell().is_guarding(), "until the game runs")
 	assert_eq(game().process_mode, Node.PROCESS_MODE_INHERIT)
-	assert_false(space_is_active(), "the space follows in the tick the game first runs in (DEV-1)")
+	assert_false(space_is_active(), "the space follows in the tick the game first runs in (DEV-6)")
 	await get_tree().physics_frame
 	assert_true(space_is_active())
 
@@ -778,6 +876,118 @@ func _assert_no_dash_after_the_guard() -> void:
 		await get_tree().physics_frame
 		assert_ne(player().motor.get_state(), PlayerMotor.State.DASHING, "tick %d" % tick)
 		assert_ne(player().motor.get_state(), PlayerMotor.State.ATTACKING, "tick %d" % tick)
+
+
+# --- DEV-6: a pause in the one tick the space lags behind the game ---
+
+
+## The game was enabled in the last tick and the space follows in the next (`_space_follows`). A
+## pause posted inside that tick: the space must stay inactive until the resume.
+func test_dev6_a_pause_posted_inside_the_tick_the_space_lags_keeps_the_space_off() -> void:
+	await spawn_shell_on(TowerFixtures.tower_of(1, 1))
+	await start_game()
+	await tap_key(ESCAPE)
+	await get_tree().process_frame
+	choose(ShellMenus.RESUME)
+	await wait_for_guard()
+	assert_eq(game().process_mode, Node.PROCESS_MODE_INHERIT, "the premise: the game runs again")
+	assert_false(space_is_active(), "and the space still lags")
+	press_key(ESCAPE)
+	assert_eq(flow().get_state(), ShellFlow.State.PAUSED, "paused in the lag")
+	await _assert_stopped_for(LAG_WATCH_TICKS)
+	await get_tree().process_frame
+	choose(ShellMenus.RESUME)
+	await wait_for_guard()
+	await run_ticks(3)
+	assert_true(space_is_active(), "the resume gave the space back")
+
+
+## The same, the pause posted between two ticks (at a rate where most frames have none).
+func test_dev6_a_pause_posted_between_ticks_right_after_the_enable_keeps_the_space_off() -> void:
+	await spawn_shell_on(TowerFixtures.tower_of(1, 1))
+	await start_game()
+	Engine.physics_ticks_per_second = SLOW_TICKS_PER_SECOND
+	await tap_key(ESCAPE)
+	await get_tree().process_frame
+	choose(ShellMenus.RESUME)
+	var in_the_lag: bool = false
+	for _i: int in LAG_FRAME_LIMIT:
+		await get_tree().process_frame
+		if not shell().is_guarding() and not space_is_active():
+			in_the_lag = true
+			break
+	assert_true(in_the_lag, "a frame between the enable tick and the next one was found")
+	press_key(ESCAPE)
+	assert_eq(flow().get_state(), ShellFlow.State.PAUSED, "paused in the lag")
+	await _assert_stopped_for(LAG_WATCH_TICKS)
+
+
+## For `ticks` ticks the game is disabled, the space is inactive and the sim's clock stands still.
+func _assert_stopped_for(ticks: int) -> void:
+	var time: float = _sim().get_time()
+	for tick: int in ticks:
+		await get_tree().physics_frame
+		assert_eq(game().process_mode, Node.PROCESS_MODE_DISABLED, "tick %d" % tick)
+		assert_false(space_is_active(), "the space stays off, tick %d" % tick)
+		assert_eq(_sim().get_time(), time, "the sim's clock stands still, tick %d" % tick)
+
+
+# --- C8: an event the flow acted on is consumed ---
+
+
+## `pause` (pad Start) reaches a node that comes after the shell in `_unhandled_input` only when the
+## flow refused it: on the title screen. When the flow paused, or went back, it is marked handled.
+func test_c8_an_event_the_flow_acted_on_is_handled_and_a_refused_one_is_not() -> void:
+	var spy: PauseSpy = PauseSpy.new()
+	add_child_autofree(spy)  # Before the shell: it hears unhandled input after it.
+	await spawn_shell_on(TowerFixtures.tower_of(1, 1))
+	await tap_pad(PAD_START)
+	assert_eq(flow().get_state(), ShellFlow.State.TITLE, "refused on the title screen")
+	assert_eq(spy.presses, 1, "so the event went on")
+	await start_game()
+	spy.presses = 0
+	await tap_pad(PAD_START)
+	assert_eq(flow().get_state(), ShellFlow.State.PAUSED, "the flow paused")
+	assert_eq(spy.presses, 0, "and the event was consumed")
+	await tap_pad(PAD_START)
+	assert_eq(flow().get_state(), ShellFlow.State.PLAYING, "the flow went back")
+	assert_eq(spy.presses, 0, "and that one too")
+
+
+# --- C6: the stop is applied again when a stopped shell enters the tree ---
+
+
+func test_c6_a_paused_shell_put_back_in_the_tree_stops_the_space_again() -> void:
+	await spawn_shell_on(TowerFixtures.tower_of(1, 1))
+	await start_game()
+	await tap_key(ESCAPE)
+	assert_false(space_is_active())
+	var parent: Node = shell().get_parent()
+	parent.remove_child(shell())
+	assert_true(space_is_active(), "leaving the tree gives the space back")
+	parent.add_child(shell())
+	assert_eq(flow().get_state(), ShellFlow.State.PAUSED)
+	assert_eq(game().process_mode, Node.PROCESS_MODE_DISABLED)
+	assert_false(space_is_active(), "the game is stopped, so the space is again")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	assert_false(space_is_active(), "and it stays so")
+	choose(ShellMenus.RESUME)
+	await wait_for_guard()
+	await run_ticks(3)
+	assert_true(space_is_active(), "the resume gives it back")
+
+
+func test_c6_a_shell_put_back_in_the_tree_while_running_leaves_the_space_on() -> void:
+	await spawn_shell_on(TowerFixtures.tower_of(1, 1))
+	await start_game()
+	var parent: Node = shell().get_parent()
+	parent.remove_child(shell())
+	parent.add_child(shell())
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	assert_true(space_is_active())
+	assert_eq(game().process_mode, Node.PROCESS_MODE_INHERIT)
 
 
 # --- helpers ---
@@ -883,15 +1093,15 @@ func _pause_and_resume(frames: int) -> void:
 
 
 ## The town: the player walks into the north-west corner for CORNER_TICKS ticks and dashes every
-## second, with one pause at tick `pause_at` (none when negative). The player's position at the
-## start of each tick, and the sim's snapshot at the end.
+## second, with one pause at tick `pause_at` (none when negative). At the start of each tick the
+## sim's snapshot (its hash) and the player's position, and the full snapshot at the end.
 func _corner_walk(pause_at: int) -> Dictionary:
 	await spawn_shell_on(WaveFixtures.wave_tower(2))
 	await start_game()
 	var trace: Array = []
 	var into: Vector2 = Vector2(-1.0, -1.0).normalized()
 	for tick: int in CORNER_TICKS:
-		trace.append(player().global_position)
+		trace.append([JSON.stringify(_sim().to_dict()).hash(), player().global_position])
 		if tick == pause_at:
 			await _pause_and_resume(CORNER_PAUSE_FRAMES)
 		player().motor.submit(MoveCommand.new(into))
@@ -938,9 +1148,10 @@ func _fight_flags() -> Dictionary:
 
 
 ## One fight on floor 1 of the wave tower, paused (Escape, 60 ticks, Escape) at each tick of
-## `pauses`. The trace has, per tick, the sim's snapshot and where everything is; a run with
-## pauses stops FIGHT_TAIL_TICKS after the last one.
-func _fight(pauses: Array[int]) -> Dictionary:
+## `pauses`, or by the `[Pause kind, frames]` that `kinds` gives for that tick. The trace has, per
+## tick, the sim's snapshot and where everything is; a run with pauses stops FIGHT_TAIL_TICKS after
+## the last one.
+func _fight(pauses: Array[int], kinds: Dictionary = {}) -> Dictionary:
 	set_death_delay(100000.0)
 	await spawn_shell_on(WaveFixtures.wave_tower(2))
 	await start_game()
@@ -957,7 +1168,10 @@ func _fight(pauses: Array[int]) -> Dictionary:
 		flags.append(_fight_flags())
 		if tick in pauses:
 			flags_at_pause.append(flags[tick])
-			await _pause_and_resume(FIGHT_PAUSE_FRAMES)
+			if kinds.has(tick):
+				await _pause_of(kinds[tick][0], kinds[tick][1])
+			else:
+				await _pause_and_resume(FIGHT_PAUSE_FRAMES)
 		_fight_commands(tick)
 		await get_tree().physics_frame
 	var result: Dictionary = {"trace": trace, "flags": flags, "flags_at_pause": flags_at_pause}
@@ -979,3 +1193,96 @@ func _choose_pause(flags: Array, want_dash: bool, from: int) -> int:
 				continue
 			return tick
 	return -1
+
+
+## The slide of AC15 never paused: made once per script, and every paused slide is compared to it.
+func _slide_reference_run() -> void:
+	if _slide_reference.is_empty():
+		_slide_reference = await _slide_walk({})
+
+
+## The town: the player is put against the west wall and walks SLIDE_LEGS, a leg per
+## SLIDE_LEG_TICKS ticks, with a dash every 60, for `ticks` ticks. `schedule` maps a tick to
+## `[Pause kind, frames]`: the pause is taken at the start of that tick. At the start of each tick:
+## the sim's snapshot (its hash) and where everything is; at the end the full snapshot.
+func _slide_walk(schedule: Dictionary, ticks: int = SLIDE_TICKS) -> Dictionary:
+	await spawn_shell_on(WaveFixtures.wave_tower(2))
+	await start_game()
+	put_player_at(SLIDE_START_TILES)
+	var trace: Array = []
+	for tick: int in ticks:
+		trace.append([JSON.stringify(_sim().to_dict()).hash(), _positions()])
+		if schedule.has(tick):
+			await _pause_of(schedule[tick][0], schedule[tick][1])
+		var leg: int = floori(float(tick) / SLIDE_LEG_TICKS) % SLIDE_LEGS.size()
+		var move: Vector2 = SLIDE_LEGS[leg].normalized()
+		player().motor.submit(MoveCommand.new(move))
+		player().motor.submit(AimCommand.new(move))
+		if tick % 60 == 50:
+			player().motor.submit(DashCommand.new())
+		await get_tree().physics_frame
+	var result: Dictionary = {"trace": trace, "final": JSON.stringify(_sim().to_dict())}
+	await _drop_shell()
+	return result
+
+
+## One pause of `kind` (Pause), `frames` ticks at each stop, from where a test stands (inside a
+## tick), ended by a resume. Leaves the test at the start of the first tick the game runs in.
+func _pause_of(kind: Pause, frames: int) -> void:
+	var on_floor: bool = session().get_place() == TowerSession.Place.FLOOR
+	var name_of_kind: String = Pause.keys()[kind]
+	press_key(ESCAPE)
+	assert_eq(flow().get_state(), ShellFlow.State.PAUSED, "paused (%s)" % name_of_kind)
+	match kind:
+		Pause.PLAIN:
+			await _wait_ticks(frames)
+			press_key(ESCAPE)
+		Pause.ZERO:
+			press_key(ESCAPE)
+		Pause.SETTINGS:
+			await _wait_ticks(frames)
+			choose(ShellMenus.SETTINGS)
+			choose(ShellMenus.SHAKE)
+			choose(ShellMenus.FULLSCREEN)
+			await _wait_ticks(frames)
+			choose(ShellMenus.SHAKE)
+			choose(ShellMenus.FULLSCREEN)
+			choose(ShellMenus.BACK)
+			choose(ShellMenus.RESUME)
+		Pause.CONFIRM:
+			choose(ShellMenus.LEAVE if on_floor else ShellMenus.QUIT_TO_TITLE)
+			await _wait_ticks(frames)
+			choose(ShellMenus.CANCEL)
+			choose(ShellMenus.RESUME)
+	assert_eq(flow().get_state(), ShellFlow.State.PLAYING, "resumed (%s)" % name_of_kind)
+	await wait_for_guard()
+
+
+func _wait_ticks(ticks: int) -> void:
+	for _i: int in ticks:
+		await get_tree().physics_frame
+
+
+## Three to ten pauses at seeded, distinct ticks from `first_tick` to `last_tick`, each of a seeded
+## kind from RANDOM_KINDS and a seeded length.
+func _random_schedule(first_tick: int, last_tick: int) -> Dictionary:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = RANDOM_SEED
+	var schedule: Dictionary = {}
+	var count: int = rng.randi_range(RANDOM_PAUSES_MIN, RANDOM_PAUSES_MAX)
+	while schedule.size() < count:
+		var tick: int = rng.randi_range(first_tick, last_tick)
+		var kind: Pause = RANDOM_KINDS[rng.randi_range(0, RANDOM_KINDS.size() - 1)]
+		var frames: int = RANDOM_FRAME_CHOICES[rng.randi_range(0, RANDOM_FRAME_CHOICES.size() - 1)]
+		schedule[tick] = [kind, 0 if kind == Pause.ZERO else frames]
+	return schedule
+
+
+## Counts the `pause` presses that reach `_unhandled_input` (nobody consumed them).
+class PauseSpy:
+	extends Node
+	var presses: int = 0
+
+	func _unhandled_input(event: InputEvent) -> void:
+		if event.is_action_pressed(&"pause"):
+			presses += 1

@@ -7,6 +7,13 @@ extends ListMenu
 ## own `pressed`). Neither signal closes the panel: the shell decides what is shown next. Hidden
 ## until open(), and while closed it handles no input. Keys, d-pad, stick and the disabled entry
 ## are ListMenu's.
+##
+## The pointer guard (F-015 code review, fixes A): a click that chooses an entry often opens the
+## next menu under the cursor, and the second click of a double click would act on whatever entry
+## lies there ("Settings" opens a menu whose "Fullscreen" is where "Settings" was). So for
+## `pointer_guard_seconds` of real time after `open()` the entries take no pointer input
+## (`MOUSE_FILTER_IGNORE`); keys, the pad and `choose()` are not affected, and the in-place changes
+## (`set_body`, `set_entry_text`, `set_entry_enabled`) do not start it again.
 ## The look → Art & Game Feel (F-015 §10 Q5).
 
 ## Once per choice of an enabled entry, with its id. Not emitted by a disabled or unknown one.
@@ -15,10 +22,15 @@ signal entry_chosen(id: StringName)
 signal cancelled
 
 @export var heading_font_size: int = 8
+## How long, in real seconds, the entries ignore the pointer after `open()`; 0 is no guard.
+@export var pointer_guard_seconds: float = 0.3
 ## The gap between the heading, the body and the entries.
 @export var content_separation_px: int = 4
 
 var _ids: Array[StringName] = []
+## `Time.get_ticks_msec()` at which the pointer guard ends (meaningful while `_pointer_guarded`).
+var _pointer_guard_until_msec: int = 0
+var _pointer_guarded: bool = false
 
 @onready var _content: VBoxContainer = $Panel/Content
 @onready var _heading_label: Label = $Panel/Content/Heading
@@ -33,6 +45,13 @@ func _ready() -> void:
 	_heading_label.add_theme_font_size_override(&"font_size", heading_font_size)
 	_body_label.add_theme_font_size_override(&"font_size", font_size)
 	_body_label.visible = not _body_label.text.is_empty()
+	set_process(false)
+
+
+## Real time, not frames: the guard ends the same at any frame rate.
+func _process(_delta: float) -> void:
+	if Time.get_ticks_msec() >= _pointer_guard_until_msec:
+		_end_pointer_guard()
 
 
 ## Shows the menu from the start: calling it while open (or after it was hidden) rebuilds it and
@@ -51,6 +70,7 @@ func open(
 		_ids.append(entry.id)
 	_show_list()
 	_set_focus(maxi(_ids.find(focus_id), 0))
+	_start_pointer_guard()
 
 
 ## What a key, a pad button and a click on entry `id` do. Nothing for an unknown id, a disabled
@@ -82,6 +102,12 @@ func set_entry_enabled(id: StringName, enabled: bool) -> void:
 	var index: int = _ids.find(id)
 	if index >= 0:
 		_buttons[index].disabled = not enabled
+
+
+## True from `open()` until `pointer_guard_seconds` of real time have passed: the entries ignore the
+## mouse.
+func is_pointer_guarded() -> bool:
+	return _pointer_guarded
 
 
 func get_heading() -> String:
@@ -118,3 +144,20 @@ func get_focus_id() -> StringName:
 
 func _on_cancel_pressed() -> void:
 	cancelled.emit()
+
+
+func _start_pointer_guard() -> void:
+	_pointer_guarded = pointer_guard_seconds > 0.0
+	set_process(_pointer_guarded)
+	if not _pointer_guarded:
+		return
+	_pointer_guard_until_msec = Time.get_ticks_msec() + roundi(pointer_guard_seconds * 1000.0)
+	for button: Button in _buttons:
+		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+
+func _end_pointer_guard() -> void:
+	_pointer_guarded = false
+	set_process(false)
+	for button: Button in _buttons:
+		button.mouse_filter = Control.MOUSE_FILTER_STOP

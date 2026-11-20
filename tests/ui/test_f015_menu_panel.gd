@@ -9,6 +9,14 @@ const PANEL_SCENE: PackedScene = preload("res://src/ui/menus/menu_panel.tscn")
 const HEADING_PATH: NodePath = ^"Panel/Content/Heading"
 const BODY_PATH: NodePath = ^"Panel/Content/Body"
 const BUTTONS_PATH: NodePath = ^"Panel/Content/Buttons"
+## A short pointer guard for the tests that wait for it (the default is 0.3 s), in seconds. A change
+## in place is made LATE_MSEC into it; a guard that ends before NOT_RESTARTED_MSEC was not started
+## again by it (that would end at LATE_MSEC + the guard, 430 and more). And how long a wait for it
+## may take before the test calls it stuck.
+const GUARD_SECONDS: float = 0.25
+const LATE_MSEC: int = 180
+const NOT_RESTARTED_MSEC: int = 350
+const GUARD_WAIT_LIMIT_MSEC: int = 3000
 ## A real stick passes through every value on its way (as in test_gate_menu).
 const RAMP: Array[float] = [0.1, 0.3, 0.45, 0.7, 1.0]
 const HANDLED_ACTIONS: Array[StringName] = [
@@ -721,7 +729,140 @@ func test_ac11_open_while_open_with_the_same_menu_takes_the_focus_back() -> void
 	assert_true(_buttons()[0].has_focus())
 
 
+# --- the pointer guard (a double click must not act on the menu that opens under the cursor) ---
+
+
+func test_guard_the_default_is_a_third_of_a_second() -> void:
+	_spawn_panel()
+	assert_eq(_panel.pointer_guard_seconds, 0.3)
+
+
+func test_guard_the_entries_ignore_the_pointer_right_after_open() -> void:
+	_spawn_panel()
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_true(_panel.is_pointer_guarded())
+	assert_eq(_buttons().size(), 3)
+	for button: Button in _buttons():
+		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_IGNORE)
+
+
+func test_guard_the_entries_take_the_pointer_again_after_the_time() -> void:
+	_spawn_panel()
+	_panel.pointer_guard_seconds = GUARD_SECONDS
+	_panel.open("Paused", "", _entries(), &"a")
+	var opened_at: int = Time.get_ticks_msec()
+	assert_true(await _wait_until_unguarded(), "the guard ended")
+	var elapsed_msec: int = Time.get_ticks_msec() - opened_at
+	assert_gte(elapsed_msec, roundi(GUARD_SECONDS * 1000.0), "not before its time (real time)")
+	assert_false(_panel.is_pointer_guarded())
+	for button: Button in _buttons():
+		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP)
+
+
+func test_guard_a_guard_of_zero_is_no_guard() -> void:
+	_spawn_panel()
+	_panel.pointer_guard_seconds = 0.0
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_false(_panel.is_pointer_guarded())
+	for button: Button in _buttons():
+		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP)
+
+
+func test_guard_every_open_starts_it_again() -> void:
+	_spawn_panel()
+	_panel.pointer_guard_seconds = GUARD_SECONDS
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_true(await _wait_until_unguarded())
+	_panel.open("Other", "", _entries(), &"b")
+	assert_true(_panel.is_pointer_guarded(), "a new menu is guarded again")
+	for button: Button in _buttons():
+		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_IGNORE)
+	assert_true(await _wait_until_unguarded())
+	for button: Button in _buttons():
+		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP)
+
+
+func test_guard_choose_by_code_works_during_the_guard() -> void:
+	_spawn_panel()
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_true(_panel.is_pointer_guarded())
+	_panel.choose(&"b")
+	assert_eq(_chosen, [&"b"] as Array[StringName])
+
+
+func test_guard_the_keys_and_the_focus_work_during_the_guard() -> void:
+	_spawn_panel()
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_true(_panel.is_pointer_guarded())
+	_press(&"ui_down")
+	assert_eq(_panel.get_focus_id(), &"b", "the focus moves")
+	_press(&"ui_accept")
+	assert_eq(_chosen, [&"b"] as Array[StringName], "ui_accept chooses")
+	_press(&"interact")
+	assert_eq(_chosen, [&"b", &"b"] as Array[StringName], "interact chooses")
+	_press(&"ui_cancel")
+	assert_eq(_cancelled, 1, "ui_cancel cancels")
+	assert_true(_panel.is_pointer_guarded(), "and the guard is still on")
+
+
+func test_guard_a_click_on_the_button_itself_is_the_one_thing_it_stops() -> void:
+	_spawn_panel()
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_eq(
+		_buttons()[0].mouse_filter, Control.MOUSE_FILTER_IGNORE, "the pointer cannot reach it"
+	)
+	_buttons()[0].pressed.emit()
+	assert_eq(_chosen, [&"a"] as Array[StringName], "but the button's own pressed still chooses")
+
+
+## In-place changes are not a new menu: they do not start the guard again, so a click that toggles
+## an entry (Fullscreen) works twice in a row.
+func test_guard_changes_in_place_do_not_restart_it() -> void:
+	_spawn_panel()
+	_panel.pointer_guard_seconds = GUARD_SECONDS
+	_panel.open("Paused", "", _entries(), &"a")
+	var opened_at: int = Time.get_ticks_msec()
+	await _wait_msec(LATE_MSEC)
+	assert_true(_panel.is_pointer_guarded(), "the premise: late in the guard, not past it")
+	_panel.set_entry_text(&"a", "Changed")
+	_panel.set_entry_enabled(&"c", true)
+	_panel.set_body("Something else")
+	assert_true(await _wait_until_unguarded(), "the guard ended")
+	var elapsed_msec: int = Time.get_ticks_msec() - opened_at
+	assert_lt(elapsed_msec, NOT_RESTARTED_MSEC, "on its first time, not restarted")
+	for button: Button in _buttons():
+		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP)
+
+
+func test_guard_changes_in_place_after_the_guard_do_not_start_it() -> void:
+	_spawn_panel()
+	_panel.pointer_guard_seconds = GUARD_SECONDS
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_true(await _wait_until_unguarded())
+	_panel.set_entry_text(&"a", "Changed")
+	_panel.set_entry_enabled(&"c", true)
+	_panel.set_body("Something else")
+	assert_false(_panel.is_pointer_guarded())
+	for button: Button in _buttons():
+		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP)
+
+
 # --- helpers ---
+
+
+## Real time, on process frames (the guard counts real time, not frames).
+func _wait_msec(msec: int) -> void:
+	var until: int = Time.get_ticks_msec() + msec
+	while Time.get_ticks_msec() < until:
+		await get_tree().process_frame
+
+
+## Waits for the guard to end, for at most GUARD_WAIT_LIMIT_MSEC; true if it did.
+func _wait_until_unguarded() -> bool:
+	var until: int = Time.get_ticks_msec() + GUARD_WAIT_LIMIT_MSEC
+	while _panel.is_pointer_guarded() and Time.get_ticks_msec() < until:
+		await get_tree().process_frame
+	return not _panel.is_pointer_guarded()
 
 
 func _spawn_panel() -> void:

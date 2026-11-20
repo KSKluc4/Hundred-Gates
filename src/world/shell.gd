@@ -17,17 +17,27 @@ extends Node
 ##
 ## Pausing is `Game.process_mode = PROCESS_MODE_DISABLED` and the 2D physics space inactive, always
 ## together (`_set_game_running`): with the space still stepping a pause shifts later wall contact
-## (C6). `SceneTree.paused` is never touched. One lag, measured in T5 (DEV-1): when the game is
-## enabled the space comes back one of this node's ticks later, in the tick the game first runs in.
-## The server steps after every node of a tick, so a space switched on in the tick the game is
-## enabled in (a tick the game does not run in) takes one step with nothing moved, and that step
-## alone shifts a later slide along a wall corner by 4e-6 px.
+## (C6). `SceneTree.paused` is never touched. Two measured details, both in `_set_game_running`:
+## - The game's bodies stay in the space (F-015 code review, fixes A). A disabled node takes its
+##   collision objects out of the physics space (the default `DISABLE_MODE_REMOVE`) and puts them
+##   back on enable, and that alone shifted a later slide along a side wall, across the seams
+##   between the wall bodies (one body per run of wall tiles in a row), by up to 0.004 px for 300
+##   and more ticks, after a pause of any length, even none. So at each stop every collision object
+##   below the game is set to `DISABLE_MODE_KEEP_ACTIVE` (rooms are rebuilt, so once is not
+##   enough); with the space inactive nothing steps all the same.
+## - One lag, measured in T5 (DEV-6): when the game is enabled the space comes back one of this
+##   node's ticks later, in the tick the game first runs in. The server steps after every node of a
+##   tick, so a space switched on in the tick the game is enabled in (a tick the game does not run
+##   in) takes one step with nothing moved, and that step alone shifted a later slide along a wall
+##   corner by 4e-6 px.
 ##
 ## The input guard (C7): a menu choice that leads to PLAYING is made by a key that is also the dash
 ## (Space, pad A) or by a click that is also the attack, and the player's input reads "just pressed"
 ## in the first tick that runs after the press. So the game is held back until two of this node's
 ## own ticks have passed: nothing in the first, the enable in the second (priority 3, after the
 ## game's 2, so the game's tick of that moment has already passed). Never in the input callback.
+## A stopped shell that enters the tree again stops the space again (`_enter_tree`), as one that
+## leaves it gives the space back (`_exit_tree`).
 
 ## F-015/C17, G5: the game this node builds on Start.
 const GAME_SCENE_PATH: String = "res://src/world/game.tscn"
@@ -40,7 +50,10 @@ const PAUSE_ACTION: StringName = &"pause"
 const AFTER_GAME_PRIORITY: int = 3
 ## C7: how many of this node's `_physics_process` calls the game is held back for after a choice
 ## that leads to PLAYING: the first does nothing, the second enables it. This is the guard's
-## mechanism, not a tunable: with 1 the press that chose is still "just pressed" in the game's tick.
+## mechanism, not a tunable. Measured: a press that arrives between ticks (every real input) is
+## "just pressed" in the first tick after it, so one would be enough for it; the second only matters
+## for a press posted inside a tick, which is "just pressed" in the tick after the one that is
+## running. With 1 that press still dashes (the tests post both kinds).
 const GUARD_TICKS: int = 2
 
 ## Null loads the shipped tower (Game does it). Passed on to the game.
@@ -65,7 +78,7 @@ var _flow: ShellFlow = ShellFlow.new()
 var _game: Game
 ## The physics space the game's world is in, kept for `_exit_tree`.
 var _space: RID
-## DEV-1: the game was enabled in the last tick; the space follows in this one.
+## DEV-6: the game was enabled in the last tick; the space follows in this one.
 var _space_follows: bool = false
 ## C16: how many errors the last Start failed with; 0 after a Start that worked.
 var _start_error_count: int = 0
@@ -90,6 +103,13 @@ func _ready() -> void:
 	_menu.cancelled.connect(_on_cancelled)
 	_flow.state_changed.connect(_on_state_changed)
 	_show_menu(_flow.get_state(), _flow.get_state())
+
+
+## C6: a shell put back in the tree while the game is stopped (leaving it gave the space back) stops
+## the space again. The first time there is no game, and nothing is done.
+func _enter_tree() -> void:
+	if _game != null and _game.process_mode == Node.PROCESS_MODE_DISABLED:
+		PhysicsServer2D.space_set_active(get_viewport().world_2d.space, false)
 
 
 func _exit_tree() -> void:
@@ -296,16 +316,25 @@ func _begin_guard() -> void:
 
 
 ## The one place the game and the physics space change together (C6): running, or stopped. Stopped:
-## both at once. Running: the game now and the space in the next tick (see the header). With no game
-## the space is active at once.
+## the game's bodies are told to stay in the space, then both stop at once. Running: the game now
+## and the space in the next tick (see the header). With no game the space is active at once.
 func _set_game_running(running: bool) -> void:
 	_space_follows = running and _game != null
 	if _game == null:
 		PhysicsServer2D.space_set_active(_space, true)
 		return
+	if not running:
+		_keep_bodies_in_space()
 	_game.process_mode = Node.PROCESS_MODE_INHERIT if running else Node.PROCESS_MODE_DISABLED
 	if not running:
 		PhysicsServer2D.space_set_active(_space, false)
+
+
+## C6: before the game is disabled, every collision object below it is set to stay in the physics
+## space (see the header). Done at each stop: the rooms are rebuilt, and a new body has the default.
+func _keep_bodies_in_space() -> void:
+	for node: Node in _game.find_children("*", "CollisionObject2D", true, false):
+		(node as CollisionObject2D).disable_mode = CollisionObject2D.DISABLE_MODE_KEEP_ACTIVE
 
 
 ## Opens the panel with `state`'s menu, having come from `previous`. The title screen has no game
@@ -347,5 +376,9 @@ func _window_mode_of(fullscreen: bool) -> DisplayServer.WindowMode:
 	)
 
 
+## The game running inside the editor's own window cannot change that window's mode: the setting is
+## still flipped and saved, the window is left alone.
 func _apply_window_mode(mode: DisplayServer.WindowMode) -> void:
+	if Engine.is_embedded_in_editor():
+		return
 	DisplayServer.window_set_mode(mode)

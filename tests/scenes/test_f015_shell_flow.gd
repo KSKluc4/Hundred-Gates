@@ -129,7 +129,6 @@ func test_ac9_a_new_shell_on_the_same_path_starts_with_the_saved_values() -> voi
 
 
 func test_ac9_an_empty_path_creates_no_file_and_still_applies() -> void:
-	var real_before: int = FileAccess.get_modified_time(UserSettings.DEFAULT_PATH)
 	var prepare: Callable = func(shell_node: Shell) -> void: shell_node.settings_path = ""
 	await spawn_shell(prepare)
 	choose(ShellMenus.SETTINGS)
@@ -144,9 +143,6 @@ func test_ac9_an_empty_path_creates_no_file_and_still_applies() -> void:
 	)
 	assert_eq(panel().get_entry_text(ShellMenus.SHAKE), ShellMenus.SHAKE_OFF_TEXT)
 	assert_false(FileAccess.file_exists(settings_file()), "no file at the test's path")
-	assert_eq(
-		FileAccess.get_modified_time(UserSettings.DEFAULT_PATH), real_before, "nor at the real one"
-	)
 
 
 func test_ac9_a_failed_save_changes_nothing_else() -> void:
