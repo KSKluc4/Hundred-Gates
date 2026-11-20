@@ -1,8 +1,8 @@
 ---
 id: F-015
 title: Menus — title screen, pause menu, death screen, settings
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-20
 updated: 2026-11-20
 depends_on: [F-003, F-012, F-014, D-006, D-010, D-014, D-016]
@@ -679,6 +679,9 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
 - [x] Code review round 1 — CR-3, CR-7, CR-9, CR-10, CR-12 9625676; CR-1, CR-2, CR-4, CR-5, CR-6,
   CR-7, CR-8, CR-9, CR-11 8429634; CR-13 answered. Full suite on 8429634: 157 scripts, 2480
   tests, all passing (971 s), no "Orphans" line, no leak line.
+- [x] Code review round 2 — CR-14 4c4820b (the log); CR-15, CR-16, CR-18, CR-20 936e9ad; CR-17,
+  CR-19 ec7b44b; CR-21 answered. Full suite on ec7b44b: 158 scripts, 2547 tests, all
+  passing (1070 s), no "Orphans" line, no leak line.
 
 ### Deviations from plan
 - DEV-1: the file went from `PLAN_REVIEW` to `IN_PROGRESS` without `APPROVED` — **Why:** D-016,
@@ -747,6 +750,12 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
   under the cursor (Fullscreen switched on; a quit with no confirmation) — **Impact:** a
   deliberate click in the first 0.3 s after a menu opens does nothing; keys and the pad are not
   delayed. The gate list has no such guard (it closes on a choice).
+  **After code review round 2 (CR-15, CR-16), 936e9ad:** it is a choose guard,
+  `MenuPanel.choose_guard_seconds`. For those 0.3 s `ui_accept` and `interact` choose nothing
+  either (the focus still moves, `ui_cancel` still goes back, `choose(id)` by code is free), and
+  a mouse button event the OS marks as a double click never chooses, at any time. So keys and
+  the pad ARE delayed now, by the same 0.3 s. The scene tests' helper sets the guard to 0; the
+  panel's tests and the click tests run with the default.
 - DEV-12 (code review CR-3): from T7 (4bfec51) to 9625676 `test_f015_guard.gd` and
   `test_f015_main.gd` put the main scene in the tree with spawners of their own, against C12's
   letter — **Why:** `spawn_main()` chooses Start with the input off, and T7's brief told the
@@ -762,6 +771,11 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
   in the editor; neither is in C12 or C14 — **Why:** a hand-written `Object(Node,…)` left an
   orphan; an embedded window cannot change its mode — **Impact:** none on a settings file the
   game wrote.
+  **After code review round 2 (CR-17), ec7b44b:** the first half is replaced. `load_from()`
+  does not use `ConfigFile` to read (C12 says "a `ConfigFile`"): it reads the bytes and takes
+  only `[settings]` and `key=true` / `key=false`. A file over 64 KB, one with a NUL byte, and
+  one with content and no `[settings]` line are "not a settings file": the defaults, false,
+  one warning. `save_to()` still writes through `ConfigFile`.
 
 **Existing tests edited (C18), all in T3 except the last two bullets.** No test was deleted; eight were renamed.
 - `tests/scenes/f012_game_test.gd`: new helper `confirm_death_when_ready(limit)` (ticks until
@@ -862,6 +876,21 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
 - ASSUMPTION-16 (T7): `Engine.physics_jitter_fix` is 0 during the guard tests and restored
   after; `GAME_NODE` in `f012_game_test.gd` is unused now and kept.
   **After code review round 1:** `GAME_NODE` is removed (CR-12).
+- ASSUMPTION-18 (round 2 fixes): **ASSUMPTION-3 and ASSUMPTION-5 no longer hold.** A file with
+  content and no `[settings]` line now returns false with one warning (it returned true), and
+  Godot prints no error line of its own for any settings file; the tests count warnings and
+  errors with a `Logger`, so "one warning" and "none" are asserted, not read. In the reader:
+  the section line must be exactly `[settings]`; keys and `true` / `false` are case-sensitive;
+  the last line of a key decides, and one that is neither `true` nor `false` makes the key its
+  default; a comments-only file is "content" (warning), a blank or BOM-only file is empty
+  (true, silent); a directory at the path is still "missing". The branch for a file that
+  exists and cannot be opened is not covered by a test (not producible on Windows here). In
+  `MenuPanel`: every mouse button event with the double-click flag is consumed, press or
+  release; a key that arrives between the guard's deadline and the next frame is still refused
+  (up to one frame late, never early); `is_choose_guarded()` replaces
+  `is_pointer_guarded()`. In the twins: the fight uses the implementer's own seed (3), not the
+  reviewer's 1 and 4, because its walk and schedule differ; the 60 ticks/s twin after a death
+  is a random walk because the four-leg slide never differs at that rate.
 - ASSUMPTION-17 (review fixes): `MenuPanel.is_pointer_guarded()` is public, for the tests;
   the pointer guard is measured with `Time.get_ticks_msec()`, so it does not depend on the frame
   rate; `_enter_tree` stops the space whenever the game node is disabled, the guard's two ticks
@@ -925,6 +954,11 @@ Branch `feature/F-015-menus`. Windows tooling as in F-011 §2.
   machine's `user://`. The suite is longer than on 4bfec51 (888 s): the slide twins run in real
   time (720 ticks at 120 ticks/s each) and the click tests wait out the 0.3 s pointer guard.
   New test file: `tests/scenes/test_f015_clicks.gd`.
+- **After code review round 2** (936e9ad, ec7b44b): the full suite on ec7b44b is 158 scripts,
+  2547 tests, all passing (1070 s), no "Orphans" line, no leak line; `gdlint src tests`: no
+  problems; `gdformat --check`: nothing to change; `tools/check_core_purity`: ok; the main scene
+  boots headless with no error or warning line; nothing is left in this machine's `user://`.
+  New test file: `tests/scenes/test_f015_twins.gd` (about 75 s, real time).
 - **Not done by anyone:** real keyboard, mouse or gamepad play. Every event above was posted by
   code. A real pad was never connected. That is Gate B.
 
@@ -1147,6 +1181,9 @@ probe outside GUT; settings files; 21 mutations of the new code.
 ### CR-14 🔴 by the rule (🔵 in substance): an existing test file was edited and §8 does not name it  ·  `tests/scenes/f012_scene_test.gd:143-149`
 9625676 corrected the comment on `hold_key_between_ticks()` (CR-7). The file is not on C18's
 list and appears nowhere in §8. The edit is a comment and it is right.
+> **Builder reply (lead):** logged in 4c4820b, under "Existing tests edited" in §8, with what
+> else that commit changed in `f012_game_test.gd`. The lead's brief had allowed the comment
+> and the lead's log missed it.
 
 ### CR-15 🟡 A second click later than the guard still acts on the menu that opened  ·  `src/ui/menus/menu_panel.gd:26`, `:149-156`
 Real positional clicks. A slow double click, the second click 310, 350 or 500 ms after the first:
@@ -1156,12 +1193,26 @@ triple click whose third click comes after the guard does the same. The guard me
 144 fps, 328 at 60, 366 at 30; Windows' default double-click time is 500 ms. And a stall ends the
 guard early: with the thread blocked for 500 ms in the frame of the first click, the queued
 second click arrived after the guard's real time and acted.
+> **Builder reply (lead):** fixed in 936e9ad: a mouse button event the OS marks as a double
+> click (`InputEventMouseButton.double_click`) is consumed while a `MenuPanel` is open, at any
+> time, so the slow double click and the stalled frame no longer choose; tests post the second
+> press 350 and 500 ms after the first and after a 500 ms stall, with the flag, and nothing
+> changes; the same second click without the flag (a deliberate click) acts. **Limits:** the
+> flag is set by hand in the tests; no real mouse has produced it (§10 Q8). A triple click's
+> third click is an ordinary click and acts once the 0.3 s have passed: accepted.
 
 ### CR-16 🟡 A double press of Enter, Space or pad A on "Settings" switches Screen shake off and saves it  ·  `src/ui/menus/shell_menus.gd:156`, `src/ui/menus/list_menu.gd`
 Title: Down, Enter, Enter. Pause menu: Down, pad A twice. A click on Settings, then Space 80 ms
 later. The settings menu opens with the focus on `shake` and a choice by key has no guard. Not
 new with the fixes: round 1's code did the same and nobody reported it. (A double Enter on "Quit
 to title" lands on Cancel.)
+> **Builder reply (lead):** fixed in 936e9ad: the guard is now a choose guard. For
+> `choose_guard_seconds` (0.3) after a menu opens, `ui_accept` and `interact` choose nothing
+> (the key is still consumed); moving the focus, `ui_cancel` and `choose(id)` by code are not
+> guarded. `ListMenu` got one hook for it, true in the base; the gate list is unchanged and its
+> tests are unedited. Tests: Down, Enter, Enter on the title; pad A twice on the pause menu; a
+> click then Space; each 80 ms apart: the settings menu is open, Screen shake is on, nothing
+> was saved, and a third press after the guard switches it. DEV-11 is extended below.
 
 ### CR-17 🟡 The settings file is read by a parser that builds what the file names  ·  `src/autoload/user_settings.gd:23-32`, `:44`
 `_drop_objects()` cleans up after `ConfigFile`, and cannot be complete: an object followed by a
@@ -1172,6 +1223,14 @@ exit); an object inside another object's property is not found; and
 `ConfigFile.load()`, before any cleanup (the reviewer's planted script wrote its marker file).
 Hand-written files only, and acceptable for a local settings file; a save file must never be read
 this way (slice 4).
+> **Builder reply (lead):** fixed in ec7b44b by not using the parser: `load_from()` reads the
+> bytes and understands only a `[settings]` line and `key=true` / `key=false` for the two known
+> keys. Nothing is built from the file; `_drop_objects()` is gone. Tests write every object
+> shape the reviewers tried, and a script that would create a marker file if run: no orphan, the
+> object count unchanged, no marker, the other keys read. In the implementer's mutation run,
+> going back to `ConfigFile.load()` fails 21 of the 52 tests. `save_to()` still writes through
+> `ConfigFile` and the reader reads that back (all four combinations). Noted for slice 4 in
+> §10 Q10.
 
 ### CR-18 🟡 The double-click tests can fail on a busy machine, and assume the headless window  ·  `tests/scenes/test_f015_clicks.gd:24-26`, `:266-323`
 The second click is posted 2, 8 or 20 frames or 100 ms after the first and must land inside the
@@ -1179,6 +1238,12 @@ The second click is posted 2, 8 or 20 frames or 100 ms after the first and must 
 failed (the frames outlasted the guard and Fullscreen switched on): a false failure, in the gate.
 The tests also post canvas positions as window positions, right only while the root's final
 transform is the identity.
+> **Builder reply (lead):** fixed in 936e9ad: a watcher stamps the real time and the guard's
+> state when each press arrives; a case is judged only when its second press really was inside
+> the guard, is retried up to three times otherwise, and then fails with the numbers. Positions
+> go through the viewport's final transform. The implementer ran the file three times beside
+> eleven other test files (21 of 21 each, no retry needed) and forced the retry path with a
+> 0.05 s guard (it failed with the measured numbers, as it should).
 
 ### CR-19 🟡 Two holes in the twins  ·  `tests/scenes/test_f015_shell.gd`, `src/world/shell.gd:337`
 `DISABLE_MODE_MAKE_STATIC` in place of `KEEP_ACTIVE` passes all 69 tests of `test_f015_shell.gd`,
@@ -1189,8 +1254,19 @@ in a town built after a death or after a leave, where the reviewer's twins diffe
 before the fix in 5 of 6. 16 of 21 mutations were killed; two more survivors are in code CR-17
 removes, and two could not be told from the real code by any run (only `StaticBody2D` kept; the
 keep done after the disable).
+> **Builder reply (lead):** fixed in ec7b44b: `tests/scenes/test_f015_twins.gd`, six twins with
+> seeded schedules of 10 to 14 pauses of seven kinds: a fight on shipped floor 1 at 120 and at
+> 60 ticks/s, a floor 1 walk through two room changes, a wall slide in the town built after a
+> death and after a leave, and a random walk after a death at 60. In the implementer's mutation
+> runs each is moved by at least one mutation: `MAKE_STATIC` fails both fight twins (first
+> difference at tick 454 of 720 and 244 of 360); no keep step, or the keep only at the first
+> stop, fails the three town twins; the space left running fails the room-change twin and the
+> two slides; no one-tick lag fails the two slides. The two mutants nobody could tell from the
+> real code are left.
 
 ### CR-20 🔵 `Shell._enter_tree` uses the current viewport's space, the rest the one cached in `_ready`  ·  `src/world/shell.gd:94`, `:110-116`
+> **Builder reply (lead):** fixed in 936e9ad: `_space` is read in `_enter_tree` and used
+> everywhere.
 
 ### CR-21 🔵 Measured, for the record
 Clicks are ignored for 0.3 s after any menu appears: on Start right after the launch, and on the
@@ -1199,6 +1275,9 @@ entry under a cursor that does not move is not drawn as hovered until the mouse 
 a click at once (also with no guard: the engine's doing). A double click on Resume attacks when
 its second click comes two or more ticks later (the game is running again by then). A
 `Resource("res://…")` value in the settings file is left alone.
+> **Builder reply (lead):** noted. With 936e9ad a double click the OS marks never chooses, so
+> the Resume case needs two deliberate clicks; and since ec7b44b the settings file's values are
+> never parsed as anything but `true` and `false`.
 
 **Tried, found nothing:** the pointer guard closed, hidden, reopened or set to 0 during a guard
 (no button is left ignoring the mouse); a button held across a key-driven menu change and
@@ -1230,8 +1309,9 @@ longer than 16 s and floors other than shipped floor 1; a windowed GUT run; the 
 | Q5 | Lead | → Art & Game Feel: the look of every menu (plain buttons, 8 px font, flat dim). | no | |
 | Q6 | Lead | → Art & Game Feel (plan review PR-16): a pause in the middle of a screen shake freezes the picture up to 6 px off centre until you resume. Accepted for the placeholder shake. | no | |
 | Q7 | Lead | → Lucas, at Gate B: pressing Start now takes about 0.8 s before the town appears (the whole game is built at that moment instead of at launch). Fine for now, or should the title screen say "Loading"? | no | |
-| Q8 | Lead | → Lucas, at Gate B (code review CR-2): for 0.3 s after a menu opens, mouse clicks on its entries do nothing, so the second click of a double click cannot switch a setting or quit by accident. Keys and the pad are not delayed. Does the mouse feel slow in the menus? The number is `pointer_guard_seconds` on the menu panel. | no | |
+| Q8 | Lead | → Lucas, at Gate B (code review CR-2): for 0.3 s after a menu opens, mouse clicks on its entries do nothing, so the second click of a double click cannot switch a setting or quit by accident. Keys and the pad are not delayed. Does the mouse feel slow in the menus? The number is `pointer_guard_seconds` on the menu panel. **Changed in round 2 (CR-15, CR-16):** the 0.3 s now also hold back Enter, Space and pad A (moving and going back are not delayed), the number is `choose_guard_seconds`, and a double click never chooses at any speed. Please double-click "Settings" with a real mouse once: the double-click mark comes from Windows and no test could produce a real one. | no | |
 | Q9 | Lead | → Lucas (code review CR-11): when you run the game inside the editor's own window (Godot's embedded game view), choosing Fullscreen changes the setting and saves it but leaves the window alone; run it in its own window or as an export to see fullscreen. Not verified in the editor by anyone. | no | |
+| Q10 | Lead | → Direction, for the save/load spec (slice 4; code review CR-17): Godot's `ConfigFile` and `str_to_var` build objects and can run a script named in the text they read. A save file must be read as plain data (JSON, or a reader that builds nothing), never through them. The settings file is read by hand since ec7b44b. | no | |
 
 ---
 
