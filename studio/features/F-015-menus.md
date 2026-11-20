@@ -901,8 +901,8 @@ Branch `feature/F-015-menus`. Windows tooling as in F-011 §2.
 | Q3 | Lead | → Lucas / Direction: quitting to the title loses all progress until save/load exists (slice 4). The menu warns about it. | no | |
 | Q4 | Lead | → Direction: F-012 §10 Q8 (is a menu choice a player action under G8?) now also covers "Return to town" and the death screen's button: both reach `TowerSession` the way the gate's choice does, with no command object. Still open; it matters for co-op. | no | |
 | Q5 | Lead | → Art & Game Feel: the look of every menu (plain buttons, 8 px font, flat dim). | no | |
-| Q7 | Lead | → Lucas, at Gate B: pressing Start now takes about 0.8 s before the town appears (the whole game is built at that moment instead of at launch). Fine for now, or should the title screen say "Loading"? | no | |
 | Q6 | Lead | → Art & Game Feel (plan review PR-16): a pause in the middle of a screen shake freezes the picture up to 6 px off centre until you resume. Accepted for the placeholder shake. | no | |
+| Q7 | Lead | → Lucas, at Gate B: pressing Start now takes about 0.8 s before the town appears (the whole game is built at that moment instead of at launch). Fine for now, or should the title screen say "Loading"? | no | |
 
 ---
 
