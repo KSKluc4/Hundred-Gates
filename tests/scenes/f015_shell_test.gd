@@ -10,6 +10,10 @@ extends F012GameTest
 ## for main_scene(). `start_game()` then chooses Start and waits for the input guard, and points
 ## F012GameTest's `_game` at the shell's game, so session(), player(), town(), floor_scene(),
 ## enter_floor_through_gate() and the rest work on it.
+## The menu panel's choose guard is OFF here (`choose_guard_seconds = 0.0`): the scene tests choose
+## by key or pad right after a menu opens, and what they test is the flow, not the guard. The
+## guard's real default (0.3 s) is tested where it matters: tests/ui/test_f015_menu_panel.gd and
+## tests/scenes/test_f015_clicks.gd, which put it back through `prepare`.
 ## after_each() puts the settings back, deletes the file, turns the 2D physics space on again (a
 ## failed test must not freeze the next ones) and lets go of every key and pad button.
 ##
@@ -98,9 +102,11 @@ func spawn_shell_on(tower: TowerData, input_enabled: bool = false) -> void:
 	await spawn_shell(prepare)
 
 
-## The one place that keeps a shell off the real settings file and the real window (C12), for
-## spawn_shell() and spawn_main_on_title().
+## The one place that keeps a shell off the real settings file and the real window (C12), and its
+## menu panel without a choose guard (see the header), for spawn_shell() and spawn_main_on_title().
+## The panel node exists once the scene is instantiated, before the shell enters the tree.
 func _stub_the_shell(shell_node: Shell) -> void:
+	(shell_node.get_node(Shell.MENU_PATH) as MenuPanel).choose_guard_seconds = 0.0
 	shell_node.settings_path = _settings_file
 	shell_node.window_mode_applier = _record_window_mode
 	shell_node.quit_handler = _record_quit

@@ -8,12 +8,18 @@ extends ListMenu
 ## until open(), and while closed it handles no input. Keys, d-pad, stick and the disabled entry
 ## are ListMenu's.
 ##
-## The pointer guard (F-015 code review, fixes A): a click that chooses an entry often opens the
-## next menu under the cursor, and the second click of a double click would act on whatever entry
-## lies there ("Settings" opens a menu whose "Fullscreen" is where "Settings" was). So for
-## `pointer_guard_seconds` of real time after `open()` the entries take no pointer input
-## (`MOUSE_FILTER_IGNORE`); keys, the pad and `choose()` are not affected, and the in-place changes
-## (`set_body`, `set_entry_text`, `set_entry_enabled`) do not start it again.
+## The choose guard (F-015 code review, fixes A): a choice that opens the next menu often leaves an
+## entry of it under the cursor or under the focus, and a second click, key or pad press that comes
+## right after would act on whatever entry lies there ("Settings" opens a menu whose "Fullscreen" is
+## where "Settings" was, and whose focus is on "Screen shake"). So for `choose_guard_seconds` of
+## real time after `open()` the entries take no pointer input (`MOUSE_FILTER_IGNORE`) and a choice
+## by `ui_accept` or `interact` (a key or the pad) does nothing, though the menu still consumes the
+## key. Moving the focus, `ui_cancel` and `choose(id)` called by code are not guarded; the in-place
+## changes (`set_body`, `set_entry_text`, `set_entry_enabled`) do not start it again.
+## A double click never chooses, guard or no guard: a mouse button event the OS marks as a double
+## click is consumed while the panel is open, so a second click that comes later than the guard
+## (Windows allows 500 ms) or after a stalled frame is still not a choice. A deliberate second
+## click, which the OS does not mark, acts once the guard has passed.
 ## The look → Art & Game Feel (F-015 §10 Q5).
 
 ## Once per choice of an enabled entry, with its id. Not emitted by a disabled or unknown one.
@@ -22,15 +28,16 @@ signal entry_chosen(id: StringName)
 signal cancelled
 
 @export var heading_font_size: int = 8
-## How long, in real seconds, the entries ignore the pointer after `open()`; 0 is no guard.
-@export var pointer_guard_seconds: float = 0.3
+## How long, in real seconds, the entries ignore the pointer and the choose keys after `open()`;
+## 0 is no guard.
+@export var choose_guard_seconds: float = 0.3
 ## The gap between the heading, the body and the entries.
 @export var content_separation_px: int = 4
 
 var _ids: Array[StringName] = []
-## `Time.get_ticks_msec()` at which the pointer guard ends (meaningful while `_pointer_guarded`).
-var _pointer_guard_until_msec: int = 0
-var _pointer_guarded: bool = false
+## `Time.get_ticks_msec()` at which the choose guard ends (meaningful while `_choose_guarded`).
+var _choose_guard_until_msec: int = 0
+var _choose_guarded: bool = false
 
 @onready var _content: VBoxContainer = $Panel/Content
 @onready var _heading_label: Label = $Panel/Content/Heading
@@ -50,8 +57,17 @@ func _ready() -> void:
 
 ## Real time, not frames: the guard ends the same at any frame rate.
 func _process(_delta: float) -> void:
-	if Time.get_ticks_msec() >= _pointer_guard_until_msec:
-		_end_pointer_guard()
+	if Time.get_ticks_msec() >= _choose_guard_until_msec:
+		_end_choose_guard()
+
+
+## A double click is consumed before the buttons see it (and before the keys' handler: it is not
+## one). Everything else is ListMenu's.
+func _input(event: InputEvent) -> void:
+	if _is_open and _is_double_click(event):
+		get_viewport().set_input_as_handled()
+		return
+	super._input(event)
 
 
 ## Shows the menu from the start: calling it while open (or after it was hidden) rebuilds it and
@@ -70,7 +86,7 @@ func open(
 		_ids.append(entry.id)
 	_show_list()
 	_set_focus(maxi(_ids.find(focus_id), 0))
-	_start_pointer_guard()
+	_start_choose_guard()
 
 
 ## What a key, a pad button and a click on entry `id` do. Nothing for an unknown id, a disabled
@@ -104,10 +120,10 @@ func set_entry_enabled(id: StringName, enabled: bool) -> void:
 		_buttons[index].disabled = not enabled
 
 
-## True from `open()` until `pointer_guard_seconds` of real time have passed: the entries ignore the
-## mouse.
-func is_pointer_guarded() -> bool:
-	return _pointer_guarded
+## True from `open()` until `choose_guard_seconds` of real time have passed: the entries ignore the
+## mouse and `ui_accept` / `interact` choose nothing.
+func is_choose_guarded() -> bool:
+	return _choose_guarded
 
 
 func get_heading() -> String:
@@ -146,18 +162,29 @@ func _on_cancel_pressed() -> void:
 	cancelled.emit()
 
 
-func _start_pointer_guard() -> void:
-	_pointer_guarded = pointer_guard_seconds > 0.0
-	set_process(_pointer_guarded)
-	if not _pointer_guarded:
+## ListMenu's question before a key or the pad chooses: not during the guard.
+func _may_choose_by_key() -> bool:
+	return not _choose_guarded
+
+
+## A mouse button event the OS marked as the second press of a double click.
+func _is_double_click(event: InputEvent) -> bool:
+	var button: InputEventMouseButton = event as InputEventMouseButton
+	return button != null and button.double_click
+
+
+func _start_choose_guard() -> void:
+	_choose_guarded = choose_guard_seconds > 0.0
+	set_process(_choose_guarded)
+	if not _choose_guarded:
 		return
-	_pointer_guard_until_msec = Time.get_ticks_msec() + roundi(pointer_guard_seconds * 1000.0)
+	_choose_guard_until_msec = Time.get_ticks_msec() + roundi(choose_guard_seconds * 1000.0)
 	for button: Button in _buttons:
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-func _end_pointer_guard() -> void:
-	_pointer_guarded = false
+func _end_choose_guard() -> void:
+	_choose_guarded = false
 	set_process(false)
 	for button: Button in _buttons:
 		button.mouse_filter = Control.MOUSE_FILTER_STOP

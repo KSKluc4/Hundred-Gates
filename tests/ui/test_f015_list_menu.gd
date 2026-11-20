@@ -117,6 +117,57 @@ func test_c9_a_menu_opened_with_no_buttons_survives_keys() -> void:
 	assert_true(probe.is_open())
 
 
+# --- the hook that asks before a key chooses (MenuPanel's choose guard uses it) ---
+
+
+func test_guard_hook_the_base_says_yes() -> void:
+	var probe: Probe = _spawn_probe()
+	assert_true(probe._may_choose_by_key())
+	_spawn_menu()
+	assert_true(_menu._may_choose_by_key(), "and so does the gate list")
+
+
+func test_guard_hook_a_bare_subclass_chooses_by_key_and_pad_at_once_after_opening() -> void:
+	var probe: Probe = _spawn_probe()
+	probe.open_buttons([false, false], 1)
+	_press_action(&"ui_accept")
+	_press_action(&"interact")
+	_press_pad_button(JOY_BUTTON_A)
+	assert_eq(probe.pressed_indexes, [1, 1, 1] as Array[int])
+
+
+func test_guard_hook_the_gate_list_chooses_by_key_at_once_after_opening() -> void:
+	_spawn_menu()
+	_menu.open(_one_entry())
+	_press_action(&"ui_accept")
+	assert_eq(_chosen, 1, "ui_accept")
+	_menu.open(_one_entry())
+	_press_action(&"interact")
+	assert_eq(_chosen, 2, "interact")
+	_menu.open(_one_entry())
+	_press_pad_button(JOY_BUTTON_A)
+	assert_eq(_chosen, 3, "pad A")
+
+
+## What a subclass that says no gets from the base: the choose keys press nothing and are still
+## consumed; moving the focus and `ui_cancel` are not asked.
+func test_guard_hook_a_subclass_that_says_no_chooses_nothing_but_still_consumes_the_key() -> void:
+	var probe: RefusingProbe = RefusingProbe.new()
+	add_child_autofree(probe)
+	var spy: InputSpy = InputSpy.new()
+	add_child_autofree(spy)
+	probe.open_buttons([false, false], 0)
+	_press_action(&"ui_accept")
+	_press_action(&"interact")
+	_press_pad_button(JOY_BUTTON_A)
+	assert_eq(probe.pressed_indexes, [] as Array[int], "nothing was pressed")
+	assert_eq(spy.pressed_count(), 0, "and nothing behind the list saw the presses")
+	_press_action(&"ui_down")
+	assert_eq(probe.get_focus_index(), 1, "the focus moves")
+	_press_action(&"ui_cancel")
+	assert_eq(probe.cancels, 1, "and ui_cancel cancels")
+
+
 func _spawn_probe() -> Probe:
 	var probe: Probe = Probe.new()
 	add_child_autofree(probe)
@@ -205,6 +256,14 @@ class Probe:
 
 	func _on_cancel_pressed() -> void:
 		cancels += 1
+
+
+## A subclass whose hook says no: what MenuPanel does during its choose guard.
+class RefusingProbe:
+	extends Probe
+
+	func _may_choose_by_key() -> bool:
+		return false
 
 
 class InputSpy:

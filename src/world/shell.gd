@@ -76,7 +76,7 @@ var quit_handler: Callable
 var _flow: ShellFlow = ShellFlow.new()
 ## Null on the title screen, and after a Start that failed.
 var _game: Game
-## The physics space the game's world is in, kept for `_exit_tree`.
+## The physics space the game's world is in, taken on every `_enter_tree` and used everywhere.
 var _space: RID
 ## DEV-6: the game was enabled in the last tick; the space follows in this one.
 var _space_follows: bool = false
@@ -91,7 +91,6 @@ var _guard_ticks_left: int = 0
 
 func _ready() -> void:
 	process_physics_priority = AFTER_GAME_PRIORITY
-	_space = get_viewport().world_2d.space
 	if not window_mode_applier.is_valid():
 		window_mode_applier = _apply_window_mode
 	if not quit_handler.is_valid():
@@ -106,10 +105,12 @@ func _ready() -> void:
 
 
 ## C6: a shell put back in the tree while the game is stopped (leaving it gave the space back) stops
-## the space again. The first time there is no game, and nothing is done.
+## the space again. The first time there is no game, and nothing is done. The space is read here, on
+## every entry, so `_space` and this agree whichever viewport the shell is in.
 func _enter_tree() -> void:
+	_space = get_viewport().world_2d.space
 	if _game != null and _game.process_mode == Node.PROCESS_MODE_DISABLED:
-		PhysicsServer2D.space_set_active(get_viewport().world_2d.space, false)
+		PhysicsServer2D.space_set_active(_space, false)
 
 
 func _exit_tree() -> void:

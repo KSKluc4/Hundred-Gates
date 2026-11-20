@@ -220,10 +220,17 @@ func _move_focus(step: int) -> void:
 	_set_focus(clampi(_focus_index + step, 0, _buttons.size() - 1))
 
 
+## Asked before a key or a pad button chooses the focused button (`ui_accept`, `interact`): a
+## subclass answers false for a while after it opened (F-015 code review, MenuPanel's choose guard).
+## The key is consumed either way. The base always says yes, so the gate list is as it was.
+func _may_choose_by_key() -> bool:
+	return true
+
+
 ## The focused button's own press, so a key and a click are the same code path. A disabled button
 ## does nothing (F-015/C9): `pressed.emit()` would call its handler all the same.
 func _press_focused() -> void:
-	if _buttons.is_empty():
+	if _buttons.is_empty() or not _may_choose_by_key():
 		return
 	var button: Button = _buttons[_focus_index]
 	if button.disabled:
