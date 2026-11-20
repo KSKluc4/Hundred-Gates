@@ -1,8 +1,8 @@
 ---
 id: F-015
 title: Menus — title screen, pause menu, death screen, settings
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-20
 updated: 2026-11-20
 depends_on: [F-003, F-012, F-014, D-006, D-010, D-014, D-016]
@@ -889,6 +889,139 @@ Branch `feature/F-015-menus`. Windows tooling as in F-011 §2.
 ---
 
 ## 9. Code Review  ·  _Auditor_
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 8f51d37 (code as of 4bfec51; the diff `main..8f51d37` under `src`, `scenes`, `data`, `tests` and `project.godot`)
+
+**Date:** 2026-11-20 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+Two fresh reviewers, read-only, on private copies of `8f51d37`; neither wrote the spec or the
+code. One read the diff against the spec in `AGENTS.md`'s order and made small targeted runs. The
+other attacked the running game: a random bot with every tick checked against invariants (16
+runs at 30, 60 and 120 ticks/s, 42,500 steps, 57,956 ticks, 70 Starts, 133 deaths, 1,368 guards
+watched: no violation, no error line), paused-and-unpaused twins, scripted sequences, broken
+settings files, real positional clicks outside GUT, and 18 mutations of the new code. The lead ran
+the probes of CR-1 and CR-2 again on the reviewers' copies and got the same results.
+
+**AC evidence** (the reader's table, checked by reading the assertions, not the test names):
+AC1 to AC14 ✅ · AC15 ✅ for what it tests, ❌ as a promise (CR-1, CR-5) · AC16 ✅ with the limits
+§8 states (the death and leave cases are proven by the guard's state; Enter, Escape and pad Start
+only prove that nothing pauses again) · AC17 to AC26 ✅ · AC27 the lead's run (156 scripts, 2442
+tests on 4bfec51) · AC28 the lead's rendered check, and it missed CR-2 · AC29 ✅ (the overlay
+"above" by layer number only).
+
+**Rejected options:** none implemented (`process_mode`, `space_set_active` and `paused` appear
+only in `shell.gd`; no timer, tween or await in `src`; the settings are read only by
+`Shell._ready`; `list_menu.gd` is the moved code, compared line by line with
+`main:src/ui/town/gate_menu.gd`). **Constraints:** C1 to C21 and G1 to G9 hold except C6 (CR-1)
+and C12's letter (CR-3). **Deviations:** DEV-1 to DEV-10 are accurate (the reader re-ran DEV-6's
+evidence: with the space switched on together with the game the three corner twins fail at tick
+288); one deviation was not logged (CR-3). **Assumptions:** all reasonable and reversible.
+
+### CR-1 🔴 A pause changes a later wall slide: C6's "tick for tick the same" is false  ·  `src/world/shell.gd:301-308`
+Fixture town, the player at tile (2.5, 11.5), a scripted walk of 720 ticks in four legs with a
+dash every 60 ticks. One pause at tick 30, 100, 200, 250 or 340, of any length, even zero frames:
+positions differ from the never-paused run from about tick 346 on, for more than 300 ticks, by up
+to 0.004 px, and in several schedules the final snapshot differs too. Two never-paused runs are
+identical; 23 of 24 random schedules differ. Cause, confirmed by experiment: disabling `Game`
+with the default `disable_mode` takes every body out of the physics space and puts it back on
+enable; with `DISABLE_MODE_KEEP_ACTIVE` on the town's 33 collision objects all 10 schedules
+match. Stopping the space (C6, DEV-6) does not cover it. Not reproduced in the shipped town or in
+fights (48 twins identical). Nothing a player could see; but the spec promises it and G1 leans on
+it. AC15's corner walks pass because they never slide along a side wall across the seams between
+wall bodies.
+
+### CR-2 🔴 A double click acts on the menu that opens under the cursor  ·  `src/ui/menus/menu_panel.gd:41-53`
+Real positional clicks at 640 × 360. A double click on "Settings" (title screen, pause menu) ends
+in the settings menu with **Fullscreen switched on and saved**: the first click rebuilds the
+centred panel and the new "Fullscreen" entry lies exactly where "Settings" was. A double click on
+the top 2 px of "Quit to title" in the town's pause menu **quits to the title with no
+confirmation** (the confirm's own "Quit to title" overlaps it by 3 px) and the progress is gone.
+Lower on that entry the second click hits Cancel or nothing; on a floor nothing overlaps. The
+lead's rendered check (AC28) made single clicks only.
+
+### CR-3 🔴 by the unlogged-deviation rule (🟡 in substance): two test files put the main scene in the tree without C12's helpers  ·  `tests/scenes/test_f015_guard.gd:394`, `tests/scenes/test_f015_main.gd:21`
+Both instantiate `scenes/main.tscn` themselves and repeat the stub wiring, because
+`spawn_main()` chooses Start with the input off. They are safe today (they reuse the helper's
+file and `after_each`), but there are four spawners to keep safe and §8 logs no deviation.
+
+### CR-4 🟡 No test pins a pause in DEV-6's one-tick lag  ·  `src/world/shell.gd:153-155`, `:301-308`
+Between the enabling tick and the next the game runs, `_space_follows` is true and the space is
+off; real input can arrive there. The code is right (the reader's probe passes). But with
+`_space_follows` never cleared the space comes back on during the pause, and all 179 tests of the
+six shell and main test files still pass.
+
+### CR-5 🟡 AC15's twins are weaker than the AC  ·  `tests/scenes/test_f015_shell.gd:888-904`
+The corner walk compares the position at every tick but the snapshot only at the end ("tick by
+tick (position and snapshot)"); and no test slides along a side wall across seams (CR-1).
+
+### CR-6 🟡 Two holes the mutations found  ·  `src/world/shell.gd:121-122`, `tests`
+No test makes a real click (so CR-2 was invisible to the suite). Removing
+`set_input_as_handled()` in `Shell._unhandled_input` fails no test. (A third survivor,
+`ask_leave(true)` in place of `ask_leave(_is_on_floor())`, is equivalent: the entry only exists
+on a floor.) 16 of 18 mutations were killed.
+
+### CR-7 🟡 Comments that are wrong  ·  `src/world/shell.gd:20`, `:41-44`, `:68`, `tests/scenes/f012_game_test.gd:69`, `f015_shell_test.gd` header and `:112`, `:125`, `test_f015_shell.gd:710`
+Six comments send the reader to "DEV-1" for the space lag; it is DEV-6. The `GUARD_TICKS` comment
+says 1 lets the press through; for a press that arrives between ticks (all real input) one tick
+is enough, the second is only needed for a press posted inside a tick. The helpers say a tap is
+never "just pressed"; measured in 4.7.2, a press and release posted together between two ticks is
+"just pressed" in the next tick.
+
+### CR-8 🔵 `Shell._exit_tree` has no counterpart  ·  `src/world/shell.gd:95-96`
+A shell removed and added again while paused comes back with the flow PAUSED, the game disabled
+and the space active (the reader's probe). Nothing reparents the shell today.
+
+### CR-9 🔵 The tests' files in `user://` are not private to a run  ·  `tests/scenes/f015_shell_test.gd:42`, `f012_game_test.gd:78`, `tests/autoload/test_user_settings.gd:6`
+A private copy of the project has the same `user://` as the checkout, and the file names carry
+no process id: two suites at once would read and delete each other's files. Related: four lines
+in `test_f015_shell.gd` and `test_f015_shell_flow.gd` read the modified time of the real
+`user://settings.cfg`, which goes near C12's "no test touches".
+
+### CR-10 🔵 A settings file can instantiate an object  ·  `src/autoload/user_settings.gd:17-32`
+`fullscreen=Object(Node,…)` in the file makes `ConfigFile` create the node: one orphan and a leak
+line at exit. Measured too, and accepted as they are: a file with a UTF-8 BOM is read as the
+defaults with no warning and overwritten at the next change; binary garbage prints Godot's own
+error besides the one warning (ASSUMPTION-5); empty files, wrong types, a 16.5 MB file, a
+directory at the path, a read-only file and a missing folder all leave a shell that starts and
+applies changes for the run.
+
+### CR-11 🔵 Fullscreen in a window embedded in the editor (a suspicion, not verified)
+`DisplayServer.window_set_mode(FULLSCREEN)` on a game window embedded in the editor may error and
+do nothing, and "Fullscreen: On" would then be saved and tried again at every embedded launch.
+
+### CR-12 🔵 Duplicated test plumbing  ·  `tests/scenes/f012_game_test.gd`, `f015_shell_test.gd`, `test_f015_guard.gd`, `test_f015_main.gd`
+`MAIN_SETTINGS_DIR` and `TEST_DIR`; three guard-wait loops; two click posters; `_dim()` three
+times; `after_each` resets the settings and the space in the subclass and in the base;
+`GAME_NODE` is dead (ASSUMPTION-16).
+
+### CR-13 🔵 Measured, for the record
+A press of J or Space in the two guard ticks after Resume is dropped (it acts from the third
+tick on). Space and Escape in the same frame while playing: the pause wins and the dash is lost.
+Escape and pad Start in the same frame: two changes from two events (a pause and straight back).
+After a pause the mouse aim jumps to where the mouse went meanwhile. A double click on the title's
+Quit calls the quit handler twice.
+
+**Tried, found nothing:** every C6 and C7 sequence the reader traced and probed (a pause in the
+lag; a death in the first tick after a resume; a pause before a death tick, then a leave; quit
+and Start in one frame; the shell freed while guarding; a Start that fails); C8 for Escape, pad
+Start, pad B, Space, Enter and a click through every handler in every state; real positional
+single clicks on nine entries; wave-fight twins and brute-into-wall twins (24 of 24 identical
+each, with bolts in flight and arrivals pending); Start and Quit to title 20 times (97 nodes,
+2,133 objects, 0 orphans, 0 settings listeners from round 2 to round 20); die, return and enter
+20 times; N, R, F3, K, F5, P and I while paused and on the title; Escape held with 30 repeat
+events; the gate list closed and the game paused in one frame, then resumed with Space; a leave
+after the boss died; the boss and the player dying in one tick; a leave in the middle of a fight
+and the same floor again; double `choose()` of Start, the confirms and the death entry in one
+frame; the 11 debug scenes and the main scene for 400 frames with no error or warning line.
+
+**Not checked:** a real keyboard, mouse or gamepad, fullscreen on a real window (the reviewers
+were headless); twins at 30 and 60 ticks/s; CR-1 on a shipped floor (only the shipped town, where
+it did not differ); a buffered dash across a pause with real keys; the stick held across a pause
+into the gate list; the debug scenes were booted, not driven; the camera with the tick rate held
+at 1 (DEV-9); `test_f015_menu_panel.gd`, `test_game_settings.gd` and most of
+`test_f015_session.gd` beyond their names and spot checks; the full suite.
 
 ---
 
