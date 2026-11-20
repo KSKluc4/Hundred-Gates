@@ -87,4 +87,11 @@
 | Nav grid | A room's walls as walkable tiles, used by enemy brains only to choose a walking direction when the straight line is blocked (D-012) | `NavGrid`, `EnemyBrain.steer()` |
 | Pinch | A 1-tile opening between two wall corners. Refused by room validation: bodies are up to 1.2 tiles wide | `pinch` rule in `RoomData.validate()` |
 | Engaged gate | The tower gate from the moment the floor list opens until it is released: the player is held in place and takes no input | `TownGate.is_engaged()` |
-| Death pause | The short time between the player's death on a floor and the return to town. The player takes no input | `TowerSession.Place.DEATH_PAUSE`, `death_return_delay` |
+| Death pause | The time from the player's death on a floor until the return to town is confirmed on the death screen; it never ends by itself (F-015). The floor keeps running, the player takes no input. Not a pause of the game | `TowerSession.Place.DEATH_PAUSE`, `confirm_death()`, `death_return_delay` |
+| Shell | The node above the game: it shows the menus the shell flow says, builds the game on Start, pauses it and frees it on a quit to the title | `Shell`, `ShellFlow` |
+| Shell flow | Which menu is up: title, playing, paused, settings, the two confirms, dead. Pure logic | `ShellFlow.State` |
+| Title screen | The menu the game starts on: Start, Settings, Quit. No game exists behind it | `ShellFlow.State.TITLE` |
+| Pause | The game stopped by the pause menu (or its settings or confirms): nothing below `Game` runs and the physics space is inactive. "Screen" alone still means the visible area | `ShellFlow.is_game_paused()`, `Game.is_pause_allowed()` |
+| Death screen | The menu shown during the death pause: where the player died, and one entry that returns to town once `death_return_delay` has passed | `ShellFlow.State.DEAD`, `can_confirm_death()` |
+| Input guard | The two ticks the game stays stopped after a menu choice that leads to play, so the press that chose is never also a dash or an attack | `Shell.is_guarding()`, `Shell.GUARD_TICKS` |
+| Player's settings | Screen shake and fullscreen, kept per machine in `user://settings.cfg`. Not tunables | `GameSettings`, `UserSettings` |

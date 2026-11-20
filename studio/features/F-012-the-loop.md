@@ -1077,7 +1077,7 @@ full suite prints no orphan line.
 
 | # | Raised by | Question | Blocking? | Answer (Lucas/Planner) |
 |---|---|---|---|---|
-| Q1 | Lead | → Lucas: there is no way to leave a floor in the middle of a run except dying. Wanted before the pause menu exists (slice 3), e.g. a "return to town" key? | no | |
+| Q1 | Lead | → Lucas: there is no way to leave a floor in the middle of a run except dying. Wanted before the pause menu exists (slice 3), e.g. a "return to town" key? | no | Lucas, in chat, 2026-11-20: yes, the pause menu gets Return to town; what was earned is kept and the floor's rooms start over. Built in F-015. |
 | Q2 | Lead | → Lucas (Gate B): values to judge — death pause 1.5 s, banner 2.5 s, town size, back to town after every boss. | no | |
 | Q3 | Lead | → Direction: `PHASE1.md` rows F-012, F-013 and part of F-015 are built here as one feature; later rows need renumbering. F-011's row still says "Not started". | no | |
 | Q4 | Lead | → Art & Game Feel: look of the health bar, location text, banners and the gate list (all placeholders; FX1, CX8). | no | |

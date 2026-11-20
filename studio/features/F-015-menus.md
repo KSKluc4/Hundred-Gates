@@ -1,8 +1,8 @@
 ---
 id: F-015
 title: Menus — title screen, pause menu, death screen, settings
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-20
 updated: 2026-11-20
 depends_on: [F-003, F-012, F-014, D-006, D-010, D-014, D-016]
@@ -669,6 +669,13 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
 - [x] T3 — 24a8b78
 - [x] T4 — 25c1b88
 - Full suite on 24a8b78 (T1 to T4): 151 scripts, 2274 tests, all passing (726 s), no "Orphans" line.
+- [x] T5 — 24af208
+- [x] T6 — 8c7980d
+- [x] T7 — 4bfec51
+- [x] T8 — rendered check by the lead on 4bfec51, results under "How to test"
+- [x] T9 — docs, with this commit
+- [ ] T10 — the final gate comes after the code review; the full suite on 4bfec51 (T1 to T7) is
+  156 scripts, 2442 tests, all passing (888 s), no "Orphans" line, no leak line.
 
 ### Deviations from plan
 - DEV-1: the file went from `PLAN_REVIEW` to `IN_PROGRESS` without `APPROVED` — **Why:** D-016,
@@ -692,7 +699,46 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
   **Why:** the base cannot know the subclass's node paths or its entry type — **Impact:** none
   that a test or a caller can see; the 77 gate tests and the town's 59 pass unedited.
 
-**Existing tests edited (C18), all in T3.** No test was deleted; seven were renamed.
+- DEV-6 (T5): **the physics space comes back one tick after the game, not with it** (C6 says
+  "active again when it enables the game") — **Why:** measured. The physics server steps after
+  every node of a tick. The shell enables the game in its own tick, after the game's nodes were
+  already passed, so with the space switched on there the server takes one step in which nothing
+  moved, and a later slide along a wall corner then differs from a never-paused run by 4e-6 px
+  at one tick. With the space switched on in the shell's next tick (the tick the game first runs
+  in) the three corner runs and the fight run show no differing tick. Restoring C6's letter fails
+  those three tests — **Impact:** in the first tick the game runs in, `is_guarding()` is already
+  false and the space is still inactive until the shell's turn in that tick; movement is not
+  affected (the twins are equal), and tests that assert the space wait one more tick. The space
+  is switched in one function, `Shell._set_game_running()`, plus that one-tick follow.
+- DEV-7 (T6): **the shell follows the session in both directions** (an extension of C21 by the
+  lead, after the T6 implementer pointed at the gap) — **Why:** only the death screen's entry
+  could leave DEAD. A death pause ended any other way (`game.confirm_death()` called directly, a
+  session restored into the town or a floor) would have left the death screen up with a dead
+  button — **Impact:** in DEAD, when the session's place is no longer the death pause, the
+  shell's poll calls `flow.death_confirmed()`; the entry's own path is unchanged and still
+  changes the flow exactly once (tested).
+- DEV-8 (T5, T6): the shell's tests could not be watched failing before the shell existed (the
+  script did not load) — **Impact:** the proof is the mutations, all in private copies: no guard,
+  a one-tick guard, the space not stopped, not reactivated on leaving the tree, `pause` let
+  through while guarding, an Escape that changes twice, a failed game left in the tree, the
+  space reactivated with the game (DEV-6's evidence); the poll a tick late, the HUD read before
+  the game fed it, the flow before the game on both confirms, the entry enabled from the start
+  or never followed, a confirm without the guard, a quit that leaves the game or the stopped
+  space, a settings choice that reopens the panel, does not save, or calls the window twice. Each
+  failed at least one test; the lists are in the commit reviews, not repeated here.
+- DEV-9 (T7): AC16's timing "three or more frames with no physics tick" is produced by holding
+  `Engine.physics_ticks_per_second` at 1 for four frames right after the press, then restoring
+  60 — **Why:** a headless frame takes about 6 ms, so at 60 ticks/s at most two frames fall
+  between ticks, and `Engine.time_scale` does not change the tick spacing — **Impact:** the
+  count of tickless frames is asserted before the guard is judged, as AC16 asks. For Start in
+  that timing the test uses a one-room fixture tower: with the shipped tower (whose build blocks
+  the thread for about 0.8 s) and the rate held at 1, the camera's transform became invalid (10
+  engine warnings a case). The game never changes its tick rate; see "look at closely".
+- DEV-10 (T7): `spawn_main(prepare)` now passes the main scene's `Shell`, not its `Game`, to
+  `prepare` — **Why:** the game does not exist before Start — **Impact:** none; no caller passes
+  `prepare`.
+
+**Existing tests edited (C18), all in T3 except the last two bullets.** No test was deleted; eight were renamed.
 - `tests/scenes/f012_game_test.gd`: new helper `confirm_death_when_ready(limit)` (ticks until
   `can_confirm_death()`, then `game().confirm_death()`). Nothing else.
 - `tests/core/floors/test_tower_session.gd`: the helper `_tick_until_town` became
@@ -725,6 +771,17 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
   `test_ac20_after_a_death_and_the_town_the_same_room_starts_its_waves_again` confirms before it
   waits for the town.
 - `tests/core/floors/test_tower_tunables.gd`: not edited.
+- T6, `tests/scenes/test_f015_shell.gd` (T5's own file): `test_ac17_pause_does_nothing_in_the_death_pause`
+  expected the flow to stay PLAYING with no menu; with the death screen it expects DEAD, the
+  death screen still up, and no change from Escape or pad Start.
+- T7, `tests/scenes/f012_game_test.gd`: `spawn_main()` builds the main scene, gives its shell a
+  settings file of the test's own, two stubs and the input off, chooses Start and waits for the
+  guard and one more tick; `after_each()` also resets the settings, deletes that file and
+  reactivates the physics space. `tests/scenes/test_f012_main.gd`:
+  `test_ac26_main_starts_in_the_town_with_the_hud_showing_town_and_full_hp` became
+  `test_ac26_main_after_start_is_in_the_town_with_the_hud_showing_town_and_full_hp` (the game's
+  parent is the shell, the shell's is `Main`); `test_ac26_main_still_holds_the_debug_overlay`
+  now counts the overlay and the shell. `tests/scenes/test_f014_shipped.gd`: not edited.
 
 ### Assumptions made (small, reversible)
 - ASSUMPTION-1 (T1): `get_settings_origin()` is TITLE before the settings were ever opened and
@@ -760,9 +817,74 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
   node while the shown scene is not stale (not reachable: the gate list cannot be open then);
   the `Hud.hide_banner()` tests are in `tests/scenes/test_f015_game.gd`.
 
+- ASSUMPTION-12 (T5): `Shell.GUARD_TICKS = 2` is a constant, not an export: it is C7's
+  mechanism, and 1 lets a press posted inside a tick through. New tests run at 120 ticks/s (the
+  helpers' rate) unless they set another; §5's "60 unless said" is met by the guard tests, which
+  run at 30, 60 and 120.
+- ASSUMPTION-13 (T6): the game is freed where the flow reaches TITLE from CONFIRM_QUIT
+  (`_on_state_changed`), before the title menu is shown, not in the entry's handler; `shake` and
+  `fullscreen` act only in SETTINGS, `confirm` only in the two confirms, `return` only in DEAD.
+- ASSUMPTION-14 (T6): a refused leave or death confirm cannot come from the menus; the tests
+  produce one by moving the session behind the open menu, and by forcing the disabled entry.
+- ASSUMPTION-15 (T6, T7): "a click on an entry" in tests is a left mouse button press held until
+  the case ends, plus the panel's `choose(id)` in the same frame. The death and leave cases of
+  AC16 turn the player's input on just before the confirm (it is off for the scripted walk).
+- ASSUMPTION-16 (T7): `Engine.physics_jitter_fix` is 0 during the guard tests and restored
+  after; `GAME_NODE` in `f012_game_test.gd` is unused now and kept.
+
 ### Things the Auditor should look at closely
+- **The guard for the death and leave confirms is proven by its state, not by a dash.** The town's
+  player does not exist yet in the tick where the press is "just pressed", and the dead player
+  cannot dash, so removing the guard there fails the tests on `is_guarding()` and the game's
+  `process_mode`, not on a dash. The resume and Start cases do fail by a real dash or attack (14
+  of 16 guard tests with the game enabled in the input callback).
+- **Enter, Escape and pad Start cannot dash or attack under any mutation**; their guard cases only
+  prove that the pause does not reopen and the flow stays PLAYING. The stalled-frame timing is
+  caught by no mutation alone; it is kept because AC16 asks for it.
+- **DEV-6's tick.** In the first tick the game runs after a pause, the physics space is still
+  inactive while the game's nodes run (`move_and_slide`, the wall sweeps). The twins say nothing
+  differs; a reader of `Shell._set_game_running()` should check the reasoning.
+- **The camera with the tick rate held at 1** (DEV-9): position smoothing at speed 8 with a 1 s
+  physics delta overshoots and the transform goes invalid. Not reachable in the game, whose tick
+  rate never changes; not investigated further.
+- **Start takes about 0.8 s on the shipped tower**: the whole `Game` (tower validation, the town)
+  is built in the frame of the choice, and the next frame runs 8 physics ticks, all inside the
+  guard or with the player standing in the town.
+- `Game.is_pause_allowed()`'s third condition, `_is_shown_stale`, and `Shell._follow_the_session()`
+  run at different priorities (2 and 3) in the same tick; the death screen opening "in the same
+  tick" depends on that order.
+- A malformed settings file prints Godot's own `ERROR: ConfigFile parse error` besides the one
+  warning (ASSUMPTION-5); a failed save prints its warning (twice in the suite's log, from the
+  two tests that provoke it).
 
 ### How to test
+Branch `feature/F-015-menus`. Windows tooling as in F-011 §2.
+- Everything: `tools/test` (about 15 minutes). On 4bfec51: 156 scripts, 2442 tests, all
+  passing (888 s), no "Orphans" line, no leak line; afterwards this machine's `user://` holds
+  no `settings.cfg` and no `test_f015` folder. `gdlint src tests`: no problems. `gdformat --check
+  src tests`: 296 files unchanged. `tools/check_core_purity`: ok. The main scene boots headless
+  with no error or warning line.
+- One file: `"$GODOT_BIN" --headless --path . -s res://addons/gut/gut_cmdln.gd -gtest=res://tests/scenes/test_f015_shell.gd -gexit`.
+  The feature's test files: `tests/core/shell/test_shell_flow.gd`, `test_game_settings.gd`,
+  `tests/core/test_shell_tunables.gd`, `tests/autoload/test_user_settings.gd`,
+  `tests/core/floors/test_f015_session.gd`, `tests/ui/test_f015_list_menu.gd`,
+  `test_f015_menu_panel.gd`, `test_f015_menu_texts.gd`, `tests/scenes/test_f015_shake.gd`,
+  `test_f015_game.gd`, `test_f015_shell.gd`, `test_f015_shell_flow.gd`,
+  `test_f015_shell_death.gd`, `test_f015_main.gd`, `test_f015_guard.gd`.
+- **Rendered check (T8, AC28), by the lead on 4bfec51**, the real main scene in a real 1280 × 720
+  window, driven by a scratch script with an empty settings path (nothing written to `user://`):
+  14 screenshots, one of each of the six menus and their variants. No text is clipped and none
+  overlaps the HUD's lines; the focused entry has a white frame; the death screen's entry is grey
+  while disabled and white once enabled. Real positional clicks: on Start (the game started), on
+  the disabled Return to town (nothing changed), on the enabled one (the town). Fullscreen: the
+  window mode read 0, then 3 after the choice (the screenshot is 1920 × 1080, the picture scaled
+  by 3), then 0 after the second choice. The focus came back to `settings`, `leave` and
+  `quit_to_title` after Back, the leave's cancel and Escape on the quit confirm. Seen and left
+  as they are: the debug overlay's text is large and sits top left over the game as before; the
+  enemies' debug labels show through the dim; after a mouse click Godot hides the focus frame
+  until the next key (the entry still has the menu's focus).
+- **Not done by anyone:** real keyboard, mouse or gamepad play. Every event above was posted by
+  code. A real pad was never connected. That is Gate B.
 
 ---
 
@@ -779,6 +901,7 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
 | Q3 | Lead | → Lucas / Direction: quitting to the title loses all progress until save/load exists (slice 4). The menu warns about it. | no | |
 | Q4 | Lead | → Direction: F-012 §10 Q8 (is a menu choice a player action under G8?) now also covers "Return to town" and the death screen's button: both reach `TowerSession` the way the gate's choice does, with no command object. Still open; it matters for co-op. | no | |
 | Q5 | Lead | → Art & Game Feel: the look of every menu (plain buttons, 8 px font, flat dim). | no | |
+| Q7 | Lead | → Lucas, at Gate B: pressing Start now takes about 0.8 s before the town appears (the whole game is built at that moment instead of at launch). Fine for now, or should the title screen say "Loading"? | no | |
 | Q6 | Lead | → Art & Game Feel (plan review PR-16): a pause in the middle of a screen shake freezes the picture up to 6 px off centre until you resume. Accepted for the placeholder shake. | no | |
 
 ---
