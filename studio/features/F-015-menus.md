@@ -1,8 +1,8 @@
 ---
 id: F-015
 title: Menus — title screen, pause menu, death screen, settings
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-20
 updated: 2026-11-20
 depends_on: [F-003, F-012, F-014, D-006, D-010, D-014, D-016]
@@ -155,7 +155,7 @@ whether you read it or not. This is the first part of slice 3 (D-016), chosen by
 
 ### ❌ Rejected: one scene per menu, switched with `change_scene_to_file()`
 - **Why rejected:** the pause and the death screen sit over a running or stopped game that must
-  stay loaded; five scenes repeat one layout; tests could not drive the flow in one tree.
+  stay loaded; six scenes repeat one layout; tests could not drive the flow in one tree.
 - **Tempting because:** each menu would be editable on its own in the editor.
 
 ### ❌ Rejected: Godot's built-in focus navigation for the new menus
@@ -206,16 +206,16 @@ whether you read it or not. This is the first part of slice 3 (D-016), chosen by
 | C9 | **`ListMenu` is the gate list's input, moved, not rewritten.** `src/ui/menus/list_menu.gd` (`class_name ListMenu`, extends `Control`) holds what `GateMenu` has today for a column of buttons: the focus index, the four action families, the stick tracking with its seeding at open, navigation events consumed while open, clamped focus, `is_open()`, `close()`, `get_focus_index()`. `GateMenu` extends it and keeps its public API, its signals, its strings and its scene path. **`tests/ui/test_gate_menu.gd` and `tests/scenes/test_f012_town.gd` are not edited and stay green.** One addition, which the gate list never meets (it disables nothing): a disabled entry can hold the focus and is not skipped, and choosing it by key, pad, click or the menu's own `choose` does nothing (the code path that presses the focused button checks `disabled` first, since `pressed.emit()` ignores it, §2). | Regression safety; one menu feel |
 | C10 | `MenuPanel` (`src/ui/menus/menu_panel.gd` + `.tscn`, extends `ListMenu`) shows a heading, a body text (hidden when empty) and entries. It decides nothing: `open(heading, body, entries, focus_id)` shows them and takes the focus (again each time it is called, since hiding drops it), `choose(id: StringName)` is what a key, a pad button and a click all reach, `entry_chosen(id: StringName)` and `cancelled` report what the player did, `set_body(text)`, `set_entry_text(id, text)` and `set_entry_enabled(id, enabled)` change the menu in place without moving the focus. Every text, entry id and default focus of every menu is in `ShellMenus` (`src/ui/menus/shell_menus.gd`, static functions and constants, F-012/C16's rule: no player-facing string anywhere else); its functions take plain values (the state, the previous state, texts, bools), never nodes. | G6; one place for strings |
 | C11 | **`GameSettings` (core)** holds `screen_shake_enabled: bool` and `fullscreen: bool`, emits `changed` when a value really changes, and has `to_dict()` / `from_dict()`. `from_dict()` never fails and never crashes: a missing key or a value that is not a `bool` leaves that setting at its default, unknown keys are ignored. Defaults come from `data/tunables/shell.tres` (`ShellTunables`: `default_screen_shake_enabled = true`, `default_fullscreen = false`). | G2, G7-style robustness |
-| C12 | **`UserSettings` autoload** (`src/autoload/user_settings.gd`, the project's second autoload) holds the one `GameSettings` (`UserSettings.settings`, created once and never replaced, so a listener stays connected) and does the file work: `load_from(path) -> bool`, `save_to(path) -> bool`, `reset_to_defaults()`. `load_from()` and `reset_to_defaults()` change that object in place and it emits `changed` for what really changed. **The autoload never reads or writes a file by itself**: only the shell calls `load_from()` (once, in its `_ready`) and `save_to()` (after each change), with its exported `settings_path`, default `UserSettings.DEFAULT_PATH = "user://settings.cfg"` (a `ConfigFile`, section `settings`); **an empty `settings_path` means the shell neither loads nor saves**. A missing file is the defaults, silently. An unreadable or malformed file is the defaults and one warning. A failed save returns false with one warning; the setting still applies for this run. **No test touches `user://settings.cfg` or the real window:** every test that puts a shell or the main scene in the tree does it through the helpers (`F015ShellTest.spawn_shell()`, `F012GameTest.spawn_main()`), which set a path of their own under `user://test_f015/` (or the empty one), a stub `window_mode_applier` and a stub `quit_handler` before the node enters the tree, and whose `after_each` calls `UserSettings.reset_to_defaults()` and deletes their file. | Tests must not depend on the machine (§3) |
+| C12 | **`UserSettings` autoload** (`src/autoload/user_settings.gd`, the project's second autoload) holds the one `GameSettings` (`UserSettings.settings`, created once and never replaced, so a listener stays connected) and does the file work: `load_from(path) -> bool`, `save_to(path) -> bool`, `reset_to_defaults()`. `load_from()` and `reset_to_defaults()` change that object in place and it emits `changed` for what really changed. **The autoload never reads or writes a file by itself**: only the shell calls `load_from()` (once, in its `_ready`) and `save_to()` (after each change), with its exported `settings_path`, default `UserSettings.DEFAULT_PATH = "user://settings.cfg"` (a `ConfigFile`, section `settings`); **an empty `settings_path` means the shell neither loads nor saves**. A missing file is the defaults, silently. An unreadable or malformed file is the defaults and one warning. A failed save returns false with one warning; the setting still applies for this run. **No test touches `user://settings.cfg` or the real window:** every test that puts a shell or the main scene in the tree does it through the helpers (`F015ShellTest.spawn_shell()`, `F012GameTest.spawn_main()`), which set a path of their own under `user://test_f015/` (or the empty one), a stub `window_mode_applier` and a stub `quit_handler` before the node enters the tree, and whose `after_each` calls `UserSettings.reset_to_defaults()` and deletes their file. Every other test that changes `UserSettings.settings` (T2's) resets it in its own `after_each`. | Tests must not depend on the machine (§3) |
 | C13 | **The shake setting.** `PlaceholderShake` shakes only when the data's `screen_shake_enabled` **and** `UserSettings.settings.screen_shake_enabled` are both true. It follows the setting through the settings' `changed` signal, not by polling, so it also works while the game is disabled: turning it off in the settings menu clears the running shake of the room on screen at once (offset zero) and no new one starts; turning it on again lets the next hit shake. The debug toggle (K) and a data reload behave as they do today. With the setting at its default nothing about F-003's shake changes. A freed camera leaves no connection behind. | Accessibility; F-003/C10, C18 |
-| C14 | **Fullscreen** is applied by the shell through an injectable `window_mode_applier: Callable` (default: `DisplayServer.window_set_mode` with `WINDOW_MODE_FULLSCREEN` or `WINDOW_MODE_WINDOWED`), once after `load_from()` and on every change of the setting. Tests replace the callable; nothing else calls `DisplayServer` for this. | Testable without a window |
+| C14 | **Fullscreen** is applied by the shell through an injectable `window_mode_applier: Callable` (default: `DisplayServer.window_set_mode` with `WINDOW_MODE_FULLSCREEN` or `WINDOW_MODE_WINDOWED`), once in the shell's `_ready` with the settings' value (after `load_from()` when there is a path, and also when there is none) and once per change, in the handler of the choice: the shell does not connect to the settings' `changed` signal. Tests replace the callable; nothing else calls `DisplayServer` for this. | Testable without a window |
 | C15 | **Quitting.** "Quit" on the title screen calls the shell's injectable `quit_handler: Callable` (default: `get_tree().quit`). "Quit to title" frees the `Game` with `queue_free()` after removing it from the tree, never from inside one of its signals, and a later Start builds a new `Game` with fresh progress. | Testable; F-012/C12's reason |
-| C16 | **A game that cannot start.** On Start the shell builds the `Game` first (disabled, C7). If it reports setup errors (`get_setup_errors()` not empty) the shell frees it, the flow stays in TITLE (no flow method is called) and the title's body shows `ShellMenus.START_FAILED_FORMAT` with the number of errors (`MenuPanel.set_body()`); the errors are still logged by `Game`. Only a game that built calls `flow.start_game()`. | F-012/C9: bad data builds nothing; C8 |
+| C16 | **A game that cannot start.** On Start the shell builds the `Game` first (disabled, C7). If it reports setup errors (`get_setup_errors()` not empty) the shell frees it, the flow stays in TITLE (no flow method is called) and the title's body shows `ShellMenus.START_FAILED_FORMAT` with the number of errors (`MenuPanel.set_body()`); the errors are still logged by `Game`. The shell remembers that count (a number, not a menu state) until a Start succeeds, and the title menu shows the line whenever it is shown meanwhile (also after Settings and Back). Only a game that built calls `flow.start_game()`. | F-012/C9: bad data builds nothing; C8 |
 | C17 | All numbers are data or exports: `death_return_delay` stays in `data/tunables/tower.tres` (meaning changed, C3); the settings' defaults in `data/tunables/shell.tres`; sizes, positions, colours and the dim's opacity are `@export`s of `MenuPanel` and `Shell`. New paths are constants (`Tunables.SHELL_TUNABLES_PATH`, `Shell.GAME_SCENE_PATH`, `UserSettings.DEFAULT_PATH`). | G2, G5 |
-| C18 | **Existing tests.** Only these existing test files may be edited, and only for the reason given: `tests/core/floors/test_tower_session.gd`, `tests/scenes/test_f012_game.gd` and `tests/scenes/test_f013_camera_game.gd` (the automatic return is now a confirmed one; the banner is gone); `tests/scenes/test_f014_game.gd` (its death tests wait for the delay, not the town); `tests/core/floors/test_tower_tunables.gd` (only if a comment or name refers to the old meaning); `tests/scenes/f012_game_test.gd` and `tests/scenes/test_f012_main.gd` (the main scene now starts on the title screen; `spawn_main()` starts the game through the shell, so `tests/scenes/test_f014_shipped.gd` needs no edit); `tests/ui/test_debug_overlay.gd` (only if it pins the overlay's layer, C20). Every edit is listed in §8 with the test's name and what changed. No test is deleted without a replacement that checks the new rule. All other tests stay green unedited. | Regression safety |
+| C18 | **Existing tests.** Only these existing test files may be edited, and only for the reason given: `tests/core/floors/test_tower_session.gd`, `tests/scenes/test_f012_game.gd` and `tests/scenes/test_f013_camera_game.gd` (the automatic return is now a confirmed one; the banner is gone); `tests/scenes/test_f014_game.gd` (its death tests wait for the delay, not the town); `tests/core/floors/test_tower_tunables.gd` (only if a comment or name refers to the old meaning); `tests/scenes/f012_game_test.gd` and `tests/scenes/test_f012_main.gd` (the main scene now starts on the title screen; `spawn_main()` starts the game through the shell, so `tests/scenes/test_f014_shipped.gd` needs no edit); Every edit is listed in §8 with the test's name and what changed. No test is deleted without a replacement that checks the new rule. All other tests stay green unedited. | Regression safety |
 | C19 | No new input action and no change to `project.godot`'s `[input]` section; the only `project.godot` change is the `UserSettings` autoload line. No third-party code. | G4; `tests/test_input_map.gd` |
 | C20 | The debug overlay draws above every menu: `src/ui/debug_overlay.tscn` gets `layer = 100` (the menu layer is 10, GUT's own is 128). Nothing else about it changes. | F3 must stay visible on the title screen |
-| C21 | **The shell follows the session by polling, after the game.** In its own `_physics_process` (priority 3, after `Game`'s 2), when the flow is PLAYING, the shell is not guarding and the session's place is `DEATH_PAUSE`, it calls `flow.player_died()` and opens the death screen in that same tick, after `Game` has fed the kills line. While the flow is DEAD it sets the `return` entry's enabled state from `can_confirm_death()` every tick. It connects to no signal of the session or of a scene. So a session restored into the death pause (G7) gets its death screen too. | F-014 CR-11's order; no soft lock |
+| C21 | **The shell follows the session by polling, after the game.** In its own `_physics_process` (priority 3, after `Game`'s 2), when the flow is PLAYING, the shell is not guarding and the session's place is `DEATH_PAUSE`, it calls `flow.player_died()` and opens the death screen in that same tick, after `Game` has fed the kills line. While the flow is DEAD it sets the `return` entry's enabled state from `can_confirm_death()` every tick. It connects to no signal of the session or of a scene. For the two choices that change the session, the game is asked first and the flow moves only when it said yes: `game.confirm_death()` then `flow.death_confirmed()`, `game.leave_floor()` then `flow.confirm_leave()`; a refusal changes nothing and the menu stays. So a session restored into the death pause (G7) gets its death screen too. | F-014 CR-11's order; no soft lock |
 
 **The flow's methods (C2).** `can_pause` and `on_floor` are plain values the shell reads from the
 game (`Game.is_pause_allowed()`, the session's place) and passes in.
@@ -304,7 +304,7 @@ Settings on disk and in the game:
   cannot be written returns false and the setting keeps its new value. `load_from()` and
   `reset_to_defaults()` keep the same `GameSettings` object and emit `changed` only when a value
   changed. `user_settings.gd` has no `_ready`, `_init` or `_enter_tree` that touches a file
-  (read by the reviewer; the lead checks at T9 that the full suite leaves this machine's real
+  (read by the reviewer; the lead checks at T10 that the full suite leaves this machine's real
   `user://settings.cfg` as it was).
 - [ ] AC8: With the user's shake setting off, a hit that shakes today leaves the camera's offset
   at zero and `get_current_intensity()` at 0; turning the setting off during a shake clears it at
@@ -336,8 +336,9 @@ Menus as nodes:
   without the start-failed line), and the focus for every (state, previous state) pair the flow
   can produce.
 
-The shell (`src/world/shell.tscn` through `F015ShellTest.spawn_shell()` for AC13 to AC15 and
-AC17 to AC26, and the real `scenes/main.tscn` for AC16 and AC29). Input is real events through
+The shell (`src/world/shell.tscn` through `F015ShellTest.spawn_shell()` for AC13 to AC15,
+AC17 to AC26, the death and leave cases of AC16 and the first sentence of AC29; the real
+`scenes/main.tscn` for the rest of AC16 and AC29). Input is real events through
 `Input.parse_input_event`, posted between ticks (after `await get_tree().process_frame`), keys
 with both `keycode` and `physical_keycode` set; "a click on an entry" is a left mouse button
 event (so `attack` is "just pressed") followed in the same frame by the panel's `choose(id)`.
@@ -348,8 +349,8 @@ event (so `attack` is "just pressed") followed in the same frame by the panel's 
 - [ ] AC14: While playing in the town and on a floor, Escape and pad Start each open the pause
   menu: the `Game`'s `process_mode` is `PROCESS_MODE_DISABLED`, the 2D physics space is
   inactive, the room's sim time (`CombatSim.get_time()`) does not advance over 30 frames, enemies
-  and projectiles do not move, a banner that was showing is still showing with the same time
-  left. In the town the menu has no `leave` entry; on a floor it has. Tests of the paused state
+  and projectiles do not move, and a banner that was showing is still showing after a pause
+  longer than its duration and is gone one duration after the resume. In the town the menu has no `leave` entry; on a floor it has. Tests of the paused state
   step frames without the helpers that submit player commands.
 - [ ] AC15: Resume (the entry, Escape, pad B, pad Start) closes the menu and the game runs again;
   `CombatSim.to_dict()` and the session's snapshot right after the resume equal the ones taken
@@ -367,7 +368,11 @@ event (so `attack` is "just pressed") followed in the same frame by the panel's 
   (`OS.delay_msec`) so that the frame after the press runs two or more ticks. A press posted
   inside a tick (after `await get_tree().physics_frame`) is guarded as well. A movement key
   held through the resume moves the player. `is_guarding()` is true from the choice until the
-  game runs, and `pause` during it does nothing.
+  game runs, and `pause` during it does nothing. Each of the two extra timings is asserted
+  before the guard is: the test counts the physics ticks per frame it really got and fails if
+  the timing was not produced. The resume and Start cases run through the real main scene
+  (T7); the death screen's and the leave confirm's run through `shell.tscn` (T6), at 60 and
+  120 ticks/s.
 - [ ] AC17: With the gate list open, Escape closes the gate list and no pause menu opens; pad
   Start does nothing. During the death pause and on the title screen `pause` does nothing. In
   the ticks between a gate choice and the floor being shown `pause` does nothing.
@@ -393,7 +398,7 @@ event (so `attack` is "just pressed") followed in the same frame by the panel's 
 - [ ] AC23: Choosing "Return to town" on the death screen: the town is shown with a living player
   at full HP, the menu is closed, the flow is PLAYING, the progress is what it was at the death,
   and a boss room reached in that run is offered "at the boss" by the gate. Nothing returns to
-  town by itself: after 20 s on the death screen the session is still in the death pause.
+  town by itself: after 20 s of ticked time on the death screen (2,400 ticks at 120 ticks/s, with the delay shortened for the test) the session is still in the death pause.
 - [ ] AC24: A kill that lands in the player's death tick still counts on the death screen's kills
   line (F-014 CR-11's case), and the HUD's kills and location lines do not change during the
   death pause.
@@ -441,10 +446,10 @@ Two implementers, disjoint files per pair. The lead gates and commits each task.
 | T1 | `ShellFlow` (C2) | `src/core/shell/shell_flow.gd`, `tests/core/shell/test_shell_flow.gd` | AC1, AC2. Pair with T2. |
 | T2 | `GameSettings`, `ShellTunables`, the `UserSettings` autoload, the shake setting (C11–C13) | `src/core/shell/game_settings.gd`, `src/core/tunables/shell_tunables.gd`, `data/tunables/shell.tres`, `src/autoload/tunables.gd`, `src/autoload/user_settings.gd`, `project.godot` (autoload line only), `src/world/camera/placeholder_shake.gd`, `tests/core/shell/test_game_settings.gd`, `tests/core/test_shell_tunables.gd`, `tests/autoload/test_user_settings.gd`, `tests/scenes/test_f015_shake.gd` | AC6, AC7, AC8. |
 | T3 | The death and leave rules in `TowerSession`; `Game`'s three methods; the banner removed (C3–C5) | `src/core/floors/tower_session.gd`, `src/core/tunables/tower_tunables.gd` (comment), `src/world/game.gd`, `src/ui/hud/hud.gd` (`hide_banner()`, its header comment), `tests/core/floors/test_f015_session.gd`, `tests/scenes/test_f015_game.gd`, and the edits C18 allows in `test_tower_session.gd`, `test_f012_game.gd`, `test_f013_camera_game.gd`, `test_f014_game.gd`, `f012_game_test.gd` (death helpers only) | AC3, AC4, AC5, and the game half of AC22–AC24. Pair with T4. The main scene is unchanged here, so `test_f012_main.gd` stays green. |
-| T4 | `ListMenu` out of `GateMenu`; `MenuPanel`; `ShellMenus` (C9, C10) | `src/ui/menus/list_menu.gd`, `src/ui/menus/menu_panel.gd`, `src/ui/menus/menu_panel.tscn`, `src/ui/menus/shell_menus.gd`, `src/ui/town/gate_menu.gd`, `tests/ui/test_f015_menu_panel.gd`, `tests/ui/test_f015_shell_menus.gd` | AC10, AC11, AC12. `ShellMenus` takes plain values (texts, bools), not nodes. |
-| T5 | The `Shell`, part 1: the scene, the title screen, Start and its failure, Quit, the pause and resume, the physics space, the input guard, `pause` and cancel (C6–C8, C15, C16) | `src/world/shell.gd`, `src/world/shell.tscn`, `tests/scenes/f015_shell_test.gd` (helpers: `spawn_shell()`, C12's hygiene), `tests/scenes/test_f015_shell.gd` | AC13–AC15, AC17, AC21, AC25, and AC26's PAUSED case. After T1–T4. `scenes/main.tscn` is not touched: nothing existing can fail. |
-| T6 | The `Shell`, part 2: settings (apply, save, fullscreen), the two confirms, leaving a floor, quitting to the title, the death screen and its poll (C12, C14, C15, C21) | `src/world/shell.gd`, `tests/scenes/test_f015_shell_menus.gd`, `tests/scenes/test_f015_shell_death.gd` | AC9, AC18–AC20, AC22–AC24, AC26, AC29's first sentence. After T5; pair with T7. |
-| T7 | The main scene switches to the shell, in one commit with its tests: `scenes/main.tscn`, the overlay's layer, `spawn_main()`, the input guard through the real main scene at three rates (C7, C18, C20) | `scenes/main.tscn`, `src/ui/debug_overlay.tscn`, `tests/scenes/f012_game_test.gd` (`spawn_main()` only), `tests/scenes/test_f012_main.gd`, `tests/scenes/test_f015_guard.gd`, `tests/scenes/test_f015_main.gd` | AC16, the rest of AC29, the rest of C18. After T5. The guard's death and leave cases wait for T6: they are added to `test_f015_guard.gd` once it has landed. |
+| T4 | `ListMenu` out of `GateMenu`; `MenuPanel`; `ShellMenus` (C9, C10) | `src/ui/menus/list_menu.gd`, `src/ui/menus/menu_panel.gd`, `src/ui/menus/menu_panel.tscn`, `src/ui/menus/shell_menus.gd`, `src/ui/town/gate_menu.gd`, `tests/ui/test_f015_menu_panel.gd`, `tests/ui/test_f015_menu_texts.gd` | AC10, AC11, AC12. `ShellMenus` takes plain values (texts, bools), not nodes. |
+| T5 | The `Shell`, part 1: the scene, the title screen, Start and its failure, Quit, the pause and resume, the physics space, the input guard, `pause` and cancel (C6–C8, C15, C16) | `src/world/shell.gd`, `src/world/shell.tscn`, `tests/scenes/f015_shell_test.gd` (helpers: `spawn_shell()`, C12's hygiene), `tests/scenes/test_f015_shell.gd` | AC13–AC15, AC17, AC21, AC25, and AC26's PAUSED case. After T1–T4. `scenes/main.tscn` is not touched: nothing existing can fail. At this commit the pause menu's `leave`, `settings` and `quit_to_title` entries and the title's `settings` entry are shown and do nothing; T6 gives them their handlers. |
+| T6 | The `Shell`, part 2: settings (apply, save, fullscreen), the two confirms, leaving a floor, quitting to the title, the death screen and its poll (C12, C14, C15, C21) | `src/world/shell.gd`, `tests/scenes/test_f015_shell_flow.gd`, `tests/scenes/test_f015_shell_death.gd` | AC9, AC18–AC20, AC22–AC24, AC26, AC29's first sentence, AC16's death and leave cases. After T5; pair with T7. |
+| T7 | The main scene switches to the shell, in one commit with its tests: `scenes/main.tscn`, the overlay's layer, `spawn_main()`, the input guard through the real main scene at three rates (C7, C18, C20) | `scenes/main.tscn`, `src/ui/debug_overlay.tscn`, `tests/scenes/f012_game_test.gd` (`spawn_main()` and `after_each()` only), `tests/scenes/test_f012_main.gd`, `tests/scenes/test_f015_guard.gd`, `tests/scenes/test_f015_main.gd` | AC16's resume and Start cases, the rest of AC29, the rest of C18. After T5. |
 | T8 | Rendered check and screenshots (lead) | scratch only | AC28. |
 | T9 | Docs (lead) | `studio/design/floors.md` (the loop's death and leave lines, the "lives for one run" line, FX5), `studio/GLOSSARY.md` (Death pause redefined; Pause, Shell, Title screen, Death screen, Input guard added), `studio/features/F-012-the-loop.md` (§10 Q1 answered), `studio/STATUS.md` | |
 | T10 | Final gate (lead) | — | AC27, and C12's check of the real settings file. |
@@ -601,11 +606,62 @@ on the real player at 30 and 60 ticks/s (probe nodes only; the real player at 12
 physics stepping changes wall contact; the wall difference inside a fight; `tower_progress.gd`,
 `test_f012_town.gd` and `test_tower_session.gd` line by line.
 
+<!-- review-round: 2 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** 5c32c45 · **Date:** 2026-11-20 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+The reviewer who read the spec in round 1, read-only, on the amended text. It ran nothing.
+
+**Round 1 findings:** PR-1 to PR-17 ✔ resolved, each checked against the amended text (PR-2 by
+C6's physics-space rule and AC15's corner walk, not measured again; PR-17 as a decision). Three
+left a slip behind, recorded as PR-22 below.
+
+### PR-18 🟡 AC14 asked for the banner's time left, which nothing exposes  ·  AC14, `src/ui/hud/hud.gd:34`
+> **Planner reply (lead):** accepted. AC14 now checks what can be seen: still showing after a
+> pause longer than its duration, gone one duration after the resume.
+
+### PR-19 🟡 C12's test hygiene did not fit T7's file scope and missed T2's tests  ·  C12, T7, T2
+> **Planner reply (lead):** accepted. T7 may edit `after_each()` too; C12 covers every test that
+> changes the settings.
+
+### PR-20 🟡 AC16's two extra timings could pass without having happened  ·  AC16
+> **Planner reply (lead):** accepted. The test asserts the timing it got before it asserts the
+> guard.
+
+### PR-21 🟡 Four guesses left in the sequences  ·  C7, C14, C16, C21, T5
+The order of the game's call and the flow's on a confirm, and what a refusal does; whether the
+title still shows the start-failed line after Settings and Back; whether the window applier is
+called at start with no settings file; what three pause-menu entries do at T5's commit.
+> **Planner reply (lead):** accepted, all four: C21 (game first, flow only on yes), C16 (the
+> shell remembers the count until a Start succeeds), C14 (called once at start either way, and no
+> connection to `changed`, which also keeps AC8's connection count true), T5's note.
+
+### PR-22 🔵 Cross-references and wording
+AC7 named T9 for the lead's check (it is T10); §5's header put all of AC29 and AC16 on the main
+scene; two test files shared a name; the guard's death and leave cases had no task; C18 listed
+`test_debug_overlay.gd`, which pins no layer; §3 still said "five scenes".
+> **Planner reply (lead):** accepted, all six. AC16's death and leave cases now run through
+> `shell.tscn` in T6; T4's test file is `test_f015_menu_texts.gd`.
+
+**Traced by the reviewer with no guess left:** a death in the tick of a pause press (the pause
+wins before the death tick; after it the flow is DEAD in the same tick); `pause` during the guard
+and while the shown scene is stale (refused); quit to the title while the physics space is
+inactive, then Start; the shell leaving the tree while paused. Every AC has a task and no commit
+is red in the order T1 to T7; T7 can land before T6.
+
+**Not checked in this round:** any engine behaviour (the space-inactive measurement, tick order
+at priority 3, `OS.delay_msec` producing frames with several ticks); whether 20 s on the death
+screen (AC23) is affordable in suite time; `tower_progress.gd`, `test_f012_town.gd` and
+`test_tower_session.gd` line by line.
+
+**Gate A (lead, D-016):** Lucas's answers and "Yes, start" of 2026-11-20 are Gate A; the file
+skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q1 to Q3.
+
 ---
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** —  ·  **Branch:** `feature/F-015-menus`
+**Started:** 2026-11-20  ·  **Branch:** `feature/F-015-menus`
 
 ### Progress
 
