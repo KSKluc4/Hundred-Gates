@@ -18,7 +18,7 @@
 | F-009 | Floor 3 boss (Juggernaut) | DONE | — | — |
 | F-010 | Studio queue — chained features, auto-drafted specs, opt-in automatic Gate A | PLAN_REVIEW | Auditor | — |
 | F-011 | Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox | DONE | — | — |
-| F-012 | The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene | CODE_REVIEW | Lucas | F-011 (stacked on its branch, D-013; merge F-011 first) |
+| F-012 | The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene | DONE | — | — |
 | F-013 | Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair) | CODE_REVIEW | Lucas | F-012 (stacked on its branch, D-015) |
 | F-014 | Waves — reinforcements arrive in a room until its kill target is reached (Gate B playtest, third fix) | CODE_REVIEW | Lucas | F-013 (stacked on its branch, D-015) |
 
