@@ -1,8 +1,8 @@
 ---
 id: F-015
 title: Menus — title screen, pause menu, death screen, settings
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-20
 updated: 2026-11-20
 depends_on: [F-003, F-012, F-014, D-006, D-010, D-014, D-016]
@@ -676,6 +676,9 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
 - [x] T9 — docs, with this commit
 - [ ] T10 — the final gate comes after the code review; the full suite on 4bfec51 (T1 to T7) is
   156 scripts, 2442 tests, all passing (888 s), no "Orphans" line, no leak line.
+- [x] Code review round 1 — CR-3, CR-7, CR-9, CR-10, CR-12 9625676; CR-1, CR-2, CR-4, CR-5, CR-6,
+  CR-7, CR-8, CR-9, CR-11 8429634; CR-13 answered. Full suite on 8429634: 157 scripts, 2480
+  tests, all passing (971 s), no "Orphans" line, no leak line.
 
 ### Deviations from plan
 - DEV-1: the file went from `PLAN_REVIEW` to `IN_PROGRESS` without `APPROVED` — **Why:** D-016,
@@ -737,6 +740,28 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
 - DEV-10 (T7): `spawn_main(prepare)` now passes the main scene's `Shell`, not its `Game`, to
   `prepare` — **Why:** the game does not exist before Start — **Impact:** none; no caller passes
   `prepare`.
+
+- DEV-11 (code review CR-2): **a pointer guard the spec does not have.** For
+  `MenuPanel.pointer_guard_seconds` (0.3) of real time after a menu opens its entries ignore the
+  mouse — **Why:** the second click of a double click landed on whatever entry the new menu put
+  under the cursor (Fullscreen switched on; a quit with no confirmation) — **Impact:** a
+  deliberate click in the first 0.3 s after a menu opens does nothing; keys and the pad are not
+  delayed. The gate list has no such guard (it closes on a choice).
+- DEV-12 (code review CR-3): from T7 (4bfec51) to 9625676 `test_f015_guard.gd` and
+  `test_f015_main.gd` put the main scene in the tree with spawners of their own, against C12's
+  letter — **Why:** `spawn_main()` chooses Start with the input off, and T7's brief told the
+  implementer to write a local helper — **Impact:** none since 9625676 (one helper,
+  `spawn_main_on_title()`); the lead's brief was the cause.
+- DEV-13 (code review CR-1): **the game's bodies stay in the physics space while it is
+  stopped** (`DISABLE_MODE_KEEP_ACTIVE`, set by the shell at each stop), which C6 does not say —
+  **Why:** measured: a disabled node's bodies leave the space and come back, and that shifted a
+  later wall slide by up to 0.004 px — **Impact:** a body below `Game` that is disabled by
+  anything else after a pause also stays in the space; nothing disables one today.
+- DEV-14 (code review CR-10, CR-11): `UserSettings.load_from()` walks every section of the file
+  and frees objects it finds, and the default window applier does nothing in a window embedded
+  in the editor; neither is in C12 or C14 — **Why:** a hand-written `Object(Node,…)` left an
+  orphan; an embedded window cannot change its mode — **Impact:** none on a settings file the
+  game wrote.
 
 **Existing tests edited (C18), all in T3 except the last two bullets.** No test was deleted; eight were renamed.
 - `tests/scenes/f012_game_test.gd`: new helper `confirm_death_when_ready(limit)` (ticks until
@@ -831,6 +856,13 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
   AC16 turn the player's input on just before the confirm (it is off for the scripted walk).
 - ASSUMPTION-16 (T7): `Engine.physics_jitter_fix` is 0 during the guard tests and restored
   after; `GAME_NODE` in `f012_game_test.gd` is unused now and kept.
+  **After code review round 1:** `GAME_NODE` is removed (CR-12).
+- ASSUMPTION-17 (review fixes): `MenuPanel.is_pointer_guarded()` is public, for the tests;
+  the pointer guard is measured with `Time.get_ticks_msec()`, so it does not depend on the frame
+  rate; `_enter_tree` stops the space whenever the game node is disabled, the guard's two ticks
+  included; in the settings file an object nested in an array or a dictionary is treated like
+  one at the top; `test_user_settings.gd` has a folder per process instead of the process id in
+  its file names.
 
 ### Things the Auditor should look at closely
 - **The guard for the death and leave confirms is proven by its state, not by a dash.** The town's
@@ -883,6 +915,11 @@ Branch `feature/F-015-menus`. Windows tooling as in F-011 §2.
   as they are: the debug overlay's text is large and sits top left over the game as before; the
   enemies' debug labels show through the dim; after a mouse click Godot hides the focus frame
   until the next key (the entry still has the menu's focus).
+- **After code review round 1** (9625676, 8429634): the full suite on 8429634 is 157 scripts,
+  2480 tests, all passing (971 s), no "Orphans" line, no leak line; nothing is left in this
+  machine's `user://`. The suite is longer than on 4bfec51 (888 s): the slide twins run in real
+  time (720 ticks at 120 ticks/s each) and the click tests wait out the 0.3 s pointer guard.
+  New test file: `tests/scenes/test_f015_clicks.gd`.
 - **Not done by anyone:** real keyboard, mouse or gamepad play. Every event above was posted by
   code. A real pad was never connected. That is Gate B.
 
@@ -931,6 +968,15 @@ match. Stopping the space (C6, DEV-6) does not cover it. Not reproduced in the s
 fights (48 twins identical). Nothing a player could see; but the spec promises it and G1 leans on
 it. AC15's corner walks pass because they never slide along a side wall across the seams between
 wall bodies.
+> **Builder reply (lead):** fixed in 8429634. At each stop the shell sets every collision object
+> below the game to `DISABLE_MODE_KEEP_ACTIVE` before it disables the game
+> (`Shell._keep_bodies_in_space()`; rooms are rebuilt, so it is done every time). The reviewer's
+> walk is now a test: seven single pauses (ticks 30 to 500; 1, 5 and 60 frames and a pause of
+> none) and a seeded schedule of eight pauses of four kinds, position and snapshot compared at
+> every tick. In the implementer's mutation run six of them fail without the new step. The
+> implementer also measured DEV-6 again with the fix in place: with the space switched on
+> together with the game the three corner twins still differ at tick 288 by 3.8e-6 px, so the
+> one-tick lag stays.
 
 ### CR-2 🔴 A double click acts on the menu that opens under the cursor  ·  `src/ui/menus/menu_panel.gd:41-53`
 Real positional clicks at 640 × 360. A double click on "Settings" (title screen, pause menu) ends
@@ -940,27 +986,46 @@ the top 2 px of "Quit to title" in the town's pause menu **quits to the title wi
 confirmation** (the confirm's own "Quit to title" overlaps it by 3 px) and the progress is gone.
 Lower on that entry the second click hits Cancel or nothing; on a floor nothing overlaps. The
 lead's rendered check (AC28) made single clicks only.
+> **Builder reply (lead):** fixed in 8429634 with a pointer guard in `MenuPanel`: for
+> `pointer_guard_seconds` (an export, 0.3) of real time after `open()` the entries take no
+> pointer input; keys, the pad and `choose()` are not affected and the in-place changes do not
+> start it again (two slow clicks on Fullscreen still toggle twice). Real positional clicks are
+> now tests (`tests/scenes/test_f015_clicks.gd`, the menu layer raised above GUT's for the
+> test): the double click on Settings from the title, the town's pause menu and a floor's, at
+> gaps of 2, 8 and 20 frames and 100 ms, changes no setting and never calls the window; the
+> double click on the top 0.5 px and 1.5 px of Quit to title ends in the confirm with the game
+> alive. In the implementer's run on the code before the fix four of the nine fail. Logged as
+> DEV-11 (a rule the spec did not have) and put to Lucas as §10 Q8 (the 0.3 s).
 
 ### CR-3 🔴 by the unlogged-deviation rule (🟡 in substance): two test files put the main scene in the tree without C12's helpers  ·  `tests/scenes/test_f015_guard.gd:394`, `tests/scenes/test_f015_main.gd:21`
 Both instantiate `scenes/main.tscn` themselves and repeat the stub wiring, because
 `spawn_main()` chooses Start with the input off. They are safe today (they reuse the helper's
 file and `after_each`), but there are four spawners to keep safe and §8 logs no deviation.
+> **Builder reply (lead):** fixed in 9625676: `F015ShellTest.spawn_main_on_title()`, wired by the
+> same private function as `spawn_shell()`; both test files use it and their own spawners are
+> gone. The gap between T7 and this fix is logged as DEV-12.
 
 ### CR-4 🟡 No test pins a pause in DEV-6's one-tick lag  ·  `src/world/shell.gd:153-155`, `:301-308`
 Between the enabling tick and the next the game runs, `_space_follows` is true and the space is
 off; real input can arrive there. The code is right (the reader's probe passes). But with
 `_space_follows` never cleared the space comes back on during the pause, and all 179 tests of the
 six shell and main test files still pass.
+> **Builder reply (lead):** fixed in 8429634: two tests pause in that tick (the press posted
+> inside the tick, and between ticks at 30 ticks/s); with the flag never cleared both fail.
 
 ### CR-5 🟡 AC15's twins are weaker than the AC  ·  `tests/scenes/test_f015_shell.gd:888-904`
 The corner walk compares the position at every tick but the snapshot only at the end ("tick by
 tick (position and snapshot)"); and no test slides along a side wall across seams (CR-1).
+> **Builder reply (lead):** fixed in 8429634: the corner twins compare the snapshot at every tick;
+> the slide twins are CR-1's.
 
 ### CR-6 🟡 Two holes the mutations found  ·  `src/world/shell.gd:121-122`, `tests`
 No test makes a real click (so CR-2 was invisible to the suite). Removing
 `set_input_as_handled()` in `Shell._unhandled_input` fails no test. (A third survivor,
 `ask_leave(true)` in place of `ask_leave(_is_on_floor())`, is equivalent: the entry only exists
 on a floor.) 16 of 18 mutations were killed.
+> **Builder reply (lead):** fixed in 8429634: the real clicks of CR-2, and a spy that must not see
+> a `pause` event the flow acted on and must see one it refused. The equivalent mutant is left.
 
 ### CR-7 🟡 Comments that are wrong  ·  `src/world/shell.gd:20`, `:41-44`, `:68`, `tests/scenes/f012_game_test.gd:69`, `f015_shell_test.gd` header and `:112`, `:125`, `test_f015_shell.gd:710`
 Six comments send the reader to "DEV-1" for the space lag; it is DEV-6. The `GUARD_TICKS` comment
@@ -968,16 +1033,26 @@ says 1 lets the press through; for a press that arrives between ticks (all real 
 is enough, the second is only needed for a press posted inside a tick. The helpers say a tap is
 never "just pressed"; measured in 4.7.2, a press and release posted together between two ticks is
 "just pressed" in the next tick.
+> **Builder reply (lead):** fixed in 9625676 and 8429634. The implementer measured it again
+> (a key, a pad button and a mouse button at 60 and 120 ticks/s, tap and hold): posted between
+> ticks, "just pressed" in the next tick; posted inside a tick, in the tick after the one
+> running; in all 24 cases. No test's logic leaned on the false sentence: the guard tests hold
+> their keys.
 
 ### CR-8 🔵 `Shell._exit_tree` has no counterpart  ·  `src/world/shell.gd:95-96`
 A shell removed and added again while paused comes back with the flow PAUSED, the game disabled
 and the space active (the reader's probe). Nothing reparents the shell today.
+> **Builder reply (lead):** fixed in 8429634: `_enter_tree` stops the space again when the game is
+> disabled; two tests.
 
 ### CR-9 🔵 The tests' files in `user://` are not private to a run  ·  `tests/scenes/f015_shell_test.gd:42`, `f012_game_test.gd:78`, `tests/autoload/test_user_settings.gd:6`
 A private copy of the project has the same `user://` as the checkout, and the file names carry
 no process id: two suites at once would read and delete each other's files. Related: four lines
 in `test_f015_shell.gd` and `test_f015_shell_flow.gd` read the modified time of the real
 `user://settings.cfg`, which goes near C12's "no test touches".
+> **Builder reply (lead):** fixed in 9625676 (the process id in the helpers' file names, a folder
+> per process for `test_user_settings.gd`) and 8429634 (the four lines are gone; the lead looks
+> at the real folder after each full run).
 
 ### CR-10 🔵 A settings file can instantiate an object  ·  `src/autoload/user_settings.gd:17-32`
 `fullscreen=Object(Node,…)` in the file makes `ConfigFile` create the node: one orphan and a leak
@@ -986,15 +1061,25 @@ defaults with no warning and overwritten at the next change; binary garbage prin
 error besides the one warning (ASSUMPTION-5); empty files, wrong types, a 16.5 MB file, a
 directory at the path, a read-only file and a missing folder all leave a shell that starts and
 applies changes for the run.
+> **Builder reply (lead):** fixed in 9625676: a value of the file that is an object, or holds
+> one in an array or a dictionary, in any section, is dropped, and freed when it is not counted
+> by reference; tests check that no orphan and no object is left. The BOM file and the binary
+> garbage are pinned by tests as they are.
 
 ### CR-11 🔵 Fullscreen in a window embedded in the editor (a suspicion, not verified)
 `DisplayServer.window_set_mode(FULLSCREEN)` on a game window embedded in the editor may error and
 do nothing, and "Fullscreen: On" would then be saved and tried again at every embedded launch.
+> **Builder reply (lead):** not verified either (it needs the editor). The default applier now
+> does nothing when `Engine.is_embedded_in_editor()` (8429634); the setting is still flipped and
+> saved. Told to Lucas in §10 Q9.
 
 ### CR-12 🔵 Duplicated test plumbing  ·  `tests/scenes/f012_game_test.gd`, `f015_shell_test.gd`, `test_f015_guard.gd`, `test_f015_main.gd`
 `MAIN_SETTINGS_DIR` and `TEST_DIR`; three guard-wait loops; two click posters; `_dim()` three
 times; `after_each` resets the settings and the space in the subclass and in the base;
 `GAME_NODE` is dead (ASSUMPTION-16).
+> **Builder reply (lead):** partly: `GAME_NODE` is gone and the stub wiring is one function
+> (9625676). The rest is left: each loop and click poster is small, and the double reset is the
+> price of `F012GameTest` and `F015ShellTest` each being safe alone.
 
 ### CR-13 🔵 Measured, for the record
 A press of J or Space in the two guard ticks after Resume is dropped (it acts from the third
@@ -1002,6 +1087,8 @@ tick on). Space and Escape in the same frame while playing: the pause wins and t
 Escape and pad Start in the same frame: two changes from two events (a pause and straight back).
 After a pause the mouse aim jumps to where the mouse went meanwhile. A double click on the title's
 Quit calls the quit handler twice.
+> **Builder reply (lead):** noted, no change. The dropped presses are the guard doing its job
+> (two ticks, 33 ms at 60 ticks/s); the rest is what the events say.
 
 **Tried, found nothing:** every C6 and C7 sequence the reader traced and probed (a pause in the
 lag; a death in the first tick after a resume; a pause before a death tick, then a leave; quit
@@ -1036,6 +1123,8 @@ at 1 (DEV-9); `test_f015_menu_panel.gd`, `test_game_settings.gd` and most of
 | Q5 | Lead | → Art & Game Feel: the look of every menu (plain buttons, 8 px font, flat dim). | no | |
 | Q6 | Lead | → Art & Game Feel (plan review PR-16): a pause in the middle of a screen shake freezes the picture up to 6 px off centre until you resume. Accepted for the placeholder shake. | no | |
 | Q7 | Lead | → Lucas, at Gate B: pressing Start now takes about 0.8 s before the town appears (the whole game is built at that moment instead of at launch). Fine for now, or should the title screen say "Loading"? | no | |
+| Q8 | Lead | → Lucas, at Gate B (code review CR-2): for 0.3 s after a menu opens, mouse clicks on its entries do nothing, so the second click of a double click cannot switch a setting or quit by accident. Keys and the pad are not delayed. Does the mouse feel slow in the menus? The number is `pointer_guard_seconds` on the menu panel. | no | |
+| Q9 | Lead | → Lucas (code review CR-11): when you run the game inside the editor's own window (Godot's embedded game view), choosing Fullscreen changes the setting and saves it but leaves the window alone; run it in its own window or as an export to see fullscreen. Not verified in the editor by anyone. | no | |
 
 ---
 
