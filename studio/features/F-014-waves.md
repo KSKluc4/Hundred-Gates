@@ -2,7 +2,7 @@
 id: F-014
 title: Waves — reinforcements arrive in a room until its kill target is reached (Gate B playtest, third fix)
 status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-19
 updated: 2026-11-19
 depends_on: [F-004, F-011, F-012, F-013, D-007, D-010, D-012, D-014, D-015]
@@ -568,6 +568,7 @@ without `APPROVED`.
 - [x] T8 — c994bde (`design/floors.md`, `design/combat.md`, `GLOSSARY.md`)
 - [x] T9 — final gate on 65019e6, results under "How to test"
 - [x] Code review round 1 — CR-2, CR-3 6350df5; CR-1 (data) 8f9422d; CR-1 (code), CR-4, CR-5 1a6b595; CR-6, CR-7, CR-8 with the replies.
+- [x] Code review round 2 — CR-11, CR-12 fa07e58; CR-9 and CR-10 answered in §9. Approved with notes.
 
 ### Deviations from plan
 - DEV-1: the two implementers were started on T1 and T2 while plan review round 3 (a check
@@ -703,6 +704,9 @@ After code review round 1 (6350df5, 8f9422d, 1a6b595): the full suite on 1a6b595
 2047 tests, all passing (679 s), with no "Orphans" line and no leak line; lint, format and
 purity are clean; the game boots with no error line. The scripted runs of the 12 rooms give
 the same table as below. The block below is the first gate's.
+After code review round 2 (fa07e58): 141 scripts, 2049 tests, all passing (673 s); the rest as above.
+The shipped rooms have 215 arrival points (13 to 28 a room), not the 204 of the first gate
+and not the 217 one line of §9 says (CR-9).
 
 ```
 tools/test                      # 140 scripts, 2023 tests, all passing (639 s)
@@ -884,6 +888,94 @@ arrival exactly on a living enemy: the bodies separate at once.
 **Not checked in this round:** how the marker and the HUD line look; two players in a scene;
 F5 data reload in a waves room; a staged boss-type enemy as a reinforcement; the reserve's
 frame cost; floors 2 and 3 through the real `Game`; manual play.
+
+<!-- review-round: 2 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** 1a6b595 (the diff `65019e6..1a6b595` under `src`, `tests` and `data`, and the spec as amended in e01fc23)
+
+**Date:** 2026-11-19 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+The same reviewer, read-only, on fresh copies of `1a6b595`; its own full run there: 141
+scripts, 2047 tests, all passing. The amended spec text (C4, C6, C8, C14 (d), AC3, AC10, AC22,
+AC27) and the code agree.
+
+**Round 1 findings:**
+- CR-1 ✔ resolved. The round 1 probe in room 2-4 re-run: the chaser now arrives in the
+  player's lane and reaches the player after 2.5 s (it was 19.2 s); the caster has a clear line
+  after 0.7 s (20.7 s). Over every walkable tile, choices made as the director makes them:
+
+  | Room | Before (65019e6): tiles with a walk over 18, 1st / 2nd / 3rd choice | Worst walk before | After (1a6b595) | Worst walk after |
+  |---|---|---|---|---|
+  | 2-4 | 13.1 % / 20.7 % / 25.0 % | 60.1 / 60.9 / 53.1 | 0 % / 0 % / 4.3 % | 17.2 / 17.9 / 58.9 |
+  | 3-1 | 8.3 % / 10.7 % / 23.4 % | 26.1 / 28.5 / 28.9 | 0 % / 0.2 % / 11.7 % | 17.8 / 18.3 / 24.9 |
+  | other ten | ≤ 0.3 % / 0.4–4.6 % / 4.8–14.4 % | ≤ 20.1 / 21.5 / 23.1 | 0 % / 0–4.0 % / 3.2–14.7 % | ≤ 17.9 / 21.5 / 23.1 |
+
+  No choice of the first three leaves the arrival box, and the first choice's straight-line
+  distance barely moves. What remains is the third simultaneous choice (in 2-4: 64 tiles at the
+  east ends of the top and bottom lanes, worst 58.9; in 3-1 it cannot bind, the cap is 1); no
+  stall was reproduced in play. `walk_distance()`: 10,867 walks on 150 random grids against
+  the reviewer's own Dijkstra, 0 mismatches; 9,529 directions and 3,604 line checks
+  interleaved with walks identical to the reference. `choose_point` with walks: 80,000 inputs
+  against the reviewer's reimplementation of the amended C8, 0 mismatches; with no walks,
+  identical to the old rule. The director fuzz with walls: 300 rooms, 230 with a nav grid,
+  three tick rates, restored twins and a rewind fuzz: 0 violations; nothing about walks is
+  stored. The 12 data files: only `.` → `S` changed, every C3 and C14 (a)–(d) rule holds.
+- CR-2 ✔ resolved (the surviving mutant now fails 2 of 34 tests). CR-3 ✔ resolved.
+- CR-4 ✔ resolved (probe re-run; its side effect is CR-11). CR-5 ✔ resolved (rig re-run).
+- CR-6, CR-7 and CR-8's log lines were not in the reviewed commit; CR-8 (a) is pinned by a test.
+
+### CR-9 🔵 The records say 13 more arrival points (217); the data has 11 more (215)
+Commit 8f9422d's message and the reply under CR-1 (a23a35b). The same reply says the first
+choice's worst walk in room 2-4 "was 39.9"; before the fix it was 60.1.
+
+> **Builder reply (lead):** right on both. The lead counted the `S` tiles itself after this
+> round: 204 at 65019e6, 215 now (room 2-3 +1, 2-4 +6, 3-2 +1, 3-3 +1, 3-5 +2). The lead had
+> copied a total from an implementer's report without counting. 39.9 was the worst first
+> choice with the new tier on the old points, not the state before the fix (60.1). The reply
+> under CR-1 is left as written (reviews only grow); this line corrects it, and
+> `design/floors.md` and §8 carry the right count. The commit message cannot be changed.
+
+### CR-10 🔵 A start asks a walk for every free point, read or not, and settles the field out to the farthest  ·  `src/core/floors/room_waves.gd:297-313`, `nav_grid.gd:190-200`
+Verified by running room 3-5 on a real sim: a tick with a start takes about 3.6 ms against a
+median of 0.19 ms. With two players on different tiles the goal alternates point by point and
+the field is rebuilt each time: about 46 ms for one choice.
+
+> **Builder reply (lead):** not fixed in this feature. With one player it is one 3.6 ms tick
+> per arrival, about ten times a room, well inside a frame. The 46 ms is a two-player cost and
+> phase 1 has one player; recorded as FX12 in `design/floors.md` for the co-op phase, with the
+> reviewer's three suggestions (ask only far-enough boxed candidates, stop settling past the
+> maximum, group the asks by player).
+
+### CR-11 🔵 A kill that lands in the player's death tick is not shown  ·  `src/world/game.gd:141-142`
+The CR-4 fix freezes the line from the tick the death is reported. Verified by running: an
+enemy and the player killed between the same two ticks; the room counts 2, the HUD says
+`Kills 1 / 5` for the whole pause.
+
+> **Builder reply (lead):** fixed in fa07e58: the line is fed once more in the tick the place
+> becomes the death pause, then holds; a test kills an enemy and the player between the same
+> two ticks.
+
+### CR-12 🔵 Nothing pinned that a point's walk is measured to its own nearest player  ·  `tests/core/floors/test_f014_room_waves.gd`
+Replacing `_nearest_of(_points[index], players)` by `players[0]` left all 66 tests passing.
+
+> **Builder reply (lead):** fixed in fa07e58: a walled rig with two players on opposite sides
+> of the wall; the test fails on that mutation alone.
+
+**Tried, found nothing** (the reviewer's list, shortened): the HUD probes of round 1; the
+round 1 scene probes (an arrival on a living enemy, the last kill a sleeping placed enemy, the
+last kill and an arrival in one tick, a restore both ways, R and N leaving nothing behind); a
+bot in the real floor scene in all 12 rooms in five styles (60 runs) and the five changed
+rooms and 3-1 again: every room cleared at its kill target with one heal, no engine error.
+Mutations of the new code: 19, 16 killed, two equivalent, one the gap of CR-12.
+
+**Not checked in this round:** the replies and doc fixes of a23a35b beyond a glance; two
+players in a scene; a start's frame time in the real scene; a reproduction in play of the
+residual third-choice long walk; the rendered look; manual play.
+
+**After round 2 (lead):** the full suite on fa07e58 is 141 scripts, 2049 tests, all
+passing (673 s), with no "Orphans" line and no leak line; lint, format and purity are
+clean; `main.tscn` boots headless with no error line. Nothing in the reviews was checked with
+a real keyboard, mouse or gamepad, and nobody has played a wave room: that is Gate B.
 
 ---
 

@@ -180,5 +180,6 @@ Notes:
 | FX7 | → Direction | The floor 3 rooms and the Juggernaut's room now have blocks to charge into (F-013 §10 Q2). Keep, or open them up again? | No |
 | FX10 | → Direction | Waves: the starting values (kill targets, shares, how many are on the player at once, warning and interval), and whether the heal still fits (F-014 §10 Q1 to Q3). | No |
 | FX11 | → Art & Game Feel | The arrival marker is a placeholder ring the size of the arriving body; a dead enemy vanishes with no effect in rooms with waves (F-014). | No |
+| FX12 | → Combat (co-op phase) | Choosing an arrival point asks the nav grid a walk for every free point; with two players on different tiles the flow field is rebuilt point by point, about 46 ms for one choice in room 3-5 (F-014 code review CR-10). Fine with one player (3.6 ms, once per arrival). | No |
 | FX8 | → Art & Game Feel | Room detail: a visual-only decoration layer and solid props. The rooms have the space now (F-013); the format has no layer for either yet. | No |
 | FX9 | → Art & Game Feel | A shake that starts while the camera is still catching up makes the view jump a little (F-013 code review CR-4, §10 Q4): the placeholder shake writes the camera's offset every frame, and each write advances the smoothing. To settle when the shake gets its real look (CX2). | No |
