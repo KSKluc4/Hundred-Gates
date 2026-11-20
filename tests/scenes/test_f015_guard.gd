@@ -4,8 +4,10 @@ extends F015ShellTest
 ## (Space, pad A) or by a click that is also the attack, and the player reads "just pressed" in the
 ## first physics tick after the press: the shell holds the game back so that tick never reaches it.
 ##
-## Each case spawns scenes/main.tscn, gets to the menu (the pause menu after a Start, or the title
-## screen), HOLDS the key (a tap is never "just pressed" for a tick) and watches the player for
+## Each case spawns scenes/main.tscn (spawn_main_on_title(), the player's input on), gets to the
+## menu (the pause menu after a Start, or the title screen), HOLDS the key (a person's press lasts
+## frames, and a held key also reads as pressed; a tap would read "just pressed" too, see the
+## helper's header) and watches the player for
 ## WATCH_TICKS ticks once the game runs again: no dash, no attack, nothing buffered, no cooldown,
 ## the pause menu closed. Rates: 30, 60 and 120 physics ticks/s. At 60 two more timings, each
 ## ASSERTED before the guard is (a case whose timing was not produced is thrown away and tried
@@ -20,8 +22,6 @@ enum Timing { BETWEEN, TICKLESS, STALLED, IN_TICK }
 
 const PAD_A: JoyButton = JOY_BUTTON_A
 const PAD_START: JoyButton = JOY_BUTTON_START
-const MAIN_PATH: String = "res://scenes/main.tscn"
-const SHELL_NODE: NodePath = ^"Shell"
 const RATES: Array[int] = [30, 60, 120]
 const SLOW_RATE: int = 60
 ## Ticks the player is watched for once the game runs again.
@@ -172,7 +172,7 @@ func test_a_press_posted_inside_a_tick_is_guarded_on_start() -> void:
 
 
 func test_a_movement_key_held_through_the_resume_moves_the_player() -> void:
-	await _spawn_real_main()
+	await spawn_main_on_title(_input_on())
 	await start_game()
 	await hold_key_between_ticks(KEY_D)
 	for _i: int in 5:
@@ -185,7 +185,7 @@ func test_a_movement_key_held_through_the_resume_moves_the_player() -> void:
 
 
 func test_a_movement_key_held_through_start_moves_the_player() -> void:
-	await _spawn_real_main()
+	await spawn_main_on_title(_input_on())
 	await hold_key_between_ticks(KEY_D)
 	choose(ShellMenus.START)
 	_game = shell().get_game()
@@ -194,7 +194,7 @@ func test_a_movement_key_held_through_start_moves_the_player() -> void:
 
 func test_is_guarding_from_the_choice_until_the_game_runs_and_pause_does_nothing_on_resume(
 ) -> void:
-	await _spawn_real_main()
+	await spawn_main_on_title(_input_on())
 	await start_game()
 	await tap_key(KEY_ESCAPE)
 	assert_eq(flow().get_state(), ShellFlow.State.PAUSED)
@@ -204,7 +204,7 @@ func test_is_guarding_from_the_choice_until_the_game_runs_and_pause_does_nothing
 
 
 func test_is_guarding_from_the_choice_until_the_game_runs_and_pause_does_nothing_on_start() -> void:
-	await _spawn_real_main()
+	await spawn_main_on_title(_input_on())
 	await get_tree().process_frame
 	choose(ShellMenus.START)
 	_game = shell().get_game()
@@ -241,7 +241,7 @@ func _attempt_case(
 ) -> bool:
 	Engine.physics_ticks_per_second = rate
 	var fixture: bool = starting and timing == Timing.TICKLESS
-	await _spawn_real_main(TowerFixtures.tower_of(1, 1) if fixture else null)
+	await spawn_main_on_title(_input_on(TowerFixtures.tower_of(1, 1) if fixture else null))
 	if not starting:
 		await start_game()
 		await tap_key(KEY_ESCAPE)
@@ -389,18 +389,12 @@ func _assert_pause_is_refused_while_guarding() -> void:
 # --- the scene and the events ---
 
 
-## The real main scene on its title screen, with the helpers' stubs and settings file set before it
-## enters the tree, and the player's input ON. `tower` null is the shipped tower.
-func _spawn_real_main(tower: TowerData = null) -> void:
-	_main = (load(MAIN_PATH) as PackedScene).instantiate()
-	_shell = _main.get_node(SHELL_NODE)
-	_shell.tower_data = tower
-	_shell.settings_path = _settings_file
-	_shell.window_mode_applier = _record_window_mode
-	_shell.quit_handler = _record_quit
-	_shell.player_input_enabled = true
-	add_child_autofree(_main)
-	await get_tree().physics_frame
+## What spawn_main_on_title() is given here: the player's input ON, and `tower` (null is the shipped
+## tower) for the shell to build.
+func _input_on(tower: TowerData = null) -> Callable:
+	return func(shell_node: Shell) -> void:
+		shell_node.tower_data = tower
+		shell_node.player_input_enabled = true
 
 
 ## Lets go of what is held and frees the main scene, so the next attempt starts clean.

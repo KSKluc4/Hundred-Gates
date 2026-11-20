@@ -3,17 +3,25 @@ class_name F015ShellTest
 extends F012GameTest
 ## Shared by F-015's shell tests: spawn_shell() runs the real shell.tscn at 120 ticks/s with the
 ## player's input off and every outside effect stubbed (C12): a settings file of its own under
-## `user://test_f015/`, a window applier that records its calls and a quit handler that counts them,
-## all set before the shell enters the tree. `start_game()` then chooses Start and waits for the
-## input guard, and points F012GameTest's `_game` at the shell's game, so session(), player(),
-## town(), floor_scene(), enter_floor_through_gate() and the rest work on it.
+## `user://test_f015/` (its name carries the process id: two runs of the project at once share the
+## folder), a window applier that records its calls and a quit handler that counts them, all set
+## before the shell enters the tree. spawn_main_on_title() does the same for the real main scene
+## (its `Shell` is wired by the same function), stays on the title screen and keeps the main scene
+## for main_scene(). `start_game()` then chooses Start and waits for the input guard, and points
+## F012GameTest's `_game` at the shell's game, so session(), player(), town(), floor_scene(),
+## enter_floor_through_gate() and the rest work on it.
 ## after_each() puts the settings back, deletes the file, turns the 2D physics space on again (a
 ## failed test must not freeze the next ones) and lets go of every key and pad button.
 ##
-## Events are real: `Input.parse_input_event` and a flush. A tap (press and release at once) is
-## never "just pressed" for a tick, so a test that needs a press the player's input can read (the
-## input guard) holds the key instead. The `_between_ticks` ones wait for a process frame first,
-## where the OS delivers an event; the others post at once, inside whatever tick the test is in.
+## Events are real: `Input.parse_input_event` and a flush. Measured in 4.7.2 (key, pad button and
+## mouse button, at 60 and 120 ticks/s, F-015 review round 1): an event posted BETWEEN two ticks
+## (from a process frame) reads `Input.is_action_just_pressed()` as true in the next tick, whether
+## it was a tap (a press and a release posted together) or a hold; one posted INSIDE a tick (from
+## `physics_frame`, before the nodes' own step) reads true in the tick after that, never in its
+## own. So a tap is as visible to the player's input as a hold; the input guard's tests still hold
+## the key, as a person does, so that it also reads as pressed. The `_between_ticks` helpers wait
+## for a process frame first, where the OS delivers an event; the others post at once, inside
+## whatever tick the test is in.
 
 const SHELL_SCENE_PATH: String = "res://src/world/shell.tscn"
 const TEST_DIR: String = "user://test_f015"
@@ -40,7 +48,7 @@ func before_each() -> void:
 	_held_pad_buttons = []
 	_file_count += 1
 	var script_name: String = (get_script() as Script).resource_path.get_file().get_basename()
-	_settings_file = "%s/%s_%d.cfg" % [TEST_DIR, script_name, _file_count]
+	_settings_file = "%s/%s_%d_%d.cfg" % [TEST_DIR, script_name, OS.get_process_id(), _file_count]
 	DirAccess.make_dir_recursive_absolute(TEST_DIR)
 
 
@@ -60,13 +68,25 @@ func after_each() -> void:
 ## `prepare` sets none.
 func spawn_shell(prepare: Callable = Callable()) -> void:
 	_shell = (load(SHELL_SCENE_PATH) as PackedScene).instantiate()
-	_shell.settings_path = _settings_file
-	_shell.window_mode_applier = _record_window_mode
-	_shell.quit_handler = _record_quit
-	_shell.player_input_enabled = false
+	_stub_the_shell(_shell)
 	if prepare.is_valid():
 		prepare.call(_shell)
 	add_child_autofree(_shell)
+	await get_tree().physics_frame
+
+
+## The real scenes/main.tscn on its title screen, as a launch gives it: its `Shell` is given exactly
+## what spawn_shell() gives a shell (the settings file, the two stubs, the player's input off), then
+## `prepare.call(shell)` may change any of it, all before the main scene enters the tree. It does
+## not choose Start: the test is on the title screen. `_shell` is that shell and main_scene() the
+## main scene.
+func spawn_main_on_title(prepare: Callable = Callable()) -> void:
+	_main = (load(MAIN_SCENE_PATH) as PackedScene).instantiate()
+	_shell = _main.get_node(MAIN_SHELL_NODE)
+	_stub_the_shell(_shell)
+	if prepare.is_valid():
+		prepare.call(_shell)
+	add_child_autofree(_main)
 	await get_tree().physics_frame
 
 
@@ -76,6 +96,15 @@ func spawn_shell_on(tower: TowerData, input_enabled: bool = false) -> void:
 		shell_node.tower_data = tower
 		shell_node.player_input_enabled = input_enabled
 	await spawn_shell(prepare)
+
+
+## The one place that keeps a shell off the real settings file and the real window (C12), for
+## spawn_shell() and spawn_main_on_title().
+func _stub_the_shell(shell_node: Shell) -> void:
+	shell_node.settings_path = _settings_file
+	shell_node.window_mode_applier = _record_window_mode
+	shell_node.quit_handler = _record_quit
+	shell_node.player_input_enabled = false
 
 
 func shell() -> Shell:
@@ -109,8 +138,8 @@ func quit_calls() -> int:
 
 
 ## Chooses Start, points `_game` at the shell's game and waits until the input guard let it go and
-## the physics space is back (one tick after the game, DEV-1): the game then has run for a tick,
-## with no commands, and the test is at the start of the next.
+## the physics space is back (one tick after the game, F-015/DEV-6): the game then has run for a
+## tick, with no commands, and the test is at the start of the next.
 func start_game() -> void:
 	choose(ShellMenus.START)
 	_game = _shell.get_game()
@@ -122,7 +151,7 @@ func start_game() -> void:
 
 ## Waits, one physics tick at a time, until the shell's guard has let the game run; the test is then
 ## at the start of the first tick the game runs in, which is where run_ticks() expects to be. The
-## physics space is still stopped there: it comes back during that tick (DEV-1).
+## physics space is still stopped there: it comes back during that tick (F-015/DEV-6).
 func wait_for_guard() -> void:
 	for _i: int in GUARD_LIMIT_FRAMES:
 		if not _shell.is_guarding():

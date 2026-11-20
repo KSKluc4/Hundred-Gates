@@ -13,7 +13,8 @@ var settings: GameSettings = GameSettings.new(Tunables.shell)
 
 ## Reads the file into `settings`, in place. A missing file is the defaults and false, silently.
 ## A file that cannot be read or is not a ConfigFile is the defaults, false and one warning. True
-## when the file was read; a value in it that is missing or not a bool is that setting's default.
+## when the file was read; a value in it that is missing or not a bool (or is an object, which is
+## freed) is that setting's default.
 func load_from(path: String) -> bool:
 	if not FileAccess.file_exists(path):
 		settings.reset()
@@ -25,11 +26,36 @@ func load_from(path: String) -> bool:
 		settings.reset()
 		return false
 	var values: Dictionary = {}
-	if file.has_section(SECTION):
-		for key: String in file.get_section_keys(SECTION):
-			values[key] = file.get_value(SECTION, key)
+	for section: String in file.get_sections():
+		for key: String in file.get_section_keys(section):
+			var value: Variant = file.get_value(section, key)
+			if _drop_objects(value):
+				continue  # A hand-written `Object(Node,...)`: freed, and no setting.
+			if section == SECTION:
+				values[key] = value
 	settings.from_dict(values)
 	return true
+
+
+## `ConfigFile` reads Godot's text format, which builds an object from `Object(Node,...)`. A value
+## of the file that is an object, or holds one in an Array or a Dictionary, is never a setting (it
+## is not a bool: the default). Frees what was built, as a plain Object or a Node is not counted by
+## reference and would leak, and returns whether `value` held an object.
+func _drop_objects(value: Variant) -> bool:
+	var held: bool = false
+	if value is Object:
+		var object: Object = value
+		if not object is RefCounted and is_instance_valid(object):
+			object.free()
+		held = true
+	elif value is Array:
+		for item: Variant in value:
+			held = _drop_objects(item) or held
+	elif value is Dictionary:
+		for key: Variant in value:
+			held = _drop_objects(key) or held
+			held = _drop_objects(value[key]) or held
+	return held
 
 
 ## Writes `settings` to `path`. A failed write is false and one warning; the setting keeps its

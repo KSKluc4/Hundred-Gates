@@ -11,7 +11,6 @@ extends F012SceneTest
 
 const GAME_SCENE_PATH: String = "res://src/world/game.tscn"
 const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
-const GAME_NODE: NodePath = ^"Game"
 ## F-015/T7: the shell of the main scene, and where spawn_main() keeps its settings file (C12).
 const MAIN_SHELL_NODE: NodePath = ^"Shell"
 const MAIN_SETTINGS_DIR: String = "user://test_f015"
@@ -66,7 +65,7 @@ func spawn_game(tower: TowerData, prepare: Callable = Callable()) -> void:
 
 ## The real main scene with the shipped tower, past its title screen: Start is chosen through the
 ## shell's panel and the helper waits for the shell's input guard and for the physics space to come
-## back (one tick after the game, F-015/DEV-1), so the game is running when it returns. `prepare`
+## back (one tick after the game, F-015/DEV-6), so the game is running when it returns. `prepare`
 ## gets the main scene's `Shell` before the main scene enters the tree; the shell is given a
 ## settings file of this test's own under `user://test_f015/`, a window applier and a quit handler
 ## that do nothing, and the player's input off (F-015/C12): no test touches the real settings or
@@ -76,7 +75,10 @@ func spawn_main(prepare: Callable = Callable()) -> void:
 	var shell_node: Shell = _main.get_node(MAIN_SHELL_NODE)
 	_main_file_count += 1
 	var script_name: String = (get_script() as Script).resource_path.get_file().get_basename()
-	_main_settings_file = "%s/%s_main_%d.cfg" % [MAIN_SETTINGS_DIR, script_name, _main_file_count]
+	_main_settings_file = (
+		"%s/%s_main_%d_%d.cfg"
+		% [MAIN_SETTINGS_DIR, script_name, OS.get_process_id(), _main_file_count]
+	)
 	DirAccess.make_dir_recursive_absolute(MAIN_SETTINGS_DIR)
 	shell_node.settings_path = _main_settings_file
 	shell_node.window_mode_applier = _main_window_applier_stub
