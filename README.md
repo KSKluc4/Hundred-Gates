@@ -45,6 +45,11 @@ Open the project in Godot and press F5, or run `godot --path .` from the repo ro
 F3 shows or hides the debug overlay. Set `debug_overlay_visible_on_start` on
 `data/tunables/game_tunables.tres` in the inspector to choose its starting state.
 
+The three floors run on their own for now: open `scenes/debug/f011_floor_1.tscn`,
+`f011_floor_2.tscn` or `f011_floor_3.tscn` in Godot and press F6. `N` skips to the next room and
+`R` restarts the current one. These scenes are placeholders until the game loop is wired into
+`main.tscn`.
+
 ## Checks
 
 Run these before every commit:

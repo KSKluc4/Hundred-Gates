@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="FloorData" format=3]
+
+[ext_resource type="Script" path="res://src/core/floors/floor_data.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/floors/room_data.gd" id="2"]
+[ext_resource type="Resource" path="res://data/floors/floor_1/room_1.tres" id="3"]
+[ext_resource type="Resource" path="res://data/floors/floor_1/room_2.tres" id="4"]
+[ext_resource type="Resource" path="res://data/floors/floor_1/room_3.tres" id="5"]
+[ext_resource type="Resource" path="res://data/floors/floor_1/boss.tres" id="6"]
+
+[resource]
+script = ExtResource("1")
+floor_number = 1
+rooms = Array[ExtResource("2")]([ExtResource("3"), ExtResource("4"), ExtResource("5"), ExtResource("6")])

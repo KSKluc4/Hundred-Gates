@@ -10,6 +10,8 @@ var _resolver: HitResolver = HitResolver.new()
 var _step_rate: int = 0
 var _tunables: PlayerCombatTunables
 var _time: float = 0.0
+## F-011/C2: derived from the room's rows, so never in to_dict(). Null: no routing.
+var _nav: NavGrid = null
 
 
 ## The sim stores its own rate: only a checked reload may change it (F-003/C18).
@@ -45,13 +47,22 @@ func set_tunables(tunables: PlayerCombatTunables) -> void:
 	_tunables = tunables
 
 
+## F-011/AC11: every view this sim captures carries it. Not part of a snapshot.
+func set_nav(nav_grid: NavGrid) -> void:
+	_nav = nav_grid
+
+
+func get_nav() -> NavGrid:
+	return _nav
+
+
 ## F-003/C15. Commands were submitted before this call. move_bodies is empty in core tests,
 ## where the logic's own integration stands.
 func tick(delta: float, move_bodies: Callable = Callable()) -> void:
 	var steps: int = CombatTiming.step_count(delta, _step_rate)
 	var duration: float = delta / steps
 	for _i: int in steps:
-		var view: CombatView = CombatView.capture(_combatants)  # F-004/C4: one, for everyone.
+		var view: CombatView = CombatView.capture(_combatants, _nav)  # F-004/C4: one, for everyone.
 		for combatant: Combatant in _combatants:
 			combatant.sense(view)
 		for combatant: Combatant in _combatants:

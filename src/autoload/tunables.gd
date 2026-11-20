@@ -47,10 +47,17 @@ const JUGGERNAUT_DEBRIS_PATH: String = "res://data/attacks/juggernaut_debris.tre
 const JUGGERNAUT_P2_CHARGE_A_PATH: String = "res://data/attacks/juggernaut_p2_charge_a.tres"  # G5
 const JUGGERNAUT_P2_CHARGE_B_PATH: String = "res://data/attacks/juggernaut_p2_charge_b.tres"  # G5
 const JUGGERNAUT_CHARGE_C_PATH: String = "res://data/attacks/juggernaut_charge_c.tres"  # G5
+# F-011/C9, C15
+const FLOORS_PATH: String = "res://data/tunables/floors.tres"  # G5
+# F-011/C15: the shipped floors (floors.md encounter tables).
+const FLOOR_1_PATH: String = "res://data/floors/floor_1.tres"  # G5
+const FLOOR_2_PATH: String = "res://data/floors/floor_2.tres"  # G5
+const FLOOR_3_PATH: String = "res://data/floors/floor_3.tres"  # G5
 
 var game: GameTunables = preload(GAME_TUNABLES_PATH)
 var player_combat: PlayerCombatTunables = preload(PLAYER_COMBAT_PATH)
 var enemy_combat: EnemyCombatTunables = preload(ENEMY_COMBAT_PATH)
+var floors: FloorTunables = preload(FLOORS_PATH)
 
 
 ## F-001/C17, F-003/C18: reads a data file from disk, never from the cache. Null if it's gone.

@@ -1,3 +1,4 @@
+# gdlint:disable=max-public-methods
 class_name CombatState
 extends RefCounted
 ## What being in a fight adds to an entity (F-003 T7): HP, hitstop, knockback, hurt i-frames.
@@ -95,6 +96,21 @@ func set_max_hp(max_hp: int) -> void:
 
 func refill() -> void:
 	_hp = _max_hp
+
+
+## F-011/C12: returns what was healed. Never raises above max, never revives (0 HP stays 0), and
+## a zero or negative amount does nothing.
+func heal(amount: int) -> int:
+	if amount <= 0 or _hp <= 0:
+		return 0
+	var healed: int = maxi(0, mini(amount, _max_hp - _hp))
+	_hp += healed
+	return healed
+
+
+## F-011/C12: clamped to 0..max. Sets only HP: no `died`, no `damaged`.
+func set_hp(hp: int) -> void:
+	_hp = clampi(hp, 0, _max_hp)
 
 
 func is_hurt_protected() -> bool:
