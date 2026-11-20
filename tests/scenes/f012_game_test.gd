@@ -2,15 +2,21 @@
 class_name F012GameTest
 extends F012SceneTest
 ## Shared by F-012's game tests (T7): spawn_game() runs the real game.tscn on a tower, spawn_main()
-## the real scenes/main.tscn, both at 120 ticks/s with the player's input off. The helpers of
-## F012SceneTest then work on whatever the game shows: player(), town() and menu() follow it, and
-## floor_scene() / room() / enemy() read the floor. One tick per `await physics_frame`.
+## the real scenes/main.tscn and chooses Start on its title screen (F-015/T7), both at 120 ticks/s
+## with the player's input off. The helpers of F012SceneTest then work on whatever the game shows:
+## player(), town() and menu() follow it, and floor_scene() / room() / enemy() read the floor. One
+## tick per `await physics_frame`.
 ## Two tunables are changed for the test and restored after it: the banner stays long enough to be
 ## read in a slow test, and a test may shorten the death pause with set_death_delay().
 
 const GAME_SCENE_PATH: String = "res://src/world/game.tscn"
 const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
 const GAME_NODE: NodePath = ^"Game"
+## F-015/T7: the shell of the main scene, and where spawn_main() keeps its settings file (C12).
+const MAIN_SHELL_NODE: NodePath = ^"Shell"
+const MAIN_SETTINGS_DIR: String = "user://test_f015"
+## Physics ticks spawn_main() lets the shell's input guard take before it calls it stuck.
+const MAIN_GUARD_LIMIT_TICKS: int = 20
 ## Ticks a scripted walk may take before the test calls it stuck.
 const WALK_LIMIT_TICKS: int = 600
 ## Banner time while a test runs: the tests are slow, the HUD counts real frames.
@@ -22,6 +28,8 @@ var _game: Game
 var _main: Node
 var _death_delay_before: float
 var _banner_duration_before: float
+var _main_settings_file: String = ""
+var _main_file_count: int = 0
 
 
 func before_each() -> void:
@@ -34,6 +42,13 @@ func before_each() -> void:
 func after_each() -> void:
 	Tunables.tower.death_return_delay = _death_delay_before
 	Tunables.tower.banner_duration = _banner_duration_before
+	# F-015/C12: spawn_main()'s shell touched the global settings and the physics space.
+	UserSettings.reset_to_defaults()
+	if not _main_settings_file.is_empty() and FileAccess.file_exists(_main_settings_file):
+		DirAccess.remove_absolute(_main_settings_file)
+	_main_settings_file = ""
+	DirAccess.remove_absolute(MAIN_SETTINGS_DIR)  # Only succeeds when it is empty.
+	PhysicsServer2D.space_set_active(get_viewport().world_2d.space, true)
 	await super.after_each()
 
 
@@ -49,20 +64,48 @@ func spawn_game(tower: TowerData, prepare: Callable = Callable()) -> void:
 	await get_tree().physics_frame  # run_ticks must start just before a runner tick.
 
 
-## The real main scene with the shipped tower. `prepare` gets its Game node before it enters the
-## tree.
+## The real main scene with the shipped tower, past its title screen: Start is chosen through the
+## shell's panel and the helper waits for the shell's input guard and for the physics space to come
+## back (one tick after the game, F-015/DEV-1), so the game is running when it returns. `prepare`
+## gets the main scene's `Shell` before the main scene enters the tree; the shell is given a
+## settings file of this test's own under `user://test_f015/`, a window applier and a quit handler
+## that do nothing, and the player's input off (F-015/C12): no test touches the real settings or
+## the real window.
 func spawn_main(prepare: Callable = Callable()) -> void:
 	_main = (load(MAIN_SCENE_PATH) as PackedScene).instantiate()
-	_game = _main.get_node(GAME_NODE)
-	_game.player_input_enabled = false
+	var shell_node: Shell = _main.get_node(MAIN_SHELL_NODE)
+	_main_file_count += 1
+	var script_name: String = (get_script() as Script).resource_path.get_file().get_basename()
+	_main_settings_file = "%s/%s_main_%d.cfg" % [MAIN_SETTINGS_DIR, script_name, _main_file_count]
+	DirAccess.make_dir_recursive_absolute(MAIN_SETTINGS_DIR)
+	shell_node.settings_path = _main_settings_file
+	shell_node.window_mode_applier = _main_window_applier_stub
+	shell_node.quit_handler = _main_quit_stub
+	shell_node.player_input_enabled = false
 	if prepare.is_valid():
-		prepare.call(_game)
+		prepare.call(shell_node)
 	add_child_autofree(_main)
-	await get_tree().physics_frame
+	shell_node.get_menu().choose(ShellMenus.START)
+	_game = shell_node.get_game()
+	assert_not_null(_game, "Start on the main scene's title screen built the game")
+	for _i: int in MAIN_GUARD_LIMIT_TICKS:
+		if not shell_node.is_guarding():
+			break
+		await get_tree().physics_frame
+	assert_false(shell_node.is_guarding(), "the main scene's guard let the game run")
+	await get_tree().physics_frame  # The physics space is back one tick after the game.
 
 
 func main_scene() -> Node:
 	return _main
+
+
+func _main_window_applier_stub(_mode: DisplayServer.WindowMode) -> void:
+	pass
+
+
+func _main_quit_stub() -> void:
+	pass
 
 
 func game() -> Game:
