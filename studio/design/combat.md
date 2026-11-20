@@ -145,11 +145,17 @@ player: **read and dodge** (chaser), **close distance and move under fire** (cas
   resolve in registration order (F-003/C16, F-004/C4).
 - **Targets (co-op ready).** Nearest living player; ties by registration order. Re-picked at
   every decision, fixed during an attack. Nothing assumes one player.
-- **Aggro.** Starts when a living player is within `aggro_radius_tiles`, or when the enemy
-  takes damage. No leash in phase 1.
+- **Aggro.** Starts when a living player is within `aggro_radius_tiles`, when the enemy
+  takes damage, or when it arrives as a reinforcement (F-014). No leash in phase 1.
+- **Waiting (F-014).** A reinforcement exists in the sim from the room's start in a state
+  of its own: not alive to anyone, cannot be hit (a hit changes nothing), senses nothing,
+  does nothing, has no hitbox and no body. It leaves that state only by arriving: placed at
+  its arrival point, idle, aggroed, with a fresh combat state. An enemy that is alive and
+  aggroed is **engaged**.
 - **Attack cooldown.** Starts when recovery ends. The enemy keeps moving during it.
 - **Death.** `died` once, then inert: no hitbox, can't be hit, no body collision. Stays in
-  the sim (snapshots match by id and order).
+  the sim (snapshots match by id and order). In a room with waves its body is no longer
+  drawn (F-014); elsewhere the corpse stays.
 - **Damage band, floor 1:** 18–25 per hit, so a Warrior with 100 HP dies in 4–6 hits (CQ5).
 - **Data.** One `EnemyData` per archetype in `data/enemies/`, attacks in `data/attacks/`
   (`EnemyAttackData`, an `AttackData` with `aim_track_time` and `lunge_tiles`). Behavior is

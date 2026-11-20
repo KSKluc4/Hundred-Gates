@@ -12,6 +12,8 @@ var _tunables: PlayerCombatTunables
 var _time: float = 0.0
 ## F-011/C2: derived from the room's rows, so never in to_dict(). Null: no routing.
 var _nav: NavGrid = null
+## F-014/C6: the room's director, stepped once per step. Null: no waves, and the sim is as it was.
+var _waves: RoomWaves = null
 
 
 ## The sim stores its own rate: only a checked reload may change it (F-003/C18).
@@ -56,6 +58,16 @@ func get_nav() -> NavGrid:
 	return _nav
 
 
+## F-014/C6: attaches the director. It reads the combatants registered here, so attach it once
+## they are. Null detaches it. With none, nothing here changes (C15).
+func set_waves(waves: RoomWaves) -> void:
+	_waves = waves
+
+
+func get_waves() -> RoomWaves:
+	return _waves
+
+
 ## F-003/C15. Commands were submitted before this call. move_bodies is empty in core tests,
 ## where the logic's own integration stands.
 func tick(delta: float, move_bodies: Callable = Callable()) -> void:
@@ -68,6 +80,8 @@ func tick(delta: float, move_bodies: Callable = Callable()) -> void:
 		for combatant: Combatant in _combatants:
 			combatant.step(duration)
 		_time += duration
+		if _waves != null:
+			_waves.step(duration, view)  # F-014/C6: after every step() and the clock, before contact.
 		for combatant: Combatant in _combatants:
 			combatant.fire_due_actions()  # On the contact's own instant, so it sees them.
 		if move_bodies.is_valid():
@@ -99,12 +113,15 @@ func to_dict() -> Dictionary:
 	var entries: Dictionary = {}
 	for combatant: Combatant in _combatants:
 		entries[combatant.get_combat_id()] = combatant.to_dict()
-	return {
+	var snapshot: Dictionary = {
 		"step_rate": _step_rate,
 		"time": _time,
 		"order": _ids(),
 		"combatants": entries,
 	}
+	if _waves != null:
+		snapshot["waves"] = _waves.to_dict()  # F-014/C10: only with a director.
+	return snapshot
 
 
 ## F-003/C19: refuses other ids, another order or another rate, and then changes nothing.
@@ -124,12 +141,19 @@ func from_dict(snapshot: Dictionary) -> bool:
 	for combatant: Combatant in _combatants:
 		var entry: Dictionary = snapshot["combatants"][combatant.get_combat_id()]
 		errors.append_array(combatant.restore_errors(entry))
+	if _waves != null:  # F-014/C10: a snapshot without the entry, or with a bad one, is refused.
+		if not snapshot.has("waves") or typeof(snapshot["waves"]) != TYPE_DICTIONARY:
+			errors.append("waves: no director state in the snapshot")
+		else:
+			errors.append_array(_waves.restore_errors(snapshot["waves"]))
 	if not errors.is_empty():  # F-007/C14: before anything changes.
 		push_error("CombatSim snapshot rejected: %s" % ", ".join(errors))
 		return false
 	_time = snapshot["time"]
 	for combatant: Combatant in _combatants:
 		combatant.from_dict(snapshot["combatants"][combatant.get_combat_id()])
+	if _waves != null:
+		_waves.from_dict(snapshot["waves"])
 	return true
 
 

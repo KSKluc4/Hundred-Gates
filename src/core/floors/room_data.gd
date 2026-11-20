@@ -1,14 +1,16 @@
 class_name RoomData
 extends Resource
 ## One room as an ASCII tile grid (F-011/C6, D-012, G9). One character = one tile.
-## `#` wall, `.` floor, `P` player start, `E` exit, `1`-`9` spawn of `enemies[digit - 1]`.
+## `#` wall, `.` floor, `P` player start, `E` exit, `1`-`9` spawn of `enemies[digit - 1]`, `S` an
+## arrival point of the room's reinforcements (F-014/C1): floor for every rule.
 ## Tile (x, y) has its centre at (x + 0.5, y + 0.5) tiles; the top-left corner is (0, 0).
 
 const WALL: String = "#"
 const FLOOR: String = "."
 const PLAYER_START: String = "P"
 const EXIT: String = "E"
-const LEGEND: String = "#.PE123456789"
+const ARRIVAL_POINT: String = "S"
+const LEGEND: String = "#.PES123456789"
 const CARDINALS: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 ## The 2x2 blocks that contain a tile, as the offset of each block's top-left corner.
 const BLOCK_ORIGINS: Array[Vector2i] = [
@@ -22,6 +24,12 @@ const BLOCK_ORIGINS: Array[Vector2i] = [
 ## F-012/C8: a room with no enemies and no spawns, never a boss room (the town). Only a tower's
 ## town may be one: FloorData refuses it.
 @export var is_safe_room: bool = false
+## F-014/C1: the enemies that arrive during the fight, in arrival order. Each value is 1-based,
+## like a spawn digit: `enemies[value - 1]`. Empty: the room has no waves.
+@export var reinforcements: PackedInt32Array = []
+## F-014/C1: how many enemies may be engaged at once before arrivals pause. 0 means
+## `FloorTunables.wave_max_engaged`.
+@export var max_engaged: int = 0
 
 
 ## Width of the first row by number of rows. validate() refuses a grid that isn't rectangular.
@@ -32,7 +40,12 @@ func get_size() -> Vector2i:
 ## F-011 contract: floor, player start and spawns walk. Wall, exit and outside don't.
 func is_walkable(tile: Vector2i) -> bool:
 	var tile_char: String = _char_at(tile.x, tile.y)
-	return tile_char == FLOOR or tile_char == PLAYER_START or _is_spawn_char(tile_char)
+	return (
+		tile_char == FLOOR
+		or tile_char == PLAYER_START
+		or tile_char == ARRIVAL_POINT  # F-014/C1
+		or _is_spawn_char(tile_char)
+	)
 
 
 ## Centre of the `P` tile, in tiles. Zero when there is none (validate() refuses that).
@@ -65,6 +78,46 @@ func get_spawns() -> Array[RoomSpawn]:
 	return spawns
 
 
+## F-014/C2: the enemies the room builds, the placed ones and the reinforcements. An entry
+## without an enemy is skipped here (as in get_spawns()) and reported by validate().
+func get_kill_target() -> int:
+	return get_spawns().size() + get_reinforcement_spawns().size()
+
+
+## F-014/C2: one per reinforcement, in arrival order. Ids go on from the last spawn tile
+## (`<EnemyData.id>_<n>`, n counting every spawn tile and then every reinforcement from 1). The
+## position is the first arrival point's centre, or zero when there is none (validate() refuses
+## that); the director chooses where each one really arrives.
+func get_reinforcement_spawns() -> Array[RoomSpawn]:
+	var spawns: Array[RoomSpawn] = []
+	var points: Array[Vector2] = get_arrival_points_tiles()
+	var placed: int = _spawn_tiles().size()
+	for index: int in reinforcements.size():
+		var enemy_index: int = reinforcements[index] - 1
+		if enemy_index < 0 or enemy_index >= enemies.size() or enemies[enemy_index] == null:
+			continue
+		var spawn: RoomSpawn = RoomSpawn.new()
+		spawn.enemy = enemies[enemy_index]
+		spawn.position_tiles = points[0] if not points.is_empty() else Vector2.ZERO
+		spawn.combat_id = StringName("%s_%d" % [spawn.enemy.id, placed + index + 1])
+		spawn.is_reinforcement = true
+		spawns.append(spawn)
+	return spawns
+
+
+## F-014/C2: the centres of the `S` tiles, row-major.
+func get_arrival_points_tiles() -> Array[Vector2]:
+	var points: Array[Vector2] = []
+	for tile: Vector2i in _tiles_where(_is_arrival_char):
+		points.append(_centre_of(tile))
+	return points
+
+
+## F-014/C2: `max_engaged`, or the tunable when the room leaves it at 0.
+func get_max_engaged(rules: FloorTunables) -> int:
+	return max_engaged if max_engaged > 0 else rules.wave_max_engaged
+
+
 ## F-011/C8, C16. Empty result means valid. Every error starts with the rule's name and, where
 ## it applies, names the tile `(x, y)`. All errors are returned, not the first.
 func validate(rules: FloorTunables) -> PackedStringArray:
@@ -82,6 +135,7 @@ func validate(rules: FloorTunables) -> PackedStringArray:
 	_check_pinches(errors)
 	_check_thin_walls(errors)
 	_check_spawns(rules, errors)
+	_check_waves(rules, errors)
 	return errors
 
 
@@ -314,6 +368,127 @@ func _check_safe_room(spawn_count: int, errors: PackedStringArray) -> void:
 		errors.append("safe_room: a safe room can't also be a boss room")
 
 
+## F-014/C3: reinforcements and arrival points. A room with neither (and `max_engaged` 0) gets no
+## error here. A boss room and a safe room can't hold waves: they get the error for that and not
+## the ones that follow from it (a missing or orphaned arrival point, a value out of range, the
+## kill target), so each rule can fail on its own.
+func _check_waves(rules: FloorTunables, errors: PackedStringArray) -> void:
+	var points: Array[Vector2i] = _tiles_where(_is_arrival_char)
+	var combat_room: bool = not is_boss_room and not is_safe_room
+	if max_engaged < 0:
+		errors.append("waves: max_engaged is %d, must be >= 0" % max_engaged)
+	_check_wave_room_kind(points, errors)
+	if combat_room:
+		_check_wave_counts(points.size(), rules, errors)
+		for index: int in reinforcements.size():
+			if reinforcements[index] < 1 or reinforcements[index] > enemies.size():
+				errors.append(
+					(
+						"waves: reinforcements[%d] is %d but enemies has %d entries"
+						% [index, reinforcements[index], enemies.size()]
+					)
+				)
+		if not points.is_empty() and reinforcements.is_empty():
+			for tile: Vector2i in points:
+				errors.append(
+					(
+						"waves: arrival point at %s but the room has no reinforcements"
+						% _name(tile.x, tile.y)
+					)
+				)
+	_check_arrival_spacing(points, rules, errors)
+
+
+## F-014/C3: reinforcements and `S` tiles in a boss room or a safe room.
+func _check_wave_room_kind(points: Array[Vector2i], errors: PackedStringArray) -> void:
+	var kinds: Dictionary[String, bool] = {"boss": is_boss_room, "safe": is_safe_room}
+	for kind: String in kinds:
+		if not kinds[kind]:
+			continue
+		if not reinforcements.is_empty():
+			errors.append(
+				(
+					"waves: a %s room can't have reinforcements, found %d"
+					% [kind, reinforcements.size()]
+				)
+			)
+		for tile: Vector2i in points:
+			errors.append(
+				(
+					"waves: arrival point at %s, a %s room can't have arrival points"
+					% [_name(tile.x, tile.y), kind]
+				)
+			)
+
+
+## F-014/C3: enough arrival points for the reinforcements, and a kill target within the limit.
+func _check_wave_counts(point_count: int, rules: FloorTunables, errors: PackedStringArray) -> void:
+	if reinforcements.is_empty():
+		return
+	if not point_count >= rules.wave_min_arrival_points:
+		errors.append(
+			(
+				"waves: %d reinforcements need at least %d arrival points (S), found %d"
+				% [reinforcements.size(), rules.wave_min_arrival_points, point_count]
+			)
+		)
+	var kill_target: int = get_kill_target()
+	if not kill_target <= rules.max_kill_target:
+		errors.append(
+			"waves: kill target is %d, at most %d allowed" % [kill_target, rules.max_kill_target]
+		)
+
+
+## F-014/C3: an `S` too near P, near another `S`, or near a spawn tile (centres).
+func _check_arrival_spacing(
+	points: Array[Vector2i], rules: FloorTunables, errors: PackedStringArray
+) -> void:
+	var starts: Array[Vector2i] = _tiles_where(_is_player_char)
+	var spawn_tiles: Array[Vector2i] = _spawn_tiles()
+	for index: int in points.size():
+		var point: Vector2i = points[index]
+		if starts.size() == 1:
+			var from_start: float = _centre_of(point).distance_to(_centre_of(starts[0]))
+			if not from_start >= rules.min_spawn_distance_tiles:
+				errors.append(
+					(
+						"waves: arrival point at %s is %.2f tiles from P, needs at least %s"
+						% [_name(point.x, point.y), from_start, rules.min_spawn_distance_tiles]
+					)
+				)
+		for other: Vector2i in points.slice(index + 1):
+			var apart: float = _centre_of(point).distance_to(_centre_of(other))
+			if not apart >= rules.wave_spawn_gap_tiles:
+				errors.append(
+					(
+						"waves: arrival points at %s and %s are %.2f tiles apart, needs at least %s"
+						% [
+							_name(point.x, point.y),
+							_name(other.x, other.y),
+							apart,
+							rules.wave_spawn_gap_tiles
+						]
+					)
+				)
+		for spawn_tile: Vector2i in spawn_tiles:
+			var from_spawn: float = _centre_of(point).distance_to(_centre_of(spawn_tile))
+			if not from_spawn >= rules.wave_spawn_gap_tiles:
+				(
+					errors
+					. append(
+						(
+							"waves: arrival point at %s is %.2f tiles from the spawn at %s, needs at least %s"
+							% [
+								_name(point.x, point.y),
+								from_spawn,
+								_name(spawn_tile.x, spawn_tile.y),
+								rules.wave_spawn_gap_tiles
+							]
+						)
+					)
+				)
+
+
 ## True when some 2x2 block holding `tile` has `test` true on all four tiles.
 func _in_block(tile: Vector2i, test: Callable) -> bool:
 	for origin: Vector2i in BLOCK_ORIGINS:
@@ -398,6 +573,10 @@ func _tiles_where(test: Callable) -> Array[Vector2i]:
 
 func _is_spawn_char(tile_char: String) -> bool:
 	return tile_char.length() == 1 and tile_char >= "1" and tile_char <= "9"
+
+
+func _is_arrival_char(tile_char: String) -> bool:
+	return tile_char == ARRIVAL_POINT
 
 
 func _is_exit_char(tile_char: String) -> bool:

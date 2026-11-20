@@ -58,10 +58,29 @@ func _draw() -> void:
 
 
 func get_hurtboxes() -> Array[Hurtbox]:
+	var sim: CombatSim = runner.get_sim()
+	return hurtboxes_for(sim.get_combatants(), has_director(sim))
+
+
+## F-014/C11: a ring for each combatant, except a waiting enemy (not there yet) and, where the
+## sim has a director (waves), a dead enemy (it vanishes, so its ring must too).
+static func hurtboxes_for(combatants: Array[Combatant], with_director: bool) -> Array[Hurtbox]:
 	var hurtboxes: Array[Hurtbox] = []
-	for combatant: Combatant in runner.get_sim().get_combatants():
+	for combatant: Combatant in combatants:
+		var enemy: EnemyLogic = combatant as EnemyLogic
+		if enemy == null:
+			hurtboxes.append(combatant.get_hurtbox())
+			continue
+		var is_dead: bool = enemy.get_state() == EnemyLogic.State.DEAD
+		if enemy.is_waiting() or (with_director and is_dead):
+			continue
 		hurtboxes.append(combatant.get_hurtbox())
 	return hurtboxes
+
+
+## F-014/C11: whether the sim has a director (CombatSim.get_waves() is null when none is attached).
+static func has_director(sim: CombatSim) -> bool:
+	return sim.get_waves() != null
 
 
 ## F-005/C6: every combatant's, projectiles included.

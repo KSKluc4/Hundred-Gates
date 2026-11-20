@@ -17,3 +17,5 @@ layout_mode = 0
 [node name="LocationLabel" type="Label" parent="."]
 
 [node name="BannerLabel" type="Label" parent="."]
+
+[node name="KillsLabel" type="Label" parent="."]

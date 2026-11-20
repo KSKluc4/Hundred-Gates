@@ -17,14 +17,15 @@
 | F-008 | Volleys + floor 2 boss (Hexer) | DONE | — | — |
 | F-009 | Floor 3 boss (Juggernaut) | DONE | — | — |
 | F-010 | Studio queue — chained features, auto-drafted specs, opt-in automatic Gate A | PLAN_REVIEW | Auditor | — |
-| F-011 | Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox | CODE_REVIEW | Lucas | — |
-| F-012 | The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene | CODE_REVIEW | Lucas | F-011 (stacked on its branch, D-013; merge F-011 first) |
-| F-013 | Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair) | CODE_REVIEW | Lucas | F-012 (stacked on its branch, D-015) |
+| F-011 | Floor structure — rooms as data, navigation, room-clear healing, floors 1–3 in greybox | DONE | — | — |
+| F-012 | The loop — town, tower gate, boss as gate, death returns to town, bare HUD, main scene | DONE | — | — |
+| F-013 | Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair) | DONE | — | — |
+| F-014 | Waves — reinforcements arrive in a room until its kill target is reached (Gate B playtest, third fix) | DONE | — | — |
 
 ## Open questions waiting on Lucas
-- **Gate B, second pass, for F-011 and F-012.** Lucas played on 2026-11-18 and raised six points (F-012 §10 Q9 to Q13). Fixed and reviewed: the room stuck in the corner (camera) and the invisible healing (`+30 HP`). Answered on 2026-11-19 and built as F-013, reviewed (two rounds, approved with notes) and waiting for his playtest on `feature/F-013-camera-rooms-dash`: dash recovery (Q12), a follow camera with rooms larger than the screen (Q13). Still waiting for his answer: waves with a kill target (Q11). No review round used a real device.
+- **Gate B for F-011 to F-014: passed on 2026-11-19.** Lucas answered the F-013 and F-014 questions ("I liked how the map is and the room, dash everything"; everything stays as shipped) and said "Yes, merge". The four features are DONE and merged into `main` locally, in order; nothing is pushed. The questions below were not blocking and are still open.
 - F-011 §10 Q5: should validation enforce "start and exit on opposite sides of a room"? Q3: the 30 % heal, room sizes, enemy counts. Q4: casters behind walls, brutes charging pillars (→ Combat).
-- F-013 §10 Q1: camera smoothing 8, dash recovery 0.12 s, room sizes and layouts, the town's start and blocks. Q2: the floor 3 rooms and the Juggernaut's room now have blocks to charge into. Q4: a small view jump when a shake starts while the camera is catching up.
+- F-013 §10 Q4: a small view jump when a shake starts while the camera is catching up.
 - F-012 §10 Q1: a way to leave a floor mid-run? Q2: death pause 1.5 s, banners 2.5 s. Q6: Space is dodge and accept. Q8: is a menu choice a player action under G8?
 - `PHASE1.md` rows F-011 to F-015 are out of date (F-012 here covers the plan's F-012, F-013 and part of F-015; the F-013 on this board is a Gate B feature, D-015, not the plan's). Direction's file; not touched.
 

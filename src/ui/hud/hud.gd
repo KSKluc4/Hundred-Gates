@@ -9,10 +9,16 @@ extends CanvasLayer
 const TOWN_TEXT: String = "Town"
 const BOSS_FORMAT: String = "Floor %d · Boss"
 const ROOM_FORMAT: String = "Floor %d · Room %d / %d"
+## F-014/C13, F-012/C16: the kills line of a combat room.
+const KILLS_FORMAT: String = "Kills %d / %d"
 
 @export var margin_px: Vector2 = Vector2(4, 4)
 @export var location_width_px: float = 160.0
 @export var banner_width_px: float = 320.0
+## F-014/C13: the kills line sits under the location text, right-aligned like it. Narrower than
+## the location label, so at 640 x 360 it stays clear of the banner (which ends at x = 480).
+@export var kills_width_px: float = 120.0
+@export var kills_top_px: float = 16.0
 @export var banner_top_px: float = 24.0
 @export var font_size: int = 8
 @export var banner_color: Color = Color(1.0, 0.9, 0.5)
@@ -30,6 +36,7 @@ var _banner_time_left: float = 0.0
 @onready var _health_bar: HealthBar = $HealthBar
 @onready var _location_label: Label = $LocationLabel
 @onready var _banner_label: Label = $BannerLabel
+@onready var _kills_label: Label = $KillsLabel
 
 
 func _ready() -> void:
@@ -48,15 +55,21 @@ func _ready() -> void:
 	_location_label.offset_right = -margin_px.x
 	_location_label.offset_top = margin_px.y
 	_location_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_kills_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_kills_label.offset_left = -kills_width_px - margin_px.x
+	_kills_label.offset_right = -margin_px.x
+	_kills_label.offset_top = kills_top_px
+	_kills_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_banner_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_banner_label.offset_left = -banner_width_px / 2.0
 	_banner_label.offset_right = banner_width_px / 2.0
 	_banner_label.offset_top = banner_top_px
 	_banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner_label.modulate = banner_color
-	for label: Label in [_location_label, _banner_label]:
+	for label: Label in [_location_label, _banner_label, _kills_label]:
 		label.add_theme_font_size_override(&"font_size", font_size)
 	_banner_label.visible = false
+	_kills_label.visible = false
 
 
 ## F-012/C13: time is counted here, in frames, so a banner can't outlive a paused tree.
@@ -80,12 +93,34 @@ static func location_text(
 	return ROOM_FORMAT % [floor_number, room_index + 1, room_count]
 
 
+## F-014/C13: `Kills <count> / <target>`.
+static func kills_text(count: int, target: int) -> String:
+	return KILLS_FORMAT % [count, target]
+
+
 func set_location(text: String) -> void:
 	_location_label.text = text
 
 
 func get_location() -> String:
 	return _location_label.text
+
+
+## F-014/C13: shows the kills line. The HUD decides nothing: the game says when.
+func set_kills(count: int, target: int) -> void:
+	_kills_label.text = kills_text(count, target)
+	_kills_label.visible = true
+
+
+## F-014/C13: nothing under the location text (the town and boss rooms).
+func hide_kills() -> void:
+	_kills_label.text = ""
+	_kills_label.visible = false
+
+
+## Empty when hidden.
+func get_kills_text() -> String:
+	return _kills_label.text if _kills_label.visible else ""
 
 
 ## A new banner replaces the one showing and restarts the time. 0 hides it on the next _process.

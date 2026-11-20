@@ -12,6 +12,12 @@ enum Telegraph { NONE, TRACKING, LOCKED, ACTIVE }
 const WALL_LAYER_MASK: int = 1
 
 @export var data: EnemyData
+## F-014/C11: set by whoever builds the node, before it enters the tree. _ready() then holds the
+## logic in reserve: no collision and nothing drawn until it arrives.
+@export var starts_in_reserve: bool = false
+## F-014/C11: a dead enemy's shape, bar and label are not drawn (its damage numbers still are).
+## Off by default, so every scene without waves shows a corpse as it always did.
+@export var hide_when_dead: bool = false
 @export var body_color: Color = Color(0.45, 0.6, 0.35)
 ## AC23: the punish window.
 @export var open_color: Color = Color(0.95, 0.85, 0.3)
@@ -43,6 +49,8 @@ var _live_layer: int
 var _live_mask: int
 # F-005/C5: reused by every wall query, with its radius set each time.
 var _query_shape: CircleShape2D = CircleShape2D.new()
+# F-014/C11: what the last _draw() did about the body, so a test can see a draw pass it can't see.
+var _drew_body: bool = false
 
 @onready var _collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var _debug_label: Label = $DebugLabel
@@ -58,9 +66,12 @@ func _ready() -> void:
 	# F-004 DEV-1: see _publish_transform().
 	PhysicsServer2D.body_set_mode(get_rid(), PhysicsServer2D.BODY_MODE_STATIC)
 	_setup_logic()
+	if starts_in_reserve and logic.get_data() != null:
+		logic.hold_in_reserve()  # F-014/C11: before the first sync, so nothing shows for a frame.
 	_damage_numbers.listen_to(logic.get_combat_state())
 	logic.get_combat_state().died.connect(_sync_body)
 	logic.state_restored.connect(_on_state_restored)
+	logic.arrived.connect(_on_arrived)
 	_sync_body()
 	refresh_view()
 
@@ -72,6 +83,9 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	if logic.get_data() == null:
 		return  # F-004/C12: setup refused the data, and the runner has stopped the fight.
+	_drew_body = is_body_drawn()
+	if not _drew_body:
+		return  # F-014/C11: waiting, or dead where a dead enemy is not shown.
 	_draw_telegraph()
 	var radius: float = Units.tiles_to_px(logic.get_data().hurtbox_radius_tiles)
 	draw_circle(Vector2.ZERO, radius, get_body_color())
@@ -85,6 +99,12 @@ func get_combatant() -> Combatant:
 
 
 func move_with_combatant(physics_delta: float) -> void:
+	if logic.is_waiting():
+		# F-014/C5, C11: it does not move, and the body follows the logic, never the other way
+		# round: a hidden body left elsewhere by a restore must not drag the logic with it.
+		if global_position != logic.get_position_px():
+			sync_body_from_logic()
+		return
 	super(physics_delta)
 	_publish_transform()
 	_report_walls()
@@ -117,11 +137,28 @@ func apply_reloaded_data(
 	_sync_body()
 
 
+## F-014/C11: whether the enemy's shape, bar and label are drawn. Read from the logic's state on
+## every call, so a restore in either direction is right. Damage numbers are never part of it.
+func is_body_drawn() -> bool:
+	match logic.get_state():
+		EnemyLogic.State.WAITING:
+			return false
+		EnemyLogic.State.DEAD:
+			return not hide_when_dead
+	return true
+
+
+## F-014/C11: whether the last draw pass drew the shape, bar and telegraph. False before any.
+func did_draw_body() -> bool:
+	return _drew_body
+
+
 func get_data_path() -> String:
 	return _data_path
 
 
 func refresh_view() -> void:
+	_debug_label.visible = is_body_drawn()  # F-014/C11. Not the node's: it holds the numbers.
 	_debug_label.text = get_debug_text()
 	queue_redraw()
 
@@ -238,9 +275,12 @@ func _publish_transform() -> void:
 
 ## F-004/C2, C10, C11: everything physics knows about this enemy, from logic.
 func _sync_body() -> void:
-	var is_dead: bool = logic.get_state() == EnemyLogic.State.DEAD
-	collision_layer = 0 if is_dead else _live_layer
-	collision_mask = 0 if is_dead else _live_mask
+	# F-014/C11: an enemy that is not there yet has no body either, derived from the state.
+	var state: EnemyLogic.State = logic.get_state()
+	var is_absent: bool = state == EnemyLogic.State.DEAD or state == EnemyLogic.State.WAITING
+	collision_layer = 0 if is_absent else _live_layer
+	collision_mask = 0 if is_absent else _live_mask
+	_debug_label.visible = is_body_drawn()
 	var current: EnemyData = logic.get_data()
 	if current != null:
 		var shape: CircleShape2D = _collision_shape.shape
@@ -366,6 +406,14 @@ func _draw_bolts() -> void:
 	for bolt: Vector3 in get_bolts_px():
 		var centre: Vector2 = Vector2(bolt.x, bolt.y) - global_position
 		draw_circle(centre, bolt.z, bolt_color)
+
+
+## F-014/C5, C11: the logic put itself on the arrival point, so the body goes there before the
+## runner next moves it, and it becomes solid.
+func _on_arrived() -> void:
+	sync_body_from_logic()
+	_sync_body()
+	refresh_view()
 
 
 func _on_state_restored() -> void:

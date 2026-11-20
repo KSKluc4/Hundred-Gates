@@ -1,7 +1,7 @@
 ---
 id: F-013
 title: Follow camera, rooms larger than the screen, dash recovery (Gate B playtest, second pair)
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: DONE             # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-19
 updated: 2026-11-19
@@ -915,8 +915,8 @@ or gamepad, and nobody has watched the camera or the dash on screen: that is Gat
 
 | # | Raised by | Question | Blocking? | Answer (Lucas/Planner) |
 |---|---|---|---|---|
-| Q1 | Lead | → Lucas, at Gate B: the starting values. Camera smoothing speed 8 (`data/tunables/camera.tres`), dash recovery 0.12 s (`data/classes/warrior.tres`), room sizes and layouts (C9). In the town you approved the size and the gate on the north wall; where you start (just below the gate, so it is on screen) and the six blocks are the lead's layout (C11). | no | |
-| Q2 | Lead | → Lucas, at Gate B: the Juggernaut's room and the brute rooms now have blocks to charge into, because an open 56 × 32 room leaves no wall within a charge's reach (C10 b). The old Juggernaut room was open with no interior walls. Is that the fight you want? | no | |
+| Q1 | Lead | → Lucas, at Gate B: the starting values. Camera smoothing speed 8 (`data/tunables/camera.tres`), dash recovery 0.12 s (`data/classes/warrior.tres`), room sizes and layouts (C9). In the town you approved the size and the gate on the north wall; where you start (just below the gate, so it is on screen) and the six blocks are the lead's layout (C11). | no | Lucas, in chat, 2026-11-19: "I liked how the map is and the room, dash everything". Camera smoothing 8, dash recovery 0.12 s, the room sizes and layouts and the town stay as shipped. |
+| Q2 | Lead | → Lucas, at Gate B: the Juggernaut's room and the brute rooms now have blocks to charge into, because an open 56 × 32 room leaves no wall within a charge's reach (C10 b). The old Juggernaut room was open with no interior walls. Is that the fight you want? | no | Lucas, in chat, 2026-11-19: the same answer ("I liked how the map is and the room, dash everything"), given to a question that named the blocks in the floor 3 rooms; the rooms stay as shipped. He did not mention the Juggernaut's room by name. |
 | Q3 | Lead | → Lucas, at Gate B: the Hexer stands at the centre of a 56 × 32 room, so it is not on screen when you enter (the boss bar is). Move it closer, or keep the walk-in? | no | Withdrawn by the lead (plan review PR-16): from the start tile the camera shows 40 columns, so the Hexer at the centre is on screen when you enter. Nothing to decide. |
 | Q4 | Auditor (lead) | → Lucas, at Gate B (code review CR-4): when a hit shakes the screen while the camera is still catching up (right after a dash or a knockback), the view jumps a little toward the player on the shake's first frame (about 13 % of the distance it was behind) and holds for one tick at its end. It is inside the shake and may be invisible; nobody has looked at it on screen. If you see it, the fix belongs to the shake (Art & Game Feel), which this feature may not change (C6). | no | |
 
