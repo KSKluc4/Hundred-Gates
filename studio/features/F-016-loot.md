@@ -2,7 +2,7 @@
 id: F-016
 title: Basic loot — swords with one trait, drops, the Equipment list (slice 3, second part)
 status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-21
 updated: 2026-11-21
 depends_on: [F-001, F-011, F-012, F-014, F-015, D-005, D-006, D-014, D-016, D-017]
@@ -597,6 +597,8 @@ The lead reads the last one before T2 starts.
 - [x] Code review round 1 — CR-1, CR-2, CR-3, CR-4, CR-6, CR-7, CR-8, CR-9 f0797fe; CR-5
   logged; CR-10, CR-11 answered. Full suite on f0797fe: 182 scripts, 3125 tests, all passing
   (1172 s).
+- [x] Code review round 2 — APPROVE from both reviewers on f0797fe; CR-12 and CR-13 left.
+  The final gate is the run on f0797fe above (no source or test changed since).
 - [x] T7 — b4815d4 (the commit that carries this log's T6 and T7 entries). (a) `studio/design/combat.md`: the chain's damage
   comes from the equipped sword. (b) **A rendered run of the real game** (the shipped
   catalog, a real window at 1280 × 720, real time at 60 frames per second, 23 screenshots, no
@@ -953,6 +955,61 @@ Start: the starter alone, no flags, a new seed.
 run, §8); `tests/scenes/test_f015_clicks.gd` (read, not run); rooms with reinforcements under
 the bot; kills on one step by real hits; floor 3's boss table; a session restored in the
 running game (nothing calls it); whether `randf()` can return exactly 1.
+
+<!-- review-round: 2 verdict: APPROVE -->
+
+**Reviewed commit:** f0797fe (the fixes: the diff `b4815d4..f0797fe` under `src` and `tests`)
+
+**Date:** 2026-11-21 · **Verdict:** APPROVE · **By:** Auditor (lead, D-014)
+
+The same two reviewers, on new private copies of `f0797fe`. Both: APPROVE.
+
+**Round 1 findings:** CR-1 to CR-9 ✔ resolved, each with the line that decides it. CR-10 and
+CR-11 are left as answered.
+- CR-1: with a real swing and a pause 4 to 21 ticks after the attack press (18 fresh games) the
+  floor's sim runs 0 steps after the yes at every offset (it ran 1 before); with both enemies
+  killed after the yes there is no drop and the roller has not moved. Through the real shell
+  (Escape, Return to town, confirm) in six kinds of room (uncleared with and without a sword
+  lying, cleared, pre-boss cleared, boss alive, boss dead with his sword lying): what lay there
+  was taken, nothing happened after the yes (enemies killed, the player killed, N and R
+  pressed, a second leave), no death was counted, the town came up at full HP. Afterwards the
+  physics space is active, the town player moves and the next floor runs and rolls: the stop
+  is the floor's own and the shell's pause of the game does not undo it.
+- CR-2: 108/108, 108/108, 100/100, 100/100, 108/108 for Vitality, Vitality, the starter, the
+  starter, Vitality in town; in the cleared pre-boss room from 52 HP an equip still heals
+  nothing; the town is at 108/108 after Return to town at 5 HP, after a death and after the
+  boss exit. The refill cannot reach a floor: only `TownScene.set_sword` has it.
+- CR-8: 48,000 fuzzed snapshots, 0 failures (8 before); 30 directed ones with NaN or infinity
+  all refused.
+
+**Mutations of the fixes (reader):** 15 tried, 15 killed: the reserve skipped; a page step of
+two; the once-per-floor guard removed; the `n > 2` pool pick; the floor not stopped at the yes;
+the floor stopped also on a refusal; the town not refilled; a refill added to the floor; the
+hit damage without the chain-size check; mis-sized hits applied anyway; non-finite positions
+accepted; only `x` checked; the separator changed.
+
+**The bot again (attacker):** 5 seeds, 15,000 steps on a fixture whose floors start with a
+room of reinforcements: no invariant broken, no error, warning or orphan line. New invariants:
+a new game is fresh (23 of 23 games), and no room gives more swords than it has enemies.
+
+**Assertions changed in the tests the fixes touched:** two, both the ones CR-2's reply names;
+"no heal on a floor" now has its own test. Everything else was added.
+
+### CR-12 🔵 A taken sword's marker stays drawn until the floor is gone  ·  `src/world/floors/pickup_markers.gd`
+After the yes of Return to town with a sword lying, the marker is still drawn for the three
+frames until the town appears: the stopped floor does not redraw. Cosmetic, and the game was
+already frozen there before the fix.
+> **Builder reply (lead):** left. Three frames under the menu's dim; the look of drops is Art's
+> (IX3).
+
+### CR-13 🔵 A test reads a private field  ·  `tests/scenes/test_f016_drops.gd` (`test_cr3…`)
+It reads `RoomLoot._enemies` for the watched count. The drop assertions alone kill the mutant.
+> **Builder reply (lead):** left, noted here: the line can go if the field is renamed.
+
+**Not checked by either reviewer:** a real keyboard, mouse or gamepad; a rendered window; the
+full suite, lint and format on `f0797fe` (the lead's run: §8); `test_f015_clicks.gd`. A huge
+finite drop position (1e30) is still accepted by `RoomLoot.from_dict`; only `take_all()` would
+reach it.
 
 ---
 
