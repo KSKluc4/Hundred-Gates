@@ -576,14 +576,80 @@ The lead reads the last one before T2 starts.
   above, all passing; `gdlint`, `gdformat --check` (327 files), core purity and the boot
   clean. The implementer broke the motor four ways (no damage passed, the class's cooldown,
   the class's max HP in `setup`, no rebuild in `apply_data`): each failed tests.
-- [ ] T4
-- [ ] T5
+- [x] T4 — 5d9426c (built in a private copy, brought in after T5). Lead's run on the tree
+  with both: `tests/ui` 340 tests (the gate's 77 unedited among them), `tests/core/shell` 44,
+  `test_f015_clicks.gd` 33, and a batch of twelve shell, town and loot scene files 306, all
+  passing. Measured by the implementer: the Equipment panel with the middle page of 17 and
+  the two-line body is 320 × 287 px at (160, 36.5); the gate with 8 buttons is 160 × 174 at
+  (240, 93) and its odds panel 400 × 72 at (120, 280), five lines for every shipped floor.
+- [x] T5 — 55e76ca. Lead's run: its four new scene files 47 tests, and nine existing game,
+  shell and HUD files 288, all passing. The implementer broke seven of its wirings one at a
+  time (no take on advancing, in `leave_floor`, at the boss door; no sword on the room's
+  player; no `set_loadout_values`; no banner join; the town ignoring max HP): each failed a
+  test.
 - [ ] T6
 - [ ] T7
 
 ### Deviations from plan
+- DEV-1 (T4): **`tests/scenes/test_f015_clicks.gd` was edited though C22 does not list it.**
+  Its clicks were aimed at pixels ("the top 3 px of the pause menu's Quit to title are the
+  confirm's Quit to title"); a fourth pause entry moves every button, and four tests failed.
+  The implementer stopped and reported; the lead allowed the edit. Plan review round 1 had
+  named this file as not checked. What changed, measured from the real rects: (a) a late
+  click on the pause menu's `Quit to title` can no longer land on the quit confirm's confirm
+  entry, in town or on a floor (it lands on `Cancel` or on nothing): a new test pins that
+  the two rects do not intersect and says the three tests below need twins on `Quit to title`
+  again when it fails. (b) On a floor a late click on `Return to town` **can** now land on
+  the leave confirm's confirm entry (y 190 to 198). Three tests moved there, renamed:
+  `test_a_slow_second_click_without_the_flag_on_quit_to_title_acts_on_the_confirm` →
+  `…_on_return_to_town_acts_on_the_confirm`;
+  `test_a_triple_click_on_quit_to_title_does_not_quit_and_a_fourth_acts` →
+  `test_a_triple_click_on_return_to_town_does_not_leave_and_a_fourth_acts`;
+  `test_a_consumed_press_just_after_the_guard_still_holds_off_the_next_on_quit_to_title` →
+  `…_on_return_to_town`. (c) Four tests are re-aimed at the overlap of the two entries, read
+  at run time and asserted to exist (`_overlap_point_of`): the three town-pause Settings
+  tests (Settings over Fullscreen, y 189 to 198; their old point, the centre of Settings, had
+  fallen into a 2 px gap, so they had gone blind) and
+  `test_a_double_click_on_return_to_town_only_opens_the_confirm`. (d) Four keep their aim
+  with a comment that the late click is harmless by today's geometry. (e) Added:
+  `test_a_stall_after_the_first_click_on_return_to_town_does_not_leave`, and two tests for a
+  rule of F-015 that no test could see broken ("a press during the guard restarts it"):
+  `test_an_unflagged_second_click_inside_the_guard_restarts_it_on_settings_from_the_title`
+  and `…_on_return_to_town`. The file has 33 tests (29 before). With `MenuPanel` broken four
+  ways, one at a time: the guard never starts, 16 fail; the double-click consume removed, 8;
+  a press during the guard does not restart it, 2 (none before); a consumed press does not
+  restart it, 2. — **Why:** the tests pinned geometry instead of measuring it. — **Impact:**
+  no rule of the click guard changed; `menu_panel.gd` is untouched. The accident the guard
+  exists for has moved from quitting to leaving a floor (§10 Q5).
+- DEV-2 (T4): `ListMenu._move_focus` no longer calls `_set_focus` when the focus is already at
+  the end of the list (it grabs the focus again, as before, and the hook is not called);
+  `GateMenu` overrides `close()` to hide the odds too. Neither is in C19's words.
+- DEV-3 (T5): in the twins test (AC26) the two deaths that must fall in chosen combat steps
+  are applied inside those steps by a probe registered on the room's sim (the pattern of
+  `WaveFixtures.Recorder`), not by sword hits: a real hit cannot be placed at a chosen step.
+  The dash, the roll, the take and the inventory are real. — **Impact:** AC26 proves the
+  loot per step in the running game, and the hits' own timing elsewhere.
 
 ### Assumptions made (small, reversible)
+- ASSUMPTION-18 (T4): the focus hook is called once per real change and once for the focus
+  a menu opens with; a mouse takes the focus by a click, not by hovering (a Godot button does
+  not focus on hover, and `ListMenu` was not changed to). `EquipmentMenu.body` is the locked
+  text first, then `No swords.`, then the choose text. `page_count` counts every owned id,
+  also one the catalog does not know (its page can show fewer); a page size below 1 counts
+  as 1; a null catalog lists only `Back`. `ShellMenus.focus(EQUIPMENT, …)` is empty: the
+  shell takes the focus from the inventory. The `Odds` node is a PanelContainer with one
+  wrapping Label; its width (400 px) and bottom margin (8 px) are exports of `GateMenu`.
+- ASSUMPTION-19 (T5): a null `Game.loot_catalog` at `_ready` takes `Tunables.loot_catalog`,
+  so a game cannot say "no loot" while `Tunables` holds one (the tests null `Tunables`).
+  A drawn seed is written back into `Game.loot_seed`. With no catalog no `RoomLoot` is made
+  at all (`Room.get_loot()` and the markers are null). The item tunables and the catalog are
+  validated only when there is a catalog; a game with setup errors now has its class data
+  loaded.
+- ASSUMPTION-20 (T5): the banner join applies only when one part is `Found:`; a heal and a
+  clear of one physics frame still replace each other, as before; two takes of one frame are
+  one notice. `Found:` is shown only while the session says the player is on the floor: a
+  pickup in the tick of the death is reported and then hidden by the death pause.
+  `src/entities/player/player.gd` needed no change (the motor keeps the sword itself).
 - ASSUMPTION-10 (T2): `TowerSession.from_dict` requires the loot key. `CharacterLoot.
   from_dict` is the last step that can fail, so a refusal changes nothing. A session
   snapshot cannot be restored into a session that was not given the same catalog.
@@ -651,6 +717,13 @@ The lead reads the last one before T2 starts.
 - **Existing tests edited so far (C22):** `tests/core/floors/test_f015_session.gd`,
   `test_ac5_the_snapshot_keeps_its_keys`: `TowerSession.KEY_LOOT` added to the pinned key
   list (the snapshot has a seventh key). `test_tower_session.gd` needed none.
+  `tests/core/shell/test_shell_flow.gd`: `EQUIPMENT`, `open_equipment` and `close_equipment`
+  added to its tables, and `test_ac1_the_table_covers_all_13_methods_and_8_start_situations`
+  renamed `…_15_methods_and_9_…`. `tests/ui/test_f015_menu_texts.gd`: the two paused-entries
+  tests list `Equipment` second, and the focus test skips `EQUIPMENT` as it skips `PLAYING`.
+  `tests/scenes/test_f015_shell.gd`: `_pause_entries` only. `tests/scenes/f012_game_test.gd`:
+  `Tunables.loot_catalog` nulled before each test and restored after (`f015_shell_test.gd`
+  inherits it and needed no edit). `tests/scenes/test_f015_clicks.gd`: DEV-1.
 
 ### How to test
 
@@ -667,6 +740,7 @@ The lead reads the last one before T2 starts.
 | Q1 | Lead | → Lucas, at Gate B: you said "the first kill of each boss always drops something". It is built as "until you have taken a sword from that boss, every win drops one". The two differ in one case only: the boss dies, his sword lies there, and you die before taking it (a projectile still flying); then the next win is still guaranteed. (And the reverse, as rare: take his sword and die in the same instant, and the sword is yours though the floor is not cleared.) Fine, or the literal rule? One line to change. | no | |
 | Q2 | Lead | → Lucas, at Gate B: a sword left lying is taken for you when you walk through the room's exit or choose Return to town (also in the middle of a fight, from across the room), and lost when you die. Fine? If Return to town should lose it instead, the boss guarantee of Q1 has to go back to the literal rule, or a guaranteed drop could be rolled again and again. | no | |
 | Q3 | Lead | → Lucas, at Gate B: with more than 8 swords the Equipment list has pages (`equipment_page_size`). The pickup notice shares the one banner: with a heal in the same moment it reads "+30 HP · Found: Twin Edge"; otherwise it replaces what was showing (so walking onto a boss's sword at once replaces "Floor 1 cleared"). | no | |
+| Q5 | Lead | → Lucas, at Gate B: with `Equipment` in the pause menu the buttons moved. A late second click on "Quit to title" now lands on "Cancel" or on nothing, never on the confirm; on a floor, a late second click on "Return to town" can land on its confirm. The click guard of F-015 covers it (tested, DEV-1). Please double-click "Return to town" once with a real mouse: it must stop at the question. | no | |
 | Q4 | Lead | → Direction: is a menu choice (equip) a player action under G8? It follows the path of Return to town (F-012 §10 Q8 is still open). | no | |
 
 ---
