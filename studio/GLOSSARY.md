@@ -95,3 +95,12 @@
 | Death screen | The menu shown during the death pause: where the player died, and one entry that returns to town once `death_return_delay` has passed | `ShellFlow.State.DEAD`, `can_confirm_death()` |
 | Input guard | The two ticks the game stays stopped after a menu choice that leads to play, so the press that chose is never also a dash or an attack | `Shell.is_guarding()`, `Shell.GUARD_TICKS` |
 | Player's settings | Screen shake and fullscreen, kept per machine in `user://settings.cfg`. Not tunables | `GameSettings`, `UserSettings` |
+| Sword | The only item of phase 1 (D-017): a damage value and exactly one trait. Fixed items, defined in data | `SwordData`, `data/items/swords/` |
+| Sword damage | The damage of one full chain with that sword. It is split over the chain's hits by the split rule | `SwordData.damage`, `SwordMath.split()` |
+| Trait | The one extra attribute of a sword: Heavy finisher, Quick cuts, Vitality, Quickstep or Mending. Never changes windup, active, recovery or reach | `SwordData.Kind` |
+| Loadout | What the equipped sword makes of the class's values: the damage of each hit, max HP, dash cooldown, room-clear heal | `PlayerLoadout` |
+| Inventory | The swords a character owns (with a count each) and the one equipped. Lives as long as tower progress | `Inventory` |
+| Drop | A sword left by a dying enemy. It lies on the room's floor until taken | `RoomLoot`, `Pickup` |
+| Drop table | A boss's three swords with a percentage each. First win: always one, in those proportions | `FloorLoot.boss_swords`, `boss_percents` |
+| Drops per run | How many swords the regular enemies of one full floor run drop on average. The chance per kill is this divided by the floor's kills before the boss | `FloorLoot.regular_drops_per_run` |
+| Pre-boss room | The last room before a floor's boss room. Once cleared, swords can be switched there | `FloorRun.is_pre_boss_room_cleared()` |

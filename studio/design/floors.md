@@ -121,7 +121,11 @@ Checked by tests over the shipped tower, on top of the format rules:
 - A floor is left by dying, through the cleared boss room's door, or by choosing Return to
   town in the pause menu (F-015; Lucas, 2026-11-20). Leaving by choice keeps every floor
   cleared and every boss reached, also those of this visit; the floor's rooms start over.
-- Clearing a floor again gives nothing yet (rewards → Items & Economy).
+- Clearing a floor again unlocks nothing, but its enemies and its boss roll their drops
+  again (F-016, D-017; `studio/design/items.md`).
+- Swords can be switched in the town and in the last room before the boss room once that
+  room is cleared (F-016; Lucas, 2026-11-21). A sword left on a room's floor is taken when
+  the player walks through the exit, and lost on death or Return to town.
 - Progress is per character (D-005) and lives until the player quits to the title screen or
   closes the game (F-015: a new Start is a new character's progress), until save/load
   (phase 2).
@@ -181,7 +185,7 @@ Notes:
 | FX3 | → Combat | Hits ignore walls; casters shoot without a clear line (F-011 §10 Q1, Q2). | No |
 | FX4 | → Direction | Room transitions are hard cuts. Is a fade or a short corridor wanted (F-012/F-015)? | No |
 | FX5 | → Direction | Should the player be able to leave a floor mid-run without dying (F-012 §10 Q1)? **Answered by Lucas, 2026-11-20: yes, Return to town in the pause menu (F-015).** | No |
-| FX6 | → Items & Economy | What does replaying a cleared floor give (F-012 ASSUMPTION-4)? | No |
+| FX6 | → Items & Economy | What does replaying a cleared floor give (F-012 ASSUMPTION-4)? | **Answered:** its drops, rolled again (D-017, F-016) |
 | FX7 | → Direction | The floor 3 rooms and the Juggernaut's room now have blocks to charge into (F-013 §10 Q2). Keep, or open them up again? | No |
 | FX10 | → Direction | Waves: the starting values (kill targets, shares, how many are on the player at once, warning and interval), and whether the heal still fits (F-014 §10 Q1 to Q3). | No |
 | FX11 | → Art & Game Feel | The arrival marker is a placeholder ring the size of the arriving body; a dead enemy vanishes with no effect in rooms with waves (F-014). | No |

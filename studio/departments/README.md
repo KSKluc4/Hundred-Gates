@@ -10,13 +10,13 @@ design doc are the department's memory. Start a fresh chat per feature or topic.
 | Direction | `direction.md` | `PROJECT.md`, `DECISIONS.md` | Phase 1 | Vision, priorities, cross-area specs, final spec check |
 | Combat & Bosses | `combat.md` | `../design/combat.md` | Phase 1 | Player combat, enemies, boss patterns, combat tunables |
 | Floors & Level Design | _to write (Direction)_ | `../design/floors.md` | Phase 1 (2026-11-18, F-011) | Floor/room structure, layouts, encounter tables, pacing across floors |
+| Items & Economy | _to write (Direction)_ | `../design/items.md` | Phase 1 (2026-11-21, F-016, D-017: basic loot only) | Swords, traits, drop tables; in phase 2 gear, upgrades, NPC shop |
 
 Planned (create when their phase starts — not before):
 
 | Department | Starts | Owns |
 |---|---|---|
 | Art & Game Feel | When art style is set (Q1 in F-000) | Sprites, animation, juice, resolution, palette |
-| Items & Economy | Phase 2 | Gear, upgrades, NPC shop, drop rates |
 | Network | Phase 3 | Co-op, sync, authority |
 | Backend | Phase 4 | Accounts, guilds, market, persistence |
 | Lore | When useful | World, tower story, NPC writing |

@@ -20,6 +20,63 @@
 
 ---
 
+## D-017 — Basic loot in phase 1: swords with one trait, dropped by bosses and enemies
+- **Status:** ACCEPTED
+- **Date:** 2026-11-21 · **Decided by:** Lucas (in chat; options and numbers proposed by the lead)
+- **Context:** Phase 1 lists "basic loot" and `PROJECT.md` puts Items & Economy in phase 2.
+  After F-015 Lucas set the direction for the loot part of slice 3 (D-016), asked the lead for
+  options, and answered them ("Approved with changes", then "Cleared last room"). His words
+  are on the board (`STATUS.md`, 2026-11-21) and in `studio/design/items.md`.
+- **Chosen:**
+  - The **weapon is the only slot**. Every sword has a damage value (the damage of one full
+    chain) and **exactly one trait**. A trait never changes the chain's windup, active,
+    recovery or reach (pillar 2).
+  - **Five traits:** Heavy finisher, Quick cuts, Vitality, Quickstep, Mending. Heavy finisher
+    and Quick cuts are two shapes of the same damage; Vitality has one value and no boss
+    version; Mending is a bonus on top of `room_clear_heal_fraction`.
+  - **Gear power stays small:** a chain never deals more than 49 (42 today), so a chaser still
+    takes four hits and the three bosses play as tuned. Floors 1–3 gear is meant to be
+    replaced later.
+  - **Bosses** are the reliable source: each has a table of three swords at 30 %, 20 % and
+    10 %, shown to the player at the tower gate. The first win always drops one, in those
+    proportions; a repeat win rolls the percentages as they are (60 % something).
+  - **Regular enemies** drop a lower-tier sword on a small chance, tuned per floor run: one
+    drop per full run on average, the chance per kill worked back from the floor's kills.
+  - A drop **lies on the floor**; walking over it takes it. No popup in a fight.
+  - Swords are owned in an **Equipment list** in the pause menu. A duplicate is kept as a
+    count. Swords can be **switched in town and in the cleared last room before a boss**,
+    nowhere else.
+  - **Death keeps everything** (as D-006 set for phase 1).
+  - Loot rolls come from a **seeded random source saved with the character's state** (G7), so
+    a host can own them in co-op. Items and drop tables are **data** (G9).
+  - The Items & Economy department **opens now, for this only**: its design doc is
+    `studio/design/items.md`.
+- **Rejected:**
+  - *An armor slot (or more slots)* — the traits already cover health, dash and healing; a
+    second slot would stack power, not add a choice. Tempting because "gear" suggests a set.
+  - *A grid inventory* — phase 2. Tempting because every action RPG has one.
+  - *Automatic equip, or a compare popup on the floor* — the first takes the choice away, the
+    second stops a fight. Tempting because they need no list.
+  - *Switching swords anywhere* — the best play would be to swap to Mending before the last
+    kill of every room. Tempting because the pause menu is always there.
+  - *A new safe room before each boss* — new Floors content; the cleared last room does the
+    same job. Tempting because Lucas's first wording named it.
+  - *Losing swords on death* — phase 1 keeps everything (D-006); CX3 stays open for phase 2.
+  - *A Knockback trait* — enemies can't be pushed while they attack, brutes and bosses not at
+    all. Tempting because it was on the first list.
+  - *Opener (a bonus on the first hit only)* — big enough to feel, it makes repeating the
+    first hit almost as good as the chain. Tempting because it mirrors Heavy finisher.
+  - *Heavy and fast swords (other windup, recovery or reach)* — Phase 2 parking lot (Lucas).
+  - *Shop, crafting, upgrades, market* — phase 2 (Lucas).
+  - *Random stat rolls per drop* — that is the phase 2 gear system. Swords are fixed items.
+- **Consequences:** `PlayerMotor` no longer reads damage, max HP and dash cooldown straight
+  from `ClassData`; they come through the equipped sword. Every floor's kill count now feeds a
+  drop chance, so changing a room's kill target changes that floor's chance per kill (the
+  drops per run stay). Replaying a floor pays (answers FX6). The gate menu shows more than a
+  list. `PHASE1.md` names this F-014; here it is F-016.
+- **Revisit if:** one sword is picked for every fight, or the Vitality sword is in every
+  Warden win (Combat's check named both as things to watch).
+
 ## D-016 — Slice 3 is several features cut from `main`, built as D-013 and D-014 set
 - **Status:** ACCEPTED
 - **Date:** 2026-11-20 · **Decided by:** Lucas (instruction in chat)
