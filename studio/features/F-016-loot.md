@@ -1,8 +1,8 @@
 ---
 id: F-016
 title: Basic loot — swords with one trait, drops, the Equipment list (slice 3, second part)
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-21
 updated: 2026-11-21
 depends_on: [F-001, F-011, F-012, F-014, F-015, D-005, D-006, D-014, D-016, D-017]
@@ -188,22 +188,22 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 | C5 | **`FloorLoot`** (Resource): `regular_drops_per_run: float`, `regular_swords: Array[SwordData]`, `boss_swords: Array[SwordData]`, `boss_percents: PackedInt32Array`. **`LootCatalog`** (Resource): `starter_sword`, `floors: Array[FloorLoot]` (index = floor − 1); `get_sword(id)`, `get_all_swords()`, `get_floor_loot(floor_number)` (null when there is none); `validate(tower, class_data, rules)` refuses: no starter; a floor count other than the tower's; a duplicate id; an invalid sword; percents and swords of different sizes; a percent `< 1`; percents adding up above 100; a negative drops-per-run; drops per run on a floor with no kill before the boss; a chance per kill above 1. An empty boss table or an empty pool is allowed. Shipped: `data/items/loot_catalog.tres` and `data/items/floor_<n>_loot.tres` with `items.md`'s tables; `Tunables.LOOT_CATALOG_PATH`, `Tunables.loot_catalog`. | G9, G5 |
 | C6 | **Chance per kill** of a floor = `regular_drops_per_run / FloorData.get_regular_kill_count()` (new method: the kill targets of every room that is not the boss room, added up). It is never a number in data. | Lucas: tuned per floor run |
 | C7 | **`PlayerLoadout`** (RefCounted): `PlayerLoadout.of(class_data, sword, rules)`; `sword` may be null. `get_hit_damage(index)` (the sword's split, or the class attack's own damage), `get_max_hp()` (class + bonus), `get_dash_cooldown()` (`maxf(rules.min_dash_cooldown, class − cut)`, or the class value with no cut), `get_room_heal_bonus()`, `get_sword()`. With a null sword every value is the class's: **a game without a sword behaves exactly as `main`**. | No regression; one place for the arithmetic |
-| C8 | **The motor reads the loadout.** `PlayerMotor.set_sword(sword, rules)` (null = class values). The motor builds its `PlayerLoadout` from the class data **it holds**, and builds it again in `setup()` and `apply_data()` (F5): both keep the sword, and a fresh `ClassData` is read at once. Max HP goes through `CombatState.set_max_hp` (no heal, clamps down); the cooldown is read in `_end_dash()`; `_fire_attack()` passes the hit's damage to `AttackChain.start(chain, direction, damage := -1)`, which writes it into its latched copy only (negative = the attack's own). Windup, active, recovery, arc, range and knockback are never touched. No new snapshot key in `PlayerMotor`, `AttackChain` or `CombatState`: the sword is setup data, like `ClassData`. On a restore the sword is set before `from_dict()`. | Pillar 2; G7 pattern; plan review PR-8 |
-| C9 | **`RoomLoot`** (RefCounted, one per room), attached with `CombatSim.set_loot(loot)` (null detaches; with none nothing in the sim changes). `watch_enemy(combatant)` for every enemy that counts toward the kill target, `watch_player(combatant)` for the player. Deaths are queued in the order `died` fires. **At the end of every combat step**, after `_apply_contact()` and every `end_step()`, the sim calls the loot once: (1) it rolls for the deaths queued in this step, in order, and lays each drop at that enemy's position; (2) if the player is alive, every drop within `pickup_radius_tiles` of the player (centre to centre, `<=` radius plus `Geometry.DISTANCE_EPSILON`) is taken, in the order they dropped. Enemy deaths are rolled whether or not the player is alive; a dead player takes nothing. Taking adds to the inventory and to a list the scene empties with `pop_taken() -> Array[StringName]`. `take_all()` takes the rest. `get_drops()` for drawing. `to_dict()`/`from_dict()` hold the lying drops: sword id, position, and the floor number when the boss dropped it (0 otherwise); the queue is always empty between steps. The sim's own snapshot is unchanged (its keys are pinned by tests); like `FloorRun.to_dict()`, nothing calls `RoomLoot.to_dict()` until save/load. | G6, G1; plan review PR-2, PR-5 |
+| C8 | **The motor reads the loadout.** `PlayerMotor.set_sword(sword, rules)` (null = class values). The motor builds its `PlayerLoadout` from the class data **it holds**, and builds it again in `setup()` and `apply_data()` (F5): both keep the sword, and a fresh `ClassData` is read at once. Called before `setup()` it only stores the sword; `setup()` then starts at the loadout's max HP. Max HP goes through `CombatState.set_max_hp` (no heal, clamps down); the cooldown is read in `_end_dash()`; `_fire_attack()` passes the hit's damage to `AttackChain.start(chain, direction, damage := -1)`, which writes it into its latched copy only (negative = the attack's own). Windup, active, recovery, arc, range and knockback are never touched. No new snapshot key in `PlayerMotor`, `AttackChain` or `CombatState`: the sword is setup data, like `ClassData`. On a restore the sword is set before `from_dict()`. | Pillar 2; G7 pattern; plan review PR-8 |
+| C9 | **`RoomLoot`** (RefCounted, one per room), attached with `CombatSim.set_loot(loot)` (null detaches; with none nothing in the sim changes). `watch_enemy(combatant)` for every enemy that counts toward the kill target, `watch_player(combatant)` for the player. Deaths are queued in the order `died` fires. **At the end of every combat step**, after `_apply_contact()` and every `end_step()`, the sim calls the loot once: (1) it rolls for every death queued since its last call, in order (also one fired between ticks), and lays each drop at that enemy's position; a watched combatant is rolled once, ever, however often it dies; (2) if the player is alive, every drop within `pickup_radius_tiles` of the player (centre to centre, `<=` radius plus `Geometry.DISTANCE_EPSILON`) is taken, in the order they dropped. Enemy deaths are rolled whether or not the player is alive; a dead player takes nothing. Taking adds to the inventory and to a list the scene empties with `pop_taken() -> Array[StringName]`. `take_all()` takes the rest, and nothing when the player is dead. `get_drops()` for drawing. `to_dict()`/`from_dict()` hold the lying drops: sword id, position, and the floor number when the boss dropped it (0 otherwise); the queue is always empty between steps. The sim's own snapshot is unchanged (its keys are pinned by tests); like `FloorRun.to_dict()`, nothing calls `RoomLoot.to_dict()` until save/load. | G6, G1; plan review PR-2, PR-5 |
 | C10 | **Regular kill:** exactly one `randf()`; a drop when it is below the chance per kill; only then exactly one `randi_range(0, n − 1)` for the sword, each of the pool's `n` equally likely. The boss room's enemy never rolls as a regular kill. A floor without `FloorLoot`, an empty pool or zero drops per run rolls nothing and **draws nothing**; so does a boss with an empty table. | D-017 |
 | C11 | **Boss kill:** if the character has not yet **taken** a boss sword of this floor: one `randi_range(1, sum)` over the percents, and a sword always drops. Otherwise one `randi_range(1, 100)`. In both, sword 0 is the rolls `1 … p0`, sword 1 the next `p1`, and so on; a roll above the sum is nothing. That mapping is one pure static function, `LootRoller.boss_pick(roll, percents) -> int` (−1 = nothing). The flag is set when a sword that this floor's boss dropped is taken, not when it drops. **This is the override of `items.md`'s first wording ("the win that clears the floor"); `items.md` now says the same as this row.** | Lucas: "first win always drops, repeats 60%"; §3; Q1 |
 | C12 | **`LootRoller`**: one `RandomNumberGenerator` per character, always seeded explicitly (never self-seeded in core; a session on which `set_loot` was never called uses seed 0). `to_dict()` holds its seed and state; `from_dict()` restores them so the following draws are identical. Nothing else in `src/core` draws. | G7; co-op later |
-| C13 | **`Inventory`** (RefCounted): `add(id)`, `get_count(id)`, `has(id)`, `get_ids()` (order of first acquisition), `equip(id) -> bool` (only an owned sword; equipping the equipped one is a yes that changes nothing), `get_equipped_id()` (`&""` when nothing is), signal `changed`, `to_dict()`/`from_dict() -> bool` (refuses a count `< 1`, an equipped id that is not owned, wrong types; the empty inventory with nothing equipped is valid). **`CharacterLoot`** (RefCounted) owns the inventory, the roller, the catalog and the floors whose boss sword was taken; `setup(catalog, seed)` gives and equips the starter (a null catalog gives nothing and makes every roll a no); `get_inventory()`, `get_equipped_sword()`, `is_boss_sword_taken(floor_number)`, `make_room_loot(floor_number, floor_data, room_index, rules)`, `to_dict()`/`from_dict() -> bool`. `from_dict` also refuses an owned id the catalog does not have, a taken floor outside the catalog's floors, and, with no catalog, anything but the empty state; a refusal changes nothing. | G7; plan review PR-5 |
+| C13 | **`Inventory`** (RefCounted): `add(id)`, `get_count(id)`, `has(id)`, `get_ids()` (order of first acquisition), `equip(id) -> bool` (only an owned sword; equipping the equipped one is a yes that changes nothing), `get_equipped_id()` (`&""` when nothing is), signal `changed`, `to_dict()`/`from_dict() -> bool` (refuses a count `< 1`, an equipped id that is not owned, wrong types; the empty inventory with nothing equipped is valid). **`CharacterLoot`** (RefCounted) owns the inventory, the roller, the catalog and the floors whose boss sword was taken; `setup(catalog, seed)` gives and equips the starter (a null catalog gives nothing and makes every roll a no); `get_inventory()`, `get_equipped_sword()`, `is_boss_sword_taken(floor_number)`, `make_room_loot(floor_number, floor_data, room_index, rules)`, `to_dict()`/`from_dict() -> bool`. `from_dict` also refuses an owned id the catalog does not have, a taken floor outside the catalog's floors, with a catalog, a state with nothing equipped; and, with no catalog, any inventory but the empty one (the roller's seed and state are free in both). A refusal changes nothing. | G7; plan review PR-5 |
 | C14 | **`TowerSession`** owns one `CharacterLoot`, created in `setup()` with no catalog and seed 0, left alone by `_clear_visit()`, in `to_dict()`/`from_dict()`. `set_loot(catalog, seed)`, `get_loot()`. **`can_equip(pre_boss_room_cleared: bool) -> bool`**: true in `TOWN`; in `FLOOR` the fact passed in; false in `DEATH_PAUSE`. **`equip_sword(id, pre_boss_room_cleared) -> bool`** refuses when `can_equip` is false or the sword is not owned. `FloorRun.is_pre_boss_room_cleared()` is true when the current room is the one before the boss room and is cleared. `Game` only passes the fact on (F-015/C5: it decides nothing). | Lucas: town and cleared last room only |
-| C15 | **World.** `Game.loot_catalog` (default `Tunables.loot_catalog`; read once in `_ready`; null = no loot) and `Game.loot_seed` (0 = one is drawn at `_ready`, in the world, not in core). The class data is loaded before the catalog is validated; a catalog with validation errors is a setup error like the others (`get_setup_errors()`), and nothing is built. `Game.can_equip_sword()`, `Game.equip_sword(id) -> bool`: on a yes the sword of the player now on screen and the values of the running `FloorRun` change at once. Every room's player gets the current sword **before** its entry HP is applied. `FloorRun.set_loadout_values(max_hp, room_heal_bonus)` clamps its entry HP down to the new max and never raises it; a floor entry starts at the loadout's max HP; the heal is `roundi(max_hp × minf(1.0, fraction + bonus))`; the boss room's full heal uses the loadout's max HP. The town player has the loadout's max HP. | C7 applied; plan review PR-4 |
-| C16 | **Leaving a room.** Whatever advances to the next room (walking through the exit, the boss room's door, debug N) and Return to town take what lies in the room (`take_all()`) before the room is freed. Death takes nothing: untaken swords are gone with the room. Debug R (restart room) discards them. **This is the override of `items.md`'s and `floors.md`'s first wording ("lost on Return to town"); both now say the same as this row.** | A boss's sword is not lost by oversight, and the guaranteed roll cannot be fished; Q2 |
+| C15 | **World.** `Game.loot_catalog` (default `Tunables.loot_catalog`; read once in `_ready`; null = no loot) and `Game.loot_seed` (0 = a non-zero one is drawn at `_ready`, in the world, not in core). The class data is loaded before the catalog is validated; a catalog with validation errors is a setup error like the others (`get_setup_errors()`), and nothing is built. `Game.can_equip_sword()`, `Game.equip_sword(id) -> bool`: on a yes the sword of the player now on screen and the values of the running `FloorRun` change at once. Every room's player gets the current sword **before** its entry HP is applied. `FloorRun.set_loadout_values(max_hp, room_heal_bonus)` clamps its entry HP down to the new max and never raises it; `FloorRun.setup()` is given the loadout's max HP, so a floor entry starts there; the heal is `roundi(max_hp × minf(1.0, fraction + bonus))`; the boss room's full heal uses the loadout's max HP. The town player has the loadout's max HP. | C7 applied; plan review PR-4 |
+| C16 | **Leaving a room.** Whatever advances to the next room (walking through the exit, the boss room's door, debug N) and Return to town take what lies in the room (`take_all()`) before the room is freed, and whoever calls `take_all()` also empties `pop_taken()` and reports it for the banner (C20). Death takes nothing: untaken swords are gone with the room, also when debug N is pressed after a death. Debug R (restart room) discards them. **This is the override of `items.md`'s and `floors.md`'s first wording ("lost on Return to town"); both now say the same as this row.** | A boss's sword is not lost by oversight, and the guaranteed roll cannot be fished; Q2 |
 | C17 | **Equipment menu.** `ShellFlow.State.EQUIPMENT` (added last in the enum), `open_equipment()` (from `PAUSED`), `close_equipment()`, `back()` returns to `PAUSED`, `is_game_paused()` is true. The pause menu gets `Equipment` as its second entry, on a floor and in town. Entries, in order: the owned swords of the page (order of first acquisition), `Next page` and `Previous page` when there is one, `Back` (routed by state: here it closes the Equipment menu). A page holds `equipment_page_size` swords. Opening shows the page of the equipped sword with the focus on it; after a page change the focus is on the page's first sword. The page shown is the one menu variable `Shell` keeps (say so in its header). A sword's entry: `<name> — <damage> (<h1>/<h2>/<h3>) — <trait>`, then ` ×<n>` when `n > 1`, then ` [equipped]`. Where equipping is not allowed every sword entry is disabled and the body says where it is. Choosing a sword calls `Game.equip_sword`; on a yes the two entries change **in place** (`set_entry_text`): no `open()`, the focus stays, the guard does not restart. Changing page is an `open()`. | Lucas: a list, no grid; F-015 DEV-11 |
-| C18 | **Texts** in one file, `src/ui/items/item_texts.gd` (static): heading `Equipment`; bodies `Choose a sword to equip it.`, `Swords can be changed in town, or in the last room before a boss once it is cleared.`, `No swords.`; traits `No trait`, `Heavy finisher`, `Quick cuts`, `Max HP +%d`, `Dash cooldown -%.2f s`, `Room heal %d%% of max HP` (the base fraction plus the bonus, `roundi` of the percentage, so 30 % + 0.05 reads 35); `Next page`, `Previous page`; `Found: %s` (names joined by `, `); gate lines (C19). The pause entry's text and id live in `ShellMenus` with the others. No item string anywhere else. | F-012/C16; plan review PR-9 |
-| C19 | **Odds at the gate.** `gate_menu.tscn` gets a node `Odds` beside `Panel` (`Panel/List` stays as it is): its own panel with one label, anchored to the bottom centre of the screen, hidden when it has nothing to say, so the list never moves. For the floor whose entry has the focus it shows `Boss drops:`, one line per sword `<percent>% chance: <sword entry text without count and mark>`, and then either `Your next win is sure to drop one of these.` (no boss sword of that floor taken yet) or `Nothing: <100 − sum>%`. Nothing for `Stay in town` or a floor without a table. `ListMenu` gets one hook, `_focus_moved(index)`, empty in the base, called where the focus changes; `GateMenu.open(entries, odds_by_floor := {})` (`{floor_number: String}`). The texts are built by `ItemTexts`; `Game` hands them to `TownScene`, which passes them on every `open()`, also the one after debug N. | Lucas: "the player can see those odds"; plan review PR-6, PR-9 |
-| C20 | **Pickup notice and drops on screen.** Each physics tick the scene empties `pop_taken()`; what was taken is shown on the HUD banner as `Found: …` for `Tunables.tower.banner_duration`. If `Game` shows another banner in the same tick (the heal, the floor cleared), the two are joined, the other first: `+30 HP · Found: Twin Edge`. Otherwise a new banner replaces the one showing, as before. A drop is drawn by a `Room` child from `RoomLoot.get_drops()` (the `WaveMarkers` pattern), a placeholder shape whose size and colour are exports of that node; it reads no core state but the drops. | G6; Art owns the look (IX3); plan review PR-7 |
+| C18 | **Texts** in one file, `src/ui/items/item_texts.gd` (static): heading `Equipment`; bodies `Choose a sword to equip it.`, `Swords can be changed in town, or in the last room before a boss once it is cleared.`, `No swords.`; traits `No trait`, `Heavy finisher`, `Quick cuts`, `Max HP +%d`, `Dash cooldown -%.2f s`, `Room heal %d%% of max HP` (the base fraction plus the bonus, at most 1, `roundi` of the percentage, so 30 % + 0.05 reads 35); `Next page`, `Previous page`; `Found: %s` (names joined by `, `; with more than two, the first two and ` +%d more`); gate lines (C19). The pause entry's text and id live in `ShellMenus` with the others. No item string anywhere else. | F-012/C16; plan review PR-9 |
+| C19 | **Odds at the gate.** `gate_menu.tscn` gets a node `Odds` beside `Panel` (`Panel/List` stays as it is): its own panel with one label, anchored to the bottom centre of the screen, hidden when it has nothing to say, so the list never moves. For the floor whose entry has the focus it shows `Boss drops:`, one line per sword `<percent>% chance: <sword entry text without count and mark>`, and then either `Your next win is sure to drop one of these, in these proportions.` (no boss sword of that floor taken yet) or `Nothing: <100 − sum>%` (no such line when the sum is 100). Nothing for `Stay in town` or a floor without a table. `ListMenu` gets one hook, `_focus_moved(index)`, empty in the base, called where the focus changes; `GateMenu.open(entries, odds_by_floor := {})` (`{floor_number: String}`). The texts are built by `ItemTexts`; `Game` hands them to `TownScene`, which passes them on every `open()`, also the one after debug N. | Lucas: "the player can see those odds"; plan review PR-6, PR-9 |
+| C20 | **Pickup notice and drops on screen.** Each physics tick the scene empties `pop_taken()`; what was taken is shown on the HUD banner as `Found: …` for `Tunables.tower.banner_duration`. If `Game` shows another banner in the same physics frame (the heal, the floor cleared), the two are joined, the other first whichever came first: `+30 HP · Found: Twin Edge`. Banners are still shown in the callback that reports them, as today (tests read them at once): `Game` keeps the parts and `Engine.get_physics_frames()` of its last banner and rebuilds the text when another part arrives in the same frame. Otherwise a new banner replaces the one showing, as before. A drop is drawn by a `Room` child from `RoomLoot.get_drops()` (the `WaveMarkers` pattern), a placeholder shape whose size and colour are exports of that node; it reads no core state but the drops. | G6; Art owns the look (IX3); plan review PR-7 |
 | C21 | **Core purity and data.** Everything in `src/core/items/` is RefCounted or Resource, no Node, no texture, no scene. No third-party code. Item paths are constants tagged `# G5`. | G4, G5, G6 |
 | C22 | **Existing tests.** The shared helpers set `Tunables.loot_catalog = null` before each test and restore it after (the existing pattern for `Tunables`), so every existing test runs without loot, also in games a `Shell` builds on Start. These files may be edited, each edit listed in §8 with its reason: `tests/core/shell/test_shell_flow.gd` (states, methods, situations), `tests/ui/test_f015_menu_texts.gd` and `tests/scenes/test_f015_shell.gd` (the pause menu's entries), `tests/core/floors/test_f015_session.gd` and `tests/core/floors/test_tower_session.gd` (snapshot keys), `tests/scenes/f012_game_test.gd`, `tests/scenes/f015_shell_test.gd` (helpers). No test is deleted without a replacement. **All other tests stay green unedited** (`tests/ui/test_gate_menu.gd` and the tests that pin `CombatSim`'s snapshot keys among them); if one cannot, stop and log it before touching it. | F-015/C18; an unlisted edit is a 🔴 |
-| C23 | **Determinism.** Two sessions with the same seed, catalog and sequence of calls give the same drops and the same snapshots, step for step, at 30, 60 and 120 physics ticks per second. A snapshot taken at any tick and restored into a fresh session continues identically. | G1, G7 |
+| C23 | **Determinism.** Two sessions with the same seed, catalog and sequence of calls give the same drops and the same snapshots, step for step, at 30, 60 and 120 physics ticks per second. A snapshot taken at any tick and restored into a fresh session continues identically. **One exception, inherited:** the exit check and "death first" are decided once per physics tick (F-011, F-012), so a run in which the player reaches the exit, or takes a boss's sword, and dies within one 30-ticks/s tick may differ between rates; this feature does not change that. | G1, G7; plan review PR-23 |
 
 **Must not break:** every F-001 to F-015 behaviour; the whole suite (2,579 tests on `main`);
 with no catalog the game is `main`; boss fights at the starter sword are unchanged to the
@@ -248,9 +248,11 @@ Testable, observable. The Auditor checks each one.
 - [ ] AC9 (exact): `LootRoller.boss_pick` over the rolls 1 … 100 with percents 30, 20, 10
   gives exactly 30, 20, 10 and 40 times nothing; over 1 … 60 exactly 30, 20, 10. The pool pick
   maps each index 0 … n − 1 to its own sword. After each kind of roll the roller's generator
-  is in the state of a reference generator with the same seed advanced by exactly the draws
-  C10 and C11 name: 1 for a regular no, 2 for a regular yes, 1 for a boss, 0 for a floor
-  without loot, an empty pool, zero drops per run or an empty table.
+  is in the state of a reference generator with the same seed on which the test made the
+  same calls with the same arguments (`randf()`; `randi_range(0, n − 1)`; `randi_range(1,
+  sum)`; `randi_range(1, 100)`), and none for a floor without loot, an empty pool, zero
+  drops per run or an empty table. Over 1,000 kills of each kind the outcomes equal those
+  the test computes from the values the reference returned.
 - [ ] AC10 (statistical, fixed seed): 20,000 regular kills at chance `p` drop within 4
   standard deviations of `20,000 × p`, each pool sword within 4 of an equal share; 6,000
   repeat boss wins and 6,000 guaranteed wins give each sword within 4 standard deviations of
@@ -269,12 +271,14 @@ Testable, observable. The Auditor checks each one.
   does not; the inventory count rises; the banner says `Found: <name>`. Two drops in reach
   are taken in drop order and named in one banner. A banner shown by `Game` in the same tick
   is joined in front (C20).
-- [ ] AC14: an enemy that dies in a combat step before the one in which the player dies is
-  rolled, at 30, 60 and 120 ticks per second alike, and so is one that dies in the same step;
-  a dead player takes nothing; the drops lying in the room are not in the inventory after the
-  death is confirmed.
+- [ ] AC14: an enemy that dies in an earlier combat step of the same 30-ticks/s tick in which
+  the player dies is rolled, at 30, 60 and 120 ticks per second alike, and so is one that
+  dies in the same step; a dead player takes nothing, by walking or by `take_all()`; the
+  drops lying in the room are not in the inventory after the death is confirmed. A death
+  fired between ticks is rolled at the next step; an enemy that dies twice is rolled once.
 - [ ] AC15: walking through an exit, the boss door, debug N and Return to town each take
-  what lies in the room; debug R does not.
+  what lies in the room and show `Found:`; at an exit below full HP it is joined behind the
+  heal; with three swords it reads the first two and ` +1 more`; debug R takes nothing.
 - [ ] AC16: a new game owns the Recruit's Sword ×1, equipped; death, Return to town and
   clearing a floor keep the inventory and the equipped sword; quit to title and Start again
   give a fresh one. A second pickup of an owned sword shows `×2`.
@@ -284,8 +288,10 @@ Testable, observable. The Auditor checks each one.
   A floor entered at the boss has no place to equip.
 - [ ] AC18: equipping in town changes the town player's max HP and, on the next floor, the
   hits, cooldown and heal; equipping in the cleared pre-boss room changes the player on
-  screen at once and the boss room is entered at the new max HP. Taking Vitality off at
-  108/108 leaves 100/100 and a `FloorRun` whose own snapshot it accepts back.
+  screen at once and the boss room is entered at the new max HP. A floor entered with
+  Vitality starts at 108/108. In a room entered at 105, taking Vitality off leaves at most
+  100 and a `FloorRun` whose own snapshot it accepts back. `loot_seed = 0` gives the
+  session a non-zero seed; a given seed is used as it is.
 - [ ] AC19: `ShellFlow`: `EQUIPMENT` is reached only from `PAUSED`, `back()` and
   `close_equipment()` return to `PAUSED` with the focus on `Equipment`; the game stays
   stopped; Escape, pad B and pad Start behave as in `SETTINGS`. Every other transition of
@@ -295,7 +301,7 @@ Testable, observable. The Auditor checks each one.
   has both `Next page` and `Previous page`, and its whole panel (8 swords, both page entries,
   `Back`, heading, the two-line body) is inside the 640 × 360 screen; page entries appear
   only where there is a page; the menu opens on the equipped sword's page with the focus on
-  it.
+  it; after `Next page` or `Previous page` the focus is on that page's first sword.
 - [ ] AC21: where equipping is allowed, choosing a sword equips it, the `[equipped]` mark
   moves, the focus stays, the panel was not reopened (the choose guard did not restart); the
   equipped sword chosen again changes nothing. Where it is not allowed the sword entries are
@@ -305,7 +311,8 @@ Testable, observable. The Auditor checks each one.
   physics space behave as in F-015.
 - [ ] AC23: at the gate, focusing a floor shows its boss's three swords with their percents
   and, while none was taken, the guarantee line; after one is taken the last line is
-  `Nothing: 40%`; `Stay in town` hides the area; with no catalog it is never shown; the list
+  `Nothing: 40%`, and a table adding up to 100 has no such line; the odds are still there
+  when the gate reopens after debug N; `Stay in town` hides the area; with no catalog it is never shown; the list
   panel's position is the same whichever entry has the focus; with 7 entries and 5 lines both
   panels are inside the screen and do not overlap; `tests/ui/test_gate_menu.gd` passes
   unedited.
@@ -316,8 +323,10 @@ Testable, observable. The Auditor checks each one.
   the title shows the start failure, as for the other data.
 - [ ] AC26: 30, 60 and 120 ticks per second give the same drops, pickups, inventory and
   roller state for a scripted run through a fixture floor (same seed), compared in game time.
-  The script contains an enemy killed within the three steps before the player's death, and
-  a dash that passes a drop at 0.75 tiles.
+  The script contains an enemy killed in an earlier step of the 30-ticks/s tick in which the
+  player dies, and a dash placed so that the drop is in reach only in steps that are not the
+  last step of a 30-ticks/s tick (asserted from the positions, so a build that takes once
+  per tick fails).
 - [ ] AC27: no file under `src/core` but `loot_roller.gd` names `randi`, `randf`, `randomize`
   or `RandomNumberGenerator` (a test reads the sources).
 - [ ] AC28: `gdlint src tests`, `gdformat --check src tests`, `tools/check_core_purity` and
@@ -483,11 +492,74 @@ gate fit the screen by estimate.
 geometry assumptions; `tools/check_core_purity`'s token rules against the new files; whether
 `RandomNumberGenerator.new()` self-seeds in 4.7 and how its state restores; nothing was run.
 
+<!-- review-round: 2 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** 81e5e5e · **Date:** 2026-11-21 · **Verdict:** APPROVE_WITH_NOTES ·
+**By:** Auditor (lead, D-014)
+
+The same two reviewers, read-only, on the amended spec. Both: APPROVE_WITH_NOTES.
+
+**Round 1 findings:** PR-1, PR-2 (the rule), PR-4, PR-5, PR-6, PR-8, PR-9, PR-10, PR-11,
+PR-12 ✔ resolved; PR-13 noted. PR-3 and PR-7 partly: PR-15, PR-16 and PR-14 below.
+
+**The new parts against the code (found sound):** `Combatant` gives the `died` signal, the
+position and `is_alive()`, so `RoomLoot` needs no other type; the position at the end of a
+step is the collision-corrected one at every rate (`move_bodies` runs inside each step,
+`src/core/combat/combat_sim.gd:87-89`); the loot's call after `end_step()` conflicts with
+nothing; `Room` attaches the waves after everyone is registered and `set_loot` belongs beside
+it (`src/world/floors/room.gd:345-349`); the sim's pinned snapshot keys are untouched; C8
+fits `reset_to_start()` and F5; `ListMenu` only positions `_panel` and shows or hides the
+root, and the gate's tests reach only `Panel/List`; T2 ∥ T3 and T4 ∥ T5 share no file and
+call nothing new of each other; no existing test outside C22 breaks by necessity. All 15
+sequences of round 1 are defined; two changed: an enemy, or the boss, dying in the same step
+as the player is now rolled, the drop lies untaken and the guarantee is kept.
+
+### PR-14 🟡 The banner's join has no mechanism and, for swords taken by leaving, no owner  ·  C20, C16
+`Game` shows banners inside signal callbacks and has no tick id; showing them once per tick
+instead would break `tests/scenes/test_f012_game.gd:857-861, 878-879`, which read the banner
+at once. At the exit `Found:` arrives before the heal. After `take_all()` the old `RoomLoot`
+is freed in that tick, so "the scene empties `pop_taken()` each tick" never sees it. No AC
+looked at the banner after leaving. A joined text of several names can outgrow the 320 px
+label (`src/ui/hud/hud.gd:18`).
+> **Planner reply (lead):** accepted: C20 (shown in the callback; parts and physics frame
+> kept; the other part first), C16 (who calls `take_all()` reports), C18 (two names and
+> ` +N more`), AC15. Walking onto a boss's sword while "Floor cleared" still shows replaces
+> it: said in Q3.
+
+### PR-15 🟡 AC14 and AC26 do not pin the phase  ·  §5
+"Within the three steps before the death" shares a 30-ticks/s tick only if no tick boundary
+falls between; a dash at 0.75 tiles is still taken by a per-tick build in about 84 % of
+phases. The build §3 rejects would mostly pass.
+> **Planner reply (lead):** accepted: both ACs name the phase, asserted from positions.
+
+### PR-16 🟡 No exact test sees the range of a roll  ·  AC9
+The reference-generator check is blind to arguments (`randi_range(0, 100)` and `(1, 100)`
+leave the same state), and how many internal steps `randf()` and `randi_range()` take is not
+something to count (rejection sampling; none when from equals to).
+> **Planner reply (lead):** accepted: the reference makes the same calls with the same
+> arguments, and the outcomes of 1,000 kills of each kind must equal those computed from the
+> reference's values.
+
+### PR-17 🔵 Deaths fired between ticks, and an enemy rolled twice  ·  C9
+The tests' kill helper sets HP outside any step; a waiting reinforcement killed that way
+arrives later at full HP and dies again.
+> **Planner reply (lead):** accepted: every queued death, one roll per combatant (C9, AC14).
+
+### PR-18 🔵 `set_sword` before `setup()`; PR-19 🔵 the floor entry with Vitality; PR-20 🔵 `take_all()` with a dead player; PR-21 🔵 two `from_dict` edges; PR-22 🔵 wording (the guarantee's proportions, `Nothing: 0%`, the label's cap); PR-23 🔵 the exit check and "death first" are still per tick; PR-24 🔵 no AC for the drawn seed, the focus after a page change, the odds after debug N
+> **Planner reply (lead):** accepted, all: C8; C15 and AC18 (also "in a room entered at
+> 105", since 108/108 proved nothing); C9, C16, AC14; C13; C18, C19, AC23; C23 names the
+> inherited exception and Q1 says "one case" less exactly than that; AC18, AC20, AC23.
+
+**Not checked by either reviewer:** rendered sizes in the engine; whether four
+`move_and_slide` calls per tick at 30 ticks/s give the same body positions as one at 120
+(existing behaviour, which AC26 relies on); how Godot 4.7's generator restores its state.
+The lead reads the last one before T2 starts.
+
 ---
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** —  ·  **Branch:** `feature/F-016-loot`
+**Started:** 2026-11-21  ·  **Branch:** `feature/F-016-loot`
 
 ### Progress
 - [ ] T1
@@ -516,9 +588,9 @@ geometry assumptions; `tools/check_core_purity`'s token rules against the new fi
 
 | # | Raised by | Question | Blocking? | Answer (Lucas/Planner) |
 |---|---|---|---|---|
-| Q1 | Lead | → Lucas, at Gate B: you said "the first kill of each boss always drops something". It is built as "until you have taken a sword from that boss, every win drops one". The two differ in one case only: the boss dies, his sword lies there, and you die before taking it (a projectile still flying); then the next win is still guaranteed. Fine, or the literal rule? One line to change. | no | |
+| Q1 | Lead | → Lucas, at Gate B: you said "the first kill of each boss always drops something". It is built as "until you have taken a sword from that boss, every win drops one". The two differ in one case only: the boss dies, his sword lies there, and you die before taking it (a projectile still flying); then the next win is still guaranteed. (And the reverse, as rare: take his sword and die in the same instant, and the sword is yours though the floor is not cleared.) Fine, or the literal rule? One line to change. | no | |
 | Q2 | Lead | → Lucas, at Gate B: a sword left lying is taken for you when you walk through the room's exit or choose Return to town (also in the middle of a fight, from across the room), and lost when you die. Fine? If Return to town should lose it instead, the boss guarantee of Q1 has to go back to the literal rule, or a guaranteed drop could be rolled again and again. | no | |
-| Q3 | Lead | → Lucas, at Gate B: with more than 8 swords the Equipment list has pages (`equipment_page_size`). The pickup notice shares the one banner: with a heal in the same moment it reads "+30 HP · Found: Twin Edge"; otherwise it replaces what was showing. | no | |
+| Q3 | Lead | → Lucas, at Gate B: with more than 8 swords the Equipment list has pages (`equipment_page_size`). The pickup notice shares the one banner: with a heal in the same moment it reads "+30 HP · Found: Twin Edge"; otherwise it replaces what was showing (so walking onto a boss's sword at once replaces "Floor 1 cleared"). | no | |
 | Q4 | Lead | → Direction: is a menu choice (equip) a player action under G8? It follows the path of Return to town (F-012 §10 Q8 is still open). | no | |
 
 ---
