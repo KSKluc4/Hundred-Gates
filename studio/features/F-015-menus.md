@@ -1,8 +1,8 @@
 ---
 id: F-015
 title: Menus — title screen, pause menu, death screen, settings
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-20
 updated: 2026-11-20
 depends_on: [F-003, F-012, F-014, D-006, D-010, D-014, D-016]
@@ -682,6 +682,9 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
 - [x] Code review round 2 — CR-14 4c4820b (the log); CR-15, CR-16, CR-18, CR-20 936e9ad; CR-17,
   CR-19 ec7b44b; CR-21 answered. Full suite on ec7b44b: 158 scripts, 2547 tests, all
   passing (1070 s), no "Orphans" line, no leak line.
+- [x] Code review round 3 — CR-22, CR-26 (the log) acbbc6f; CR-23, CR-24, CR-25, CR-27 a25c43d;
+  CR-26 accepted (DEV-15); CR-28 answered. Full suite on a25c43d: 158 scripts, 2571 tests,
+  all passing (1081 s), no "Orphans" line, no leak line.
 
 ### Deviations from plan
 - DEV-1: the file went from `PLAN_REVIEW` to `IN_PROGRESS` without `APPROVED` — **Why:** D-016,
@@ -780,6 +783,17 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
   only `[settings]` and `key=true` / `key=false`. A file over 64 KB, one with a NUL byte, and
   one with content and no `[settings]` line are "not a settings file": the defaults, false,
   one warning. `save_to()` still writes through `ConfigFile`.
+- DEV-15 (code review rounds 2 and 3): **the menus' click rules, as they ended up, and one case
+  left open.** After round 3 (a25c43d): (a) for `choose_guard_seconds` (0.3) after a menu opens,
+  clicks and the choose keys do nothing; (b) a mouse press during that time starts it again; (c)
+  a press the OS marks as a double click is discarded when the menu opened since the previous
+  mouse press, at any time. **Left open, accepted:** a double click on Resume resumes and the
+  player attacks once, because the attack is read from the mouse button's state, not from the
+  event the menu could discard — **Impact:** one attack in the first moments after a resume by
+  double click; a deliberate click more than 0.3 s after a menu opened acts on whatever is
+  under it, also when it was meant as the tail of a slow triple click. `save_to()` writes the
+  settings file by hand and `src` has no `ConfigFile` left (C12 says "a `ConfigFile`": the
+  file's bytes are the same).
 
 **Existing tests edited (C18), all in T3 except the last two bullets.** No test was deleted; eight were renamed.
 - `tests/scenes/f012_game_test.gd`: new helper `confirm_death_when_ready(limit)` (ticks until
@@ -895,6 +909,13 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
   `is_pointer_guarded()`. In the twins: the fight uses the implementer's own seed (3), not the
   reviewer's 1 and 4, because its walk and schedule differ; the 60 ticks/s twin after a death
   is a random walk because the four-leg slide never differs at that rate.
+- ASSUMPTION-19 (round 3 fixes): mouse wheel ticks are button presses to the engine, so they
+  clear the panel's double-click flag and, during a guard, start it again; only a press is
+  consumed for the double-click rule, never a release; a press on a closed panel is not looked
+  at; the guard is judged by real time at the press, not by when `_process` last ran. In the
+  settings file: of two BOMs only the first is stripped (the second makes its line something
+  else: with `[settings]` on that line the file is "not a settings file"); a write that fails
+  after the file was opened removes the file (not covered by a test: not producible here).
 - ASSUMPTION-17 (review fixes): `MenuPanel.is_pointer_guarded()` is public, for the tests;
   the pointer guard is measured with `Time.get_ticks_msec()`, so it does not depend on the frame
   rate; `_enter_tree` stops the space whenever the game node is disabled, the guard's two ticks
@@ -963,6 +984,11 @@ Branch `feature/F-015-menus`. Windows tooling as in F-011 §2.
   problems; `gdformat --check`: nothing to change; `tools/check_core_purity`: ok; the main scene
   boots headless with no error or warning line; nothing is left in this machine's `user://`.
   New test file: `tests/scenes/test_f015_twins.gd` (about 75 s, real time).
+- **After code review round 3** (a25c43d): the full suite is 158 scripts, 2571 tests, all
+  passing (1081 s), no "Orphans" line, no leak line, no click test retried or pending;
+  `gdlint src tests`: no problems; `gdformat --check`: nothing to change;
+  `tools/check_core_purity`: ok; the main scene boots headless with no error or warning line;
+  nothing is left in this machine's `user://`.
 - **Not done by anyone:** real keyboard, mouse or gamepad play. Every event above was posted by
   code. A real pad was never connected. That is Gate B.
 
@@ -1339,6 +1365,7 @@ check in `_press_focused()`; only §9's reply to CR-16 mentions it. Harmless: th
 true, `gate_menu.gd` and the gate list's two test files are untouched (empty diff), the 77 gate
 tests pass, and the gate list behaves the same on `main` and on the branch for Enter, Space, E,
 pad A, pad Y, a click and a flagged click.
+> **Builder reply (lead):** logged in acbbc6f, under DEV-11 in §8.
 
 ### CR-23 🟡 A quick second click on the same entry is dropped  ·  `src/ui/menus/menu_panel.gd:66-70`
 Every mouse button event flagged as a double click is consumed while the panel is open, also when
@@ -1347,6 +1374,13 @@ one 100 to 480 ms later, flagged as a real mouse would send it, flips it once; 2
 clicks give 1, 2, 2, 3 toggles; a flagged press on Back does nothing however long the menu has
 been open. `test_two_slow_clicks_on_fullscreen_toggle_twice` passes because its second click is
 not flagged.
+> **Builder reply (lead):** fixed in a25c43d. A flagged press is consumed only when the panel
+> opened since the previous mouse button press (one flag: set by `open()`, cleared by any
+> press and by the consume). Tests with real positional clicks: a flagged second click on
+> Fullscreen 100, 250 and 400 ms after the first toggles it twice; 2, 3, 4 and 5 quick clicks
+> with every second one flagged toggle once each; a flagged press on Back after an ordinary
+> click goes back. In the implementer's mutation run, consuming every flagged press as before
+> fails seven tests.
 
 ### CR-24 🟡 The third click of a triple click still acts on the menu that opened  ·  `src/ui/menus/menu_panel.gd`
 Three clicks on one spot at +200/+400 ms or +280/+560 ms, the second flagged and the third not:
@@ -1355,6 +1389,12 @@ town's pause menu the game quits with no confirmation. At +100/+200 ms nothing h
 goes for a second click the OS does not flag (the mouse moved past its double-click rectangle)
 310 ms or more after the first. Which presses Windows flags is reasoned from the Win32 documents,
 not measured: no real mouse was used in any round.
+> **Builder reply (lead):** fixed in a25c43d for clicks that come quickly: a mouse button press
+> that arrives while the choose guard runs starts it again from that press, so both triple
+> clicks (+200/+400 and +280/+560 ms) change nothing on Settings and do not quit; a fourth click
+> 0.35 s after the third acts (tests). A second, unflagged click more than 0.3 s after the last
+> one is a deliberate click and acts: accepted. Still reasoned, not measured: what a real mouse
+> flags (§10 Q8).
 
 ### CR-25 🟡 Three holes in the tests  ·  `tests/autoload/test_user_settings.gd`, `tests/scenes/test_f015_clicks.gd:359-375`
 `rfind("=")` in `UserSettings._read_line` passes all 52 settings tests, and then reads
@@ -1363,17 +1403,35 @@ loops those outlasted the guard: one case failed after three tries with its numb
 failure, but a red gate for a reason that is not the code); eight copies of the file at once all
 passed. And the two mutations nobody could tell from the real code in round 2 (only
 `StaticBody2D` kept; the keep done after the disable) still pass the new twins.
+> **Builder reply (lead):** fixed in a25c43d except the last: tests pin the first `=` as the
+> separator (`fullscreen=a=b`, `fullscreen=true=false`, `fullscreen=a=true` after a good line,
+> `a=fullscreen=true`); the click cases use gaps in real time (30, 100 and 200 ms, no frame
+> counts) and a case whose timing could not be produced in three tries is `pending()` with its
+> numbers, not failed. The two mutants are left: three rounds of twins could measure no
+> difference under them.
 
 ### CR-26 🔵 The reply to CR-21 is wrong about Resume  ·  §9
 A double click on Resume still attacks: the first click closes the panel, so the flagged second
 press is not consumed and reaches the game (both reviewers ran it: IDLE, then ATTACKING within 10
 ticks, at 60, 100, 150 and 400 ms).
+> **Builder reply (lead):** corrected under CR-21's reply (acbbc6f). **Not fixed, accepted.** The
+> implementer first made the closed panel consume that press and measured that the player
+> attacks all the same: `PlayerInput` reads `Input.is_action_just_pressed()`, which the engine
+> sets before any `_input`, and consuming the event does not undo it. Stopping it would mean
+> changing how the player's input is read (F-001) or holding attacks after every resume. The
+> consume was taken out again, so the code does only what has an effect; the panel's header says
+> so. Logged as DEV-15 and put to Lucas as §10 Q11.
 
 ### CR-27 🔵 Two choices that could bite later  ·  `src/autoload/user_settings.gd:114`, `src/ui/menus/menu_panel.gd:33`
 The settings file is written by `ConfigFile` and read by hand: if Godot changes how it writes a
 bool, saved settings would read as defaults (two tests would notice). `choose_guard_seconds` is
 an export with its default in code; C17 allows that, and `data/tunables/shell.tres` would put it
 beside the other shell values.
+> **Builder reply (lead):** the first is fixed in a25c43d: `save_to()` writes the three lines
+> itself, the same bytes `ConfigFile` wrote (tested for all four combinations, and a file
+> written by a real `ConfigFile` still loads); `src` no longer uses `ConfigFile`. The second is
+> left as an export: moving it to the data file would make the shell overwrite what the tests'
+> helper sets on the panel; C17 allows it, and §10 Q8 says where the number is.
 
 ### CR-28 🔵 Measured, for the record
 The choose keys are dropped for 0.3 s after any menu opens: five Spaces 20 ms apart from the
@@ -1381,6 +1439,7 @@ opening toggle nothing; Enter 200 ms after a death screen with a 0.1 s delay doe
 the entry is enabled; Back by Enter inside the 0.3 s does nothing while Escape goes back at once.
 A flagged press in the game with no menu open attacks, as it must. A BOM file with real settings
 is now read; a 16.5 MB file is refused in 22 ms with one warning.
+> **Builder reply (lead):** noted. The 0.3 s on the choose keys is §10 Q8.
 
 **Tried, found nothing:** the settings reader with `\r`-only line ends, bytes above 0x7F, several
 `=`, tabs, `[settings]` twice and after another section, a bare, a partial and a double BOM, a
@@ -1412,9 +1471,10 @@ at 60 and 30 ticks/s in this round; the stalled frame and hover of round 2 again
 | Q5 | Lead | → Art & Game Feel: the look of every menu (plain buttons, 8 px font, flat dim). | no | |
 | Q6 | Lead | → Art & Game Feel (plan review PR-16): a pause in the middle of a screen shake freezes the picture up to 6 px off centre until you resume. Accepted for the placeholder shake. | no | |
 | Q7 | Lead | → Lucas, at Gate B: pressing Start now takes about 0.8 s before the town appears (the whole game is built at that moment instead of at launch). Fine for now, or should the title screen say "Loading"? | no | |
-| Q8 | Lead | → Lucas, at Gate B (code review CR-2): for 0.3 s after a menu opens, mouse clicks on its entries do nothing, so the second click of a double click cannot switch a setting or quit by accident. Keys and the pad are not delayed. Does the mouse feel slow in the menus? The number is `pointer_guard_seconds` on the menu panel. **Changed in round 2 (CR-15, CR-16):** the 0.3 s now also hold back Enter, Space and pad A (moving and going back are not delayed), the number is `choose_guard_seconds`, and a double click never chooses at any speed. Please double-click "Settings" with a real mouse once: the double-click mark comes from Windows and no test could produce a real one. | no | |
+| Q8 | Lead | → Lucas, at Gate B (code review CR-2): for 0.3 s after a menu opens, mouse clicks on its entries do nothing, so the second click of a double click cannot switch a setting or quit by accident. Keys and the pad are not delayed. Does the mouse feel slow in the menus? The number is `pointer_guard_seconds` on the menu panel. **Changed in round 2 (CR-15, CR-16):** the 0.3 s now also hold back Enter, Space and pad A (moving and going back are not delayed), the number is `choose_guard_seconds`, and a double click never chooses at any speed. Please double-click "Settings" with a real mouse once: the double-click mark comes from Windows and no test could produce a real one. **Round 3 (CR-23, CR-24):** quick clicks on the same entry all count (click Fullscreen twice fast: it should go on and off), and clicking fast right after a menu opens keeps being ignored until you stop for 0.3 s. | no | |
 | Q9 | Lead | → Lucas (code review CR-11): when you run the game inside the editor's own window (Godot's embedded game view), choosing Fullscreen changes the setting and saves it but leaves the window alone; run it in its own window or as an export to see fullscreen. Not verified in the editor by anyone. | no | |
 | Q10 | Lead | → Direction, for the save/load spec (slice 4; code review CR-17): Godot's `ConfigFile` and `str_to_var` build objects and can run a script named in the text they read. A save file must be read as plain data (JSON, or a reader that builds nothing), never through them. The settings file is read by hand since ec7b44b. | no | |
+| Q11 | Lead | → Lucas, at Gate B (code review CR-26): a double click on "Resume" resumes the game and your character attacks once (the second click lands in the running game). Stopping it means changing how attacks are read or holding them back after every resume. Leave it, or fix it? | no | |
 
 ---
 
