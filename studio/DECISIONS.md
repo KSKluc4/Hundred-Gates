@@ -49,6 +49,10 @@
   playtest) is Lucas's to set, one at a time. Loot needs the Items & Economy department opened
   and a design; sprites need the art style and pixel scale decision that `PHASE1.md` lists as
   owed. `PHASE1.md`'s rows are still out of date (Direction's file).
+- **Added 2026-11-21 (Lucas, in chat):** the tutorial is built after every other part that
+  changes what the player does or sees, so it teaches the game as it is: "tutorial you need to
+  have all the features done before". It comes after loot, sprites and audio; the order of
+  those is still his to set.
 - **Revisit if:** two parts turn out to need each other's code before either can be played.
 
 
