@@ -562,7 +562,11 @@ The lead reads the last one before T2 starts.
 **Started:** 2026-11-21  ·  **Branch:** `feature/F-016-loot`
 
 ### Progress
-- [ ] T1
+- [x] T1 — 7f58afe. Its seven test files: 151 tests, all passing in the lead's run (with
+  `test_floor_data.gd` and `test_shipped_tower.gd`: 191); `gdlint`, `gdformat --check`
+  (313 files), core purity and the headless boot clean. The implementer broke six refusals
+  one at a time (the tie-break, the chain cap, the second-bonus rule, the cooldown epsilon,
+  percent < 1, chance > 1) and each failed a test.
 - [ ] T2
 - [ ] T3
 - [ ] T4
@@ -573,6 +577,35 @@ The lead reads the last one before T2 starts.
 ### Deviations from plan
 
 ### Assumptions made (small, reversible)
+- ASSUMPTION-1 (T1): **what a duplicate id is.** The same `SwordData` resource on several
+  floors (the shared regular pool) is not one. Refused: two different resources with one id
+  anywhere in the catalog, the same sword twice inside one pool or one boss table (it would
+  skew the equal pick), and a null entry in either — **Why:** C5 says "a duplicate id"
+  and the pool is shared by design.
+- ASSUMPTION-2 (T1): a bonus on a Heavy finisher or Quick cuts sword is refused. C3 does not
+  list it; "exactly one trait" needs it.
+- ASSUMPTION-3 (T1): a null entry in `LootCatalog.floors` means "no loot on that floor"
+  (`get_floor_loot` returns null for it).
+- ASSUMPTION-4 (T1): the chance per kill is computed by `FloorLoot.get_chance_per_kill(
+  floor_data)` (0 for a null floor or no kills); `get_boss_percent_sum()` beside it.
+  `get_all_swords()` gives the starter, then each floor's pool, then its boss table, each
+  sword once.
+- ASSUMPTION-5 (T1): Quickstep's validation allows landing exactly on `min_dash_cooldown`
+  with a slack of `SwordData.COOLDOWN_EPSILON` (0.000001): `0.35 − 0.15` is
+  `0.19999999999999998` in a double. Not a tunable: it is float slack, like
+  `Geometry.DISTANCE_EPSILON`.
+- ASSUMPTION-6 (T1): `PlayerLoadout.get_hit_damage(index)` is −1 for a hit the chain does
+  not have (what `AttackChain.start` reads as "the attack's own"). `PlayerLoadout.of(class,
+  sword, null)` is allowed and means no minimum cooldown. With no cut the class cooldown is
+  returned as it is, also below `min_dash_cooldown`, so a game without a sword is `main`.
+- ASSUMPTION-7 (T1): `ItemTexts.found_text` of no names is an empty string.
+  `ItemTunables.validate()` wants the four caps and the page size `>= 1`,
+  `min_dash_cooldown >= 0`, `pickup_radius_tiles > 0`, and refuses NaN.
+- ASSUMPTION-8 (T1): a sword whose weights or damage are structurally wrong gets only that
+  error; the hit-based checks are skipped for it (they would add noise or pass silently).
+- ASSUMPTION-9 (T1): sword ids are the names in snake_case without the apostrophe
+  (`wardens_mercy`). `test_sword_math.gd` uses a fixed-seed generator **in the test** for
+  AC1's random weights; nothing under `src` draws yet.
 
 ### Things the Auditor should look at closely
 
