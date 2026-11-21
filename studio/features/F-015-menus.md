@@ -2,7 +2,7 @@
 id: F-015
 title: Menus — title screen, pause menu, death screen, settings
 status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-20
 updated: 2026-11-20
 depends_on: [F-003, F-012, F-014, D-006, D-010, D-014, D-016]
@@ -674,7 +674,7 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
 - [x] T7 — 4bfec51
 - [x] T8 — rendered check by the lead on 4bfec51, results under "How to test"
 - [x] T9 — docs, with this commit
-- [ ] T10 — the final gate comes after the code review; the full suite on 4bfec51 (T1 to T7) is
+- [x] T10 — the final gate is the last line of this list; the full suite on 4bfec51 (T1 to T7) is
   156 scripts, 2442 tests, all passing (888 s), no "Orphans" line, no leak line.
 - [x] Code review round 1 — CR-3, CR-7, CR-9, CR-10, CR-12 9625676; CR-1, CR-2, CR-4, CR-5, CR-6,
   CR-7, CR-8, CR-9, CR-11 8429634; CR-13 answered. Full suite on 8429634: 157 scripts, 2480
@@ -685,6 +685,10 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
 - [x] Code review round 3 — CR-22, CR-26 (the log) acbbc6f; CR-23, CR-24, CR-25, CR-27 a25c43d;
   CR-26 accepted (DEV-15); CR-28 answered. Full suite on a25c43d: 158 scripts, 2571 tests,
   all passing (1081 s), no "Orphans" line, no leak line.
+- [x] Code review round 4 (approved with notes) — CR-29, CR-30, CR-31 and two of CR-32's
+  mutants a5cbc2b. T10, the final gate, on a5cbc2b: 158 scripts, 2579 tests, all passing (1089 s), no
+  "Orphans" line, no leak line; lint, format and purity clean; the main scene boots with no
+  error or warning line; nothing left in this machine's `user://`.
 
 ### Deviations from plan
 - DEV-1: the file went from `PLAN_REVIEW` to `IN_PROGRESS` without `APPROVED` — **Why:** D-016,
@@ -794,6 +798,11 @@ skips `APPROVED`. He has not read this spec: what he did not decide is in §10 Q
   under it, also when it was meant as the tail of a slow triple click. `save_to()` writes the
   settings file by hand and `src` has no `ConfigFile` left (C12 says "a `ConfigFile`": the
   file's bytes are the same).
+  **After round 4 (a5cbc2b):** (d) a press that was discarded by (c) always starts the 0.3 s again,
+  so a click, a pause of 0.3 to 0.5 s and then a quick double click no longer gets its last
+  click through. Known and left: wheel ticks count as presses, so scrolling right after a menu
+  opens holds it off while it lasts; a click on a menu opened by a key is lost when the OS
+  marks it as the second of a double click begun in the game.
 
 **Existing tests edited (C18), all in T3 except the last two bullets.** No test was deleted; eight were renamed.
 - `tests/scenes/f012_game_test.gd`: new helper `confirm_death_when_ready(limit)` (ticks until
@@ -1458,6 +1467,99 @@ was edited in the two commits.
 editor's embedded window; the branch for a settings file that exists and cannot be opened; twins
 at 60 and 30 ticks/s in this round; the stalled frame and hover of round 2 again; the full suite.
 
+<!-- review-round: 4 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** e7827c8 (the fix a25c43d: the diff `1606865..a25c43d` under `src` and `tests`)
+
+**Date:** 2026-11-20 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+A narrow round by the same two reviewers on new private copies of `e7827c8`: the reader on the one
+fix commit and the feature as a whole, the other on its click and key probes, the settings file
+and nine mutations of the new lines. The reader's verdict for the feature is APPROVE_WITH_NOTES:
+nothing is blocking, `a25c43d` has no difference from the spec that §8 does not log, and no
+existing test file is edited in it.
+
+**Round 3 findings:** CR-22 ✔ resolved. CR-23 ✔ resolved (a flagged second click on Fullscreen and
+on Screen shake at 100, 250, 400 and 480 ms flips it back; 2, 3, 4 and 5 quick clicks give 2, 3,
+4 and 5 toggles). CR-24 ✔ resolved at the timings reported (both triple clicks change nothing;
+with one click every 100, 200 or 290 ms none of eight later clicks acts; at 310 and 400 ms the
+first click to act comes at least 0.3 s after the one before it); what is left is CR-30. CR-25 ✔
+resolved, the two equivalent mutants left as logged; its `pending()` path has a hole: CR-29.
+CR-26 accepted as logged (both reviewers agree: the press reaches `Input` before any `_input`).
+CR-27 ✔ resolved for the writer (byte for byte what a real `ConfigFile` writes, in all four
+combinations; a `ConfigFile`-written file still loads and a `ConfigFile` still reads ours); the
+export is accepted as replied. CR-28 noted.
+
+### CR-29 🟡 A broken guard shows as "pending" in the click tests, not as a failure  ·  `tests/scenes/test_f015_clicks.gd:500-515`, `:882`
+"The timing was produced" also requires "the guard was on at the second press", so a guard that
+ends too early is reported as a slow machine. With the guard a tenth as long the click file gave
+17 passing, 0 failing and 31 pending messages, exit code 0. The same mutation fails five tests of
+`test_f015_menu_panel.gd`, so the suite is still red; but the click file is the only place the
+guard is tested through the real shell.
+> **Builder reply (lead):** fixed in a5cbc2b: "produced" is decided on the measured milliseconds
+> alone; where the timing was produced the guard's state and the outcome are asserted; a case
+> goes pending only when the measured time itself was too long.
+
+### CR-30 🟡 A consumed press that arrives after the guard has ended does not hold off the next press  ·  `src/ui/menus/menu_panel.gd:193-200`
+One click, 0.3 to 0.5 s, then a quick double click on the same spot: the title's "Settings", a
+second press, flagged, at +310 ms (consumed), a third, plain, at +400 ms: it acts 90 ms after the
+consumed one and Fullscreen goes on; 1 px below the top of "Quit to title" in the town's pause
+menu the game quits with no confirmation. Also at +310/+470, +320/+560 and +305/+360 ms. The
+guard was restarted only while it was still running.
+> **Builder reply (lead):** fixed in a5cbc2b: a press that is consumed always starts the guard
+> again from that press, also when the guard had ended. Tests with real positional clicks at the
+> four timings. The lead ran the reviewer's own probe (`PROBE_PART=g`) on the fixed panel before
+> committing: at +310/+400, +310/+470, +320/+560 and +305/+360 ms none of the later clicks acted,
+> on the title's Settings and on the top of the town's Quit to title; with one click every 310 or
+> 400 ms the first click to act still comes at least 0.3 s after the one before it.
+
+### CR-31 🔵 One state leaves the entries ignoring the mouse until the next `open()`  ·  `src/ui/menus/menu_panel.gd:193-210`
+With `choose_guard_seconds` set to 0 while a guard runs, a mouse press during it stops the guard
+without putting the buttons back (seen: still ignoring the mouse after 600 ms; keys still choose).
+Nothing in the game changes that export at run time.
+> **Builder reply (lead):** fixed in a5cbc2b, with a test.
+
+### CR-32 🔵 Notes
+- §10 Q8 still carried sentences from earlier rounds that are no longer true ("keys and the pad
+  are not delayed", "a double click never chooses at any speed").
+- Wheel ticks are button presses: ticks every 100 ms held a menu off for as long as they came
+  (2 s in the run), Enter included; Escape is never delayed; the menu works 0.3 s after the last.
+- A flagged press on a menu that was opened by a key, with no mouse press since, is consumed: one
+  click lost. A real mouse sends it only when that click lands within the OS's double-click time
+  and distance of a click made in the game just before the pause. Logged (DEV-15 c).
+- `save_to()`: a failure that only shows when the file is closed would not be noticed; writing to
+  a temporary file and renaming would keep the old file in every failure. A write that fails
+  after the open removes the file; that branch has no test.
+- Three mutants of the new lines survive: no early end of the guard at a press (no test stalls a
+  frame before a plain press); releases treated like presses; the half-written file not removed.
+> **Builder reply (lead):** Q8 is rewritten as it stands (this commit). The early end of the guard
+> at a press and the release are pinned by tests in a5cbc2b (the implementer measured that a plain
+> press queued behind a stall does not choose with or without those lines: the button is not
+> hovered until a frame has run; the test pins what the lines do change, that such a press ends
+> the guard instead of starting it again). The wheel, the key-opened menu, and the two
+> `save_to()` points are left as they are and are in §8 (DEV-15, ASSUMPTION-19).
+
+**Tried, found nothing:** the slow flagged double click (310, 350, 500 ms) and the stalled frame
+with a flagged press; Down, Enter, Enter and pad A twice at 20, 80, 250 and 290 ms; right and
+middle presses, a press on empty space and a button held from +100 to +900 ms during the guard;
+12 mixed left, right, wheel and Enter presses 60 ms apart (nothing chosen, and 340 ms after the
+last one the mouse and Enter work); 72 flagged presses on every entry of the seven menus, none
+chose, and 18 plain clicks right after, all chose; both settings changed through the menus and a
+new shell on that file; a save onto a read-only file (false, the file as it was); a quick fuzz of
+3,359 settings files against the reviewer's reference reader (0 mismatches). Six of nine
+mutations of the new lines were killed.
+
+**Not checked:** a real mouse, wheel or pad and a real window (which presses the OS marks as a
+double click is reasoned from the Win32 documents in every round, never measured); the editor's
+embedded window; a write that fails after the file was opened; hover after the guard ends; the
+bot, the twins and a longer fuzz in this round; the full suite (the lead's run).
+
+**After round 4 (lead):** the last fixes are a5cbc2b. No fifth round was run on it: the lead read
+its diff, ran the reviewer's click probe on it and the full suite (158 scripts, 2579 tests,
+all passing, 1089 s; lint, format and purity clean; the main scene boots with no error or
+warning line). Nothing in four rounds was checked with a real keyboard, mouse or gamepad: that is
+Gate B.
+
 ---
 
 ## 10. Open Questions  ·  _Anyone (append)_
@@ -1471,7 +1573,7 @@ at 60 and 30 ticks/s in this round; the stalled frame and hover of round 2 again
 | Q5 | Lead | → Art & Game Feel: the look of every menu (plain buttons, 8 px font, flat dim). | no | |
 | Q6 | Lead | → Art & Game Feel (plan review PR-16): a pause in the middle of a screen shake freezes the picture up to 6 px off centre until you resume. Accepted for the placeholder shake. | no | |
 | Q7 | Lead | → Lucas, at Gate B: pressing Start now takes about 0.8 s before the town appears (the whole game is built at that moment instead of at launch). Fine for now, or should the title screen say "Loading"? | no | |
-| Q8 | Lead | → Lucas, at Gate B (code review CR-2): for 0.3 s after a menu opens, mouse clicks on its entries do nothing, so the second click of a double click cannot switch a setting or quit by accident. Keys and the pad are not delayed. Does the mouse feel slow in the menus? The number is `pointer_guard_seconds` on the menu panel. **Changed in round 2 (CR-15, CR-16):** the 0.3 s now also hold back Enter, Space and pad A (moving and going back are not delayed), the number is `choose_guard_seconds`, and a double click never chooses at any speed. Please double-click "Settings" with a real mouse once: the double-click mark comes from Windows and no test could produce a real one. **Round 3 (CR-23, CR-24):** quick clicks on the same entry all count (click Fullscreen twice fast: it should go on and off), and clicking fast right after a menu opens keeps being ignored until you stop for 0.3 s. | no | |
+| Q8 | Lead | → Lucas, at Gate B (code review CR-2, CR-15, CR-16, CR-23, CR-24, CR-30; rewritten after round 4, the earlier wording was out of date): the menus guard against accidental double choices. For 0.3 s after a menu opens, clicks, Enter, Space and pad A do nothing (moving the focus and Escape or pad B work at once), and clicking during that time starts the 0.3 s again. The second click of a double click that opened a menu is thrown away at any speed. Quick clicks on the same entry all count. Please try with a real mouse, because no test could use one and the double-click mark comes from Windows: (1) double-click "Settings" on the title and in the pause menu: nothing in it may change; (2) double-click the top edge of "Quit to title" in the town's pause menu: it must stop at the question; (3) click "Fullscreen" twice fast: on, then off. And say whether the 0.3 s feel slow. The number is `choose_guard_seconds` on the menu panel (`src/ui/menus/menu_panel.gd`). | no | |
 | Q9 | Lead | → Lucas (code review CR-11): when you run the game inside the editor's own window (Godot's embedded game view), choosing Fullscreen changes the setting and saves it but leaves the window alone; run it in its own window or as an export to see fullscreen. Not verified in the editor by anyone. | no | |
 | Q10 | Lead | → Direction, for the save/load spec (slice 4; code review CR-17): Godot's `ConfigFile` and `str_to_var` build objects and can run a script named in the text they read. A save file must be read as plain data (JSON, or a reader that builds nothing), never through them. The settings file is read by hand since ec7b44b. | no | |
 | Q11 | Lead | → Lucas, at Gate B (code review CR-26): a double click on "Resume" resumes the game and your character attacks once (the second click lands in the running game). Stopping it means changing how attacks are read or holding them back after every resume. Leave it, or fix it? | no | |
