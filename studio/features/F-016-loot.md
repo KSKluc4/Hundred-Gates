@@ -1,8 +1,8 @@
 ---
 id: F-016
 title: Basic loot — swords with one trait, drops, the Equipment list (slice 3, second part)
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-21
 updated: 2026-11-21
 depends_on: [F-001, F-011, F-012, F-014, F-015, D-005, D-006, D-014, D-016, D-017]
@@ -594,7 +594,10 @@ The lead reads the last one before T2 starts.
   leak line, nothing left in the test user folder; `gdlint src tests` no problems;
   `gdformat --check` 340 files unchanged; core purity ok; the headless boot prints no error
   or warning line.
-- [x] T7 — the commit that carries this log. (a) `studio/design/combat.md`: the chain's damage
+- [x] Code review round 1 — CR-1, CR-2, CR-3, CR-4, CR-6, CR-7, CR-8, CR-9 f0797fe; CR-5
+  logged; CR-10, CR-11 answered. Full suite on f0797fe: 182 scripts, 3125 tests, all passing
+  (1172 s).
+- [x] T7 — b4815d4 (the commit that carries this log's T6 and T7 entries). (a) `studio/design/combat.md`: the chain's damage
   comes from the equipped sword. (b) **A rendered run of the real game** (the shipped
   catalog, a real window at 1280 × 720, real time at 60 frames per second, 23 screenshots, no
   error or warning line in its log): the Equipment list with 1, 8 and 15 swords (two pages),
@@ -614,6 +617,10 @@ The lead reads the last one before T2 starts.
   The first render's four drops in 27 kills were luck.
 
 ### Deviations from plan
+- DEV-4 (code review round 1, CR-2): **in the town an equip refills the player.** C8 and AC7
+  say setting a sword never heals; that stays true of the motor and on a floor. The town is
+  always at full HP (`items.md`), so `TownScene.set_sword` refills after it. — **Impact:**
+  none on a floor; the town's bar is full after any equip.
 - DEV-1 (T4): **`tests/scenes/test_f015_clicks.gd` was edited though C22 does not list it.**
   Its clicks were aimed at pixels ("the top 3 px of the pause menu's Quit to title are the
   confirm's Quit to title"); a fourth pause entry moves every button, and four tests failed.
@@ -654,6 +661,14 @@ The lead reads the last one before T2 starts.
   loot per step in the running game, and the hits' own timing elsewhere.
 
 ### Assumptions made (small, reversible)
+- ASSUMPTION-23 (T5; logged after code review CR-5): a boss's sword is drawn in its own
+  colour (`PickupMarkers.boss_marker_color`), so the guaranteed drop stands out. C20 names one
+  shape with size and colour exports.
+- ASSUMPTION-24 (review fixes): `Game.leave_floor()` stops the whole floor subtree (process
+  mode), not only its own `_physics_process`: the runner, the player and the enemies have
+  callbacks of their own, and the floor is freed on the game's next tick anyway. A sword
+  whose hits do not fit the class chain is not applied to the hits; its other values are.
+  The town refills on every `set_sword`, also for the sword already equipped.
 - ASSUMPTION-21 (T6): `Game.get_gate_odds()` builds the texts on every call and `TownScene`
   asks for them through a callable (`set_odds_provider`) on every `open()`, also after debug
   N: C19 says `Game` "hands" them over; asked each time they are current also when the
@@ -748,6 +763,17 @@ The lead reads the last one before T2 starts.
   AC1's random weights; nothing under `src` draws yet.
 
 ### Things the Auditor should look at closely
+- **After code review round 1** (f0797fe): the full suite is 182 scripts, 3125 tests, all
+  passing (1172 s), no orphan or leak line; `gdlint src tests` no problems; `gdformat --check`
+  nothing to change; core purity ok; the headless boot prints no error or warning line;
+  nothing is left in the test user folder.
+- **Per-tick differences that remain, inherited (code review CR-11):** the room's clear and
+  its heal are read once per physics tick, so for the rest of the tick of a room's last kill
+  HP differs between 30 and 120 ticks per second (40 against 70 measured); a boss and a
+  player dying within one 30-ticks/s tick can differ in "floor cleared" (C23's exception).
+  Drops, pickups, inventory and the roller were equal in every twin.
+- A banner wider than its 320 px grows to the right, off centre; the shipped data cannot
+  produce one (longest reachable 243 px).
 - **Not done by anyone:** play with a real keyboard, mouse or gamepad. Every input in the
   tests and in the rendered run was posted by code; the rendered run moved the player and
   killed enemies through the objects, not through fights.
@@ -822,48 +848,79 @@ runs one more tick after the confirm, the chaser dies in it, the roller draws, t
 in the freed room (owned 1 → 1). With the body within reach it is taken instead, with no
 banner. The window is one physics tick. C16 says what lies in the room is taken before the
 room is freed. No exploit: the session ignores a clear or a death in that tick.
+> **Builder reply (lead):** fixed in f0797fe. `Game.leave_floor()` stops the whole floor (its
+> process mode) at the session's yes, so its sim never steps again; a refusal stops nothing.
+> Tests: a kill between the yes and the next tick is not rolled (the roller's state and the
+> inventory are the same before and after the town appears), a sword in its reach is not
+> taken, and the swords lying at the yes are still taken and named. The first two fail
+> without the stop.
 
 ### CR-2 🟡 Equipping Vitality in town leaves the town player at 100/108  ·  `src/world/town/town_scene.gd:107-110`
 Start, own the Vitality sword, pause in town, Equipment, choose it: HP is 100/108 and stays
 there; entering a floor gives 108/108. `items.md` says the town is at full HP. Lucas would
 see a bar that is not full in the safe town the first time he equips Guard's Blade.
+> **Builder reply (lead):** fixed in f0797fe: in the town the player is refilled after an equip
+> (108/108 with Vitality, 100/100 without); on a floor an equip still heals nothing (tested).
+> Two assertions of this feature's own tests pinned "no heal in town" and were changed with
+> the rule: `test_f016_loadout.gd` (`…_and_does_not_heal` renamed `…_and_fills_it`) and one
+> line of `test_f016_equipment.gd`'s equip helper. AC7 and C8 are about the motor, where
+> setting a sword still never heals; the refill is the town's.
 
 ### CR-3 🟡 No test sees a reinforcement's death reach the loot  ·  `src/world/floors/room.gd:431`
 The build is right (`_enemies` holds the reserve too). With `_attach_loot` changed to skip the
 reserve, all 98 tests of the six `test_f016_*.gd` scene files pass. The shipped kill counts
 (27 / 51 / 38) include reinforcements, so that wrong build would cut the drop rate unseen.
+> **Builder reply (lead):** fixed in f0797fe: in a room with reinforcements and a certain drop,
+> each reinforcement killed after it arrives leaves a sword where it fell, and the room's loot
+> watches as many enemies as the kill target. Fails when the reserve is skipped.
 
 ### CR-4 🟡 `Next page` is never stepped from a page with two pages after it  ·  `src/world/shell.gd:206`
 With `_equipment_page + 2` all 143 equipment, gate and UI tests pass: the test with 17 swords
 opens on the middle page, so `Next page` only ever lands on the clamped last page.
+> **Builder reply (lead):** fixed in f0797fe: from the first of three pages, `Next page` shows
+> exactly the middle page's swords, again the last, and `Previous page` twice the same way
+> back. Fails with a step of two.
 
 ### CR-5 🟡 Unlogged addition: a boss's sword is drawn in its own colour  ·  `src/world/floors/pickup_markers.gd:11, 65-66`
 C20 says one shape with size and colour exports; §8 has no line for `boss_marker_color`.
 Harmless (it reads only the drop). An unlogged difference all the same.
+> **Builder reply (lead):** logged with these replies as ASSUMPTION-23 in §8.
 
 ### CR-6 🔵 Two more wrong builds the suite accepts  ·  `src/core/items/character_loot.gd:81`, `loot_roller.gd:39`
 Without the once-per-floor guard of the boss-taken list, 141 tests pass, and that build writes
 a snapshot its own `from_dict` refuses ("listed twice"). And `randi_range(0, n − 1) if n > 2
 else 0` passes: the pick is not pinned for a pool of two (the shipped pools hold five).
+> **Builder reply (lead):** fixed in f0797fe: two boss swords of one floor round-trip with the
+> floor listed once (fails without the guard); the pool pick follows a reference generator
+> for pools of one, two and three, every index reached (fails with the `n > 2` build).
 
 ### CR-7 🔵 `PlayerLoadout.get_hit_damage` against its own comment  ·  `src/core/items/player_loadout.gd:27`
 A sword with three weights on a class with a two-hit chain returns the sword's third hit for
 index 2, not −1 (ASSUMPTION-6 says −1). Reachable only by an F5 reload to a class with another
 chain size, since `apply_data` does not validate the sword again.
+> **Builder reply (lead):** fixed in f0797fe: −1 for any index the class chain does not have; and
+> a sword whose number of hits is not the chain's is not applied to the hits at all (every
+> hit is the class attack's own), while its max HP, cooldown and heal still apply. Logged as
+> ASSUMPTION-24.
 
 ### CR-8 🔵 `RoomLoot.from_dict` accepts a drop at NaN or infinity  ·  `src/core/items/room_loot.gd:216`
 8 of 8,000 fuzzed snapshots were accepted with `Vector2(nan, inf)`. Such a drop is never in
 reach; only `take_all()` takes it.
+> **Builder reply (lead):** fixed in f0797fe: refused, and nothing changes.
 
 ### CR-9 🔵 A player-facing separator outside the texts file  ·  `src/world/game.gd:27`
 `Game.BANNER_JOIN = " · "` joins the `Found:` notice to another banner (C18: no item string
 anywhere else). `&"PickupMarkers"` is a literal where the room's other node names are
 constants (`WaveMarkers` has the same habit).
+> **Builder reply (lead):** the separator is fixed in f0797fe (`ItemTexts.BANNER_JOIN`, pinned as
+> a literal in the texts test). The node name is left as it is, with `WaveMarkers`'.
 
 ### CR-10 🔵 Debug R is live in the game the shell builds, and now farms swords  ·  `src/world/game.gd:36`, `src/world/floors/floor_scene.gd:153`
 Three presses of R with a certain-drop fixture took the owned swords from 2 to 5; R in the
 boss room rolls the guaranteed drop again. The debug keys are F-012/C17's, not new; what is
 new is that they pay.
+> **Builder reply (lead):** not changed. The debug keys are F-012's and Lucas uses them. Put to
+> him as §10 Q6; switching them off belongs to the export builds.
 
 ### CR-11 🔵 For the record
 (a) C23 names one inherited per-tick difference; there is a second: after a room's last kill
@@ -874,6 +931,8 @@ equal in all four exit twins). Of 16 boss twins with the player on the boss, 6 d
 right, off centre (355 px measured for a text the shipped data cannot produce; the longest
 reachable one is 243 px). (c) A session snapshot survives `var_to_bytes` but is refused after
 a JSON round trip: its ints come back as floats. Not checked whether `main` is the same.
+> **Builder reply (lead):** (a) and (b) noted in §8, "look at closely". (c) put to Direction
+> for the save/load spec as §10 Q7.
 
 **Checked and found sound:** C1 to C23 implemented as written, with the file and line of each
 (the differences are §8's, except CR-5 and CR-7); nothing of §3 or D-017's rejected list
@@ -906,6 +965,8 @@ running game (nothing calls it); whether `randf()` can return exactly 1.
 | Q3 | Lead | → Lucas, at Gate B: with more than 8 swords the Equipment list has pages (`equipment_page_size`). The pickup notice shares the one banner: with a heal in the same moment it reads "+30 HP · Found: Twin Edge"; otherwise it replaces what was showing (so walking onto a boss's sword at once replaces "Floor 1 cleared"). | no | |
 | Q4 | Lead | → Direction: is a menu choice (equip) a player action under G8? It follows the path of Return to town (F-012 §10 Q8 is still open). | no | |
 | Q5 | Lead | → Lucas, at Gate B: with `Equipment` in the pause menu the buttons moved. A late second click on "Quit to title" now lands on "Cancel" or on nothing, never on the confirm; on a floor, a late second click on "Return to town" can land on its confirm. The click guard of F-015 covers it (tested, DEV-1). Please double-click "Return to town" once with a real mouse: it must stop at the question. | no | |
+| Q6 | Lead | → Lucas, at Gate B (code review CR-10): the debug keys are live in the game. R restarts the room, so its enemies drop again, and in the boss room the guaranteed sword is rolled again. They are your keys from F-012; leave them on until the export builds, or off now? | no | |
+| Q7 | Lead | → Direction, for the save/load spec (code review CR-11): the session's snapshot survives `var_to_bytes` but not a JSON round trip (whole numbers come back as floats and are refused). Choose the file format with that in mind. | no | |
 
 ---
 
