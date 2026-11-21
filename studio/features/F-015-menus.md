@@ -1,10 +1,10 @@
 ---
 id: F-015
 title: Menus — title screen, pause menu, death screen, settings
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: DONE             # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-20
-updated: 2026-11-20
+updated: 2026-11-21
 depends_on: [F-003, F-012, F-014, D-006, D-010, D-014, D-016]
 pillars: [1]
 department: Direction    # the death and leave rules belong to Floors (studio/design/floors.md)
