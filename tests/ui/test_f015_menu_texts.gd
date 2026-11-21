@@ -110,21 +110,27 @@ func test_ac12_the_paused_entries_on_a_floor_have_the_leave_entry() -> void:
 		ShellFlow.State.PAUSED, true, true, false, false
 	)
 	assert_eq(
-		_ids(entries), [&"resume", &"leave", &"settings", &"quit_to_title"] as Array[StringName]
+		_ids(entries),
+		[&"resume", &"equipment", &"leave", &"settings", &"quit_to_title"] as Array[StringName]
 	)
 	assert_eq(
-		_texts(entries), ["Resume", "Return to town", "Settings", "Quit to title"] as Array[String]
+		_texts(entries),
+		["Resume", "Equipment", "Return to town", "Settings", "Quit to title"] as Array[String]
 	)
-	assert_eq(_enabled(entries), [true, true, true, true] as Array[bool])
+	assert_eq(_enabled(entries), [true, true, true, true, true] as Array[bool])
 
 
 func test_ac12_the_paused_entries_in_the_town_have_no_leave_entry() -> void:
 	var entries: Array[MenuEntry] = ShellMenus.entries(
 		ShellFlow.State.PAUSED, false, true, false, false
 	)
-	assert_eq(_ids(entries), [&"resume", &"settings", &"quit_to_title"] as Array[StringName])
-	assert_eq(_texts(entries), ["Resume", "Settings", "Quit to title"] as Array[String])
-	assert_eq(_enabled(entries), [true, true, true] as Array[bool])
+	assert_eq(
+		_ids(entries), [&"resume", &"equipment", &"settings", &"quit_to_title"] as Array[StringName]
+	)
+	assert_eq(
+		_texts(entries), ["Resume", "Equipment", "Settings", "Quit to title"] as Array[String]
+	)
+	assert_eq(_enabled(entries), [true, true, true, true] as Array[bool])
 
 
 func test_ac12_the_settings_entries_for_each_on_off_combination() -> void:
@@ -249,7 +255,8 @@ func test_ac12_the_focus_of_every_state_is_an_entry_of_that_menu() -> void:
 	# focus is one of the menu's own entries. A way back through the leave confirm only exists on a
 	# floor, where `leave` is an entry.
 	for state: ShellFlow.State in ShellFlow.State.values():
-		if state == ShellFlow.State.PLAYING:
+		# PLAYING has no menu; EQUIPMENT's entries and focus come from EquipmentMenu (F-016/C17).
+		if state == ShellFlow.State.PLAYING or state == ShellFlow.State.EQUIPMENT:
 			continue
 		for previous: ShellFlow.State in ShellFlow.State.values():
 			var on_floor: bool = previous == ShellFlow.State.CONFIRM_LEAVE

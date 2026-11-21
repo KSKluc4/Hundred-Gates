@@ -15,3 +15,10 @@ layout_mode = 0
 
 [node name="List" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
+
+[node name="Odds" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+
+[node name="Label" type="Label" parent="Odds"]
+layout_mode = 2
