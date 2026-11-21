@@ -12,14 +12,19 @@ extends Node2D
 @export var outline_color: Color = Color(0.1, 0.1, 0.1, 0.9)
 @export var marker_size_px: float = 8.0
 @export var outline_width_px: float = 1.0
+## The draw order (`z_index`, relative to the room, whose bodies and views all stand at 0). Above 0
+## on purpose: a sword lies exactly where its enemy died, and a dead enemy's body is still drawn
+## (the Warden's corpse is a circle of about 22 px against a marker of 8 px), so a marker under the
+## enemies and the player would be hidden by the very body it lies under.
+@export var draw_order: int = 1
 
 var _loot: RoomLoot = null
 # What the last _draw() drew, so a test can see a draw pass it can't see.
 var _drawn: Array[Dictionary] = []
 
 
-func _init() -> void:
-	z_index = -1  # Under the enemies and the player, which stand at 0.
+func _ready() -> void:
+	z_index = draw_order
 
 
 ## Before the node enters the tree. Null draws nothing.

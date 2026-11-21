@@ -587,8 +587,31 @@ The lead reads the last one before T2 starts.
   time (no take on advancing, in `leave_floor`, at the boss door; no sword on the room's
   player; no `set_loadout_values`; no banner join; the town ignoring max HP): each failed a
   test.
-- [ ] T6
-- [ ] T7
+- [x] T6 — ff26464. Lead's run: its two new scene files 48 tests, all passing. The
+  implementer broke it four ways (an equip that reopens the panel, the gate reopened without
+  odds after debug N, a `Back` that does nothing, the input guard switched off): each failed
+  tests. **Full suite on ff26464: 182 scripts, 3108 tests, all passing (1135 s)**, no orphan or
+  leak line, nothing left in the test user folder; `gdlint src tests` no problems;
+  `gdformat --check` 340 files unchanged; core purity ok; the headless boot prints no error
+  or warning line.
+- [x] T7 — the commit that carries this log. (a) `studio/design/combat.md`: the chain's damage
+  comes from the equipped sword. (b) **A rendered run of the real game** (the shipped
+  catalog, a real window at 1280 × 720, real time at 60 frames per second, 23 screenshots, no
+  error or warning line in its log): the Equipment list with 1, 8 and 15 swords (two pages),
+  a real positional click equipping a sword with the mark moving, the list grey with its
+  two-line body on a floor, enabled in the cleared room before the boss, the boss room
+  entered at 108/108 with the Vitality sword, the gate with the Warden's and the Hexer's
+  tables and the guarantee line, a drop on the floor, debug N taking a drop with the banner,
+  the Warden's sword lying where he died and `Found: Warden's Stride` on walking over it.
+  **It found one defect:** a drop was drawn under the enemies, so a boss's sword was
+  invisible under his body (regular enemies' dead bodies are not drawn, which is why no test
+  noticed). Fixed in this commit: `PickupMarkers.draw_order` (an export, 1) puts the marker
+  above every enemy and the player; three new tests compare the real z values and fail with
+  the old −1 (`test_f016_drops.gd`: 14 tests, all passing). Seen in the second render.
+  (c) **The drop rate in the real game**, measured headless on the shipped floor 1, room 1,
+  restarted with the debug key: 6000 kills in two runs with different seeds gave 209 drops,
+  against 222 expected at 1/27 (88 and 121 per 3,000; one standard deviation is about 10).
+  The first render's four drops in 27 kills were luck.
 
 ### Deviations from plan
 - DEV-1 (T4): **`tests/scenes/test_f015_clicks.gd` was edited though C22 does not list it.**
@@ -631,6 +654,17 @@ The lead reads the last one before T2 starts.
   loot per step in the running game, and the hits' own timing elsewhere.
 
 ### Assumptions made (small, reversible)
+- ASSUMPTION-21 (T6): `Game.get_gate_odds()` builds the texts on every call and `TownScene`
+  asks for them through a callable (`set_odds_provider`) on every `open()`, also after debug
+  N: C19 says `Game` "hands" them over; asked each time they are current also when the
+  flag changes while the town is up. An equip rewrites, in place, every entry of the page
+  whose text changed (in practice the two). After a page change the focus is the panel's
+  first entry (the page's first sword, or `Back`). In scene tests the catalog reaches a
+  shell-built game through `Tunables.loot_catalog`, set before Start; its seed is drawn, so
+  those tests use fixtures that leave nothing to luck. AC22's "the choosing press" is read as
+  the press that resumes: the press that picks a sword is consumed by the menu.
+- ASSUMPTION-22 (T7): a drop is drawn above the player too (the player stands on it only in
+  the instant of the pickup). `WaveMarkers` keeps its −1.
 - ASSUMPTION-18 (T4): the focus hook is called once per real change and once for the focus
   a menu opens with; a mouse takes the focus by a click, not by hovering (a Godot button does
   not focus on hover, and `ListMenu` was not changed to). `EquipmentMenu.body` is the locked
@@ -714,6 +748,14 @@ The lead reads the last one before T2 starts.
   AC1's random weights; nothing under `src` draws yet.
 
 ### Things the Auditor should look at closely
+- **Not done by anyone:** play with a real keyboard, mouse or gamepad. Every input in the
+  tests and in the rendered run was posted by code; the rendered run moved the player and
+  killed enemies through the objects, not through fights.
+- The loot's call sits at the end of each combat step in `CombatSim.tick()`; `RoomLoot` is
+  not in the sim's snapshot (the keys are pinned), so the debug snapshot keys of
+  `CombatRunner` restore a room without its drops.
+- `Game`'s banner join rests on `Engine.get_physics_frames()`.
+- The equip in a pause changes the live player and `FloorRun` while the game is disabled.
 - **Existing tests edited so far (C22):** `tests/core/floors/test_f015_session.gd`,
   `test_ac5_the_snapshot_keeps_its_keys`: `TowerSession.KEY_LOOT` added to the pinned key
   list (the snapshot has a seventh key). `test_tower_session.gd` needed none.
@@ -726,6 +768,12 @@ The lead reads the last one before T2 starts.
   inherits it and needed no edit). `tests/scenes/test_f015_clicks.gd`: DEV-1.
 
 ### How to test
+- Everything: `tools/test` (about 19 minutes; with `GODOT_BIN` set on Windows, see the
+  lead's notes). Loot only: `-gdir=res://tests/core/items`, the `test_f016_*.gd` files under
+  `tests/core/{combat,floors,player,shell}`, `tests/ui` and `tests/scenes`.
+- By hand: §5 "How to verify manually". The click tests of the menus are in
+  `tests/scenes/test_f015_clicks.gd` (DEV-1); they measure real time, run nothing heavy
+  beside them.
 
 ---
 

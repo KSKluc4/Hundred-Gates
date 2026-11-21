@@ -220,6 +220,67 @@ func test_ac24_a_boss_sword_is_marked_in_its_own_colour() -> void:
 	assert_eq(markers.get_markers()[0]["color"], markers.boss_marker_color)
 
 
+## What the engine draws by: the node's z_index plus those of its ancestors while each is relative.
+func _effective_z(item: CanvasItem) -> int:
+	var total: int = 0
+	var node: Node = item
+	while node is CanvasItem:
+		total += (node as CanvasItem).z_index
+		if not (node as CanvasItem).z_as_relative:
+			break
+		node = node.get_parent()
+	return total
+
+
+## Every canvas item of `body` (its own and its children's: shape, bar, telegraph, numbers).
+func _highest_z_in(body: Node) -> int:
+	var highest: int = _effective_z(body as CanvasItem)
+	for child: Node in body.find_children("*", "CanvasItem", true, false):
+		highest = maxi(highest, _effective_z(child as CanvasItem))
+	return highest
+
+
+func _assert_drawn_above(markers: PickupMarkers, dead: Enemy) -> void:
+	var z: int = _effective_z(markers)
+	assert_gt(z, _highest_z_in(dead), "above the dead enemy the sword lies under, and its views")
+	assert_gt(z, _highest_z_in(player()), "above the player")
+	for other: Enemy in room().get_enemies():
+		assert_gt(z, _highest_z_in(other), "above every enemy of the room")
+	assert_eq(markers.z_index, markers.draw_order, "the export is what the node draws by")
+
+
+func test_ac24_a_drop_in_a_regular_room_is_drawn_above_the_dead_enemy_it_lies_under() -> void:
+	await _enter(TWO_IN_ONE_ROOM)
+	var dead: Enemy = room().get_enemies()[0]
+	kill(dead)
+	await run_ticks(1)
+	assert_eq(drops().size(), 1)
+	assert_eq(drops()[0].position, dead.logic.get_position_tiles(), "it lies under the corpse")
+	_assert_drawn_above(room().get_pickup_markers(), dead)
+
+
+func test_ac24_a_boss_sword_is_drawn_above_the_dead_boss() -> void:
+	await spawn_loot_game(loot_tower([1]))
+	session().get_progress().mark_boss_reached(1)
+	await enter_frozen_floor(1, true)
+	var boss: Enemy = enemy()
+	kill_boss()
+	await run_ticks(1)
+	assert_eq(drops().size(), 1)
+	assert_eq(drops()[0].position, boss.logic.get_position_tiles(), "under the boss's body")
+	_assert_drawn_above(room().get_pickup_markers(), boss)
+
+
+func test_ac24_the_markers_are_above_a_reserve_enemys_views_too() -> void:
+	var tower: TowerData = TowerFixtures.tower_of(1, 1)
+	tower.floors[0].rooms[0] = WaveFixtures.wave_room(&"f1_room_1")
+	await spawn_loot_game(tower)
+	await enter_frozen_floor()
+	var arrival: Enemy = room().get_reserve_enemies()[0]
+	assert_true(room().get_reserve_enemies().has(arrival))
+	assert_gt(_effective_z(room().get_pickup_markers()), _highest_z_in(arrival), "above a reserve")
+
+
 func test_ac24_the_markers_read_nothing_but_the_drops_they_are_given() -> void:
 	var tower: TowerData = loot_tower([1])
 	var character: CharacterLoot = LootFixtures.character(certain_catalog(tower), LOOT_SEED)
