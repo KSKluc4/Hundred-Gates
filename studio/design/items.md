@@ -86,12 +86,14 @@ later ones only add damage.
   divided by the floor's kills before the boss: 27, 51 and 38 kills give 3.7 %, 2.0 % and
   2.6 %. About 36 % of full runs drop nothing. A first full climb gives about six swords.
 - **Bosses.** Three swords with a percentage each (30, 20, 10). A repeat win rolls once: that
-  sword at its percentage, nothing for the rest (40 %). The **first win** of a floor always
-  drops one, in the same proportions (3 : 2 : 1). The first win is the win that clears the
-  floor for the first time.
+  sword at its percentage, nothing for the rest (40 %). The **first win** always drops one,
+  in the same proportions (3 : 2 : 1). It is built as: until the character has **taken** a
+  sword from that floor's boss, every win drops one (F-016/C11). That is Lucas's rule in
+  every case but one, where it is kinder: a sword that dropped and was lost to a death does
+  not end the guarantee (F-016 §10 Q1).
 - A drop lies where the enemy died. Walking within `pickup_radius_tiles` takes it. A sword
-  still lying in a room is taken when the player walks through the room's exit, and lost when
-  the player dies or returns to town from the pause menu.
+  still lying in a room is taken when the player leaves the room alive (through the exit, or
+  by Return to town in the pause menu), and lost when the player dies (F-016/C16, Q2).
 - A sword already owned is kept as a count. It has no use until phase 2.
 - The player sees each boss's table at the tower gate.
 - Rolls come from one seeded source per character, saved with the session (G7).
@@ -115,7 +117,7 @@ stat rolls per drop.
 ## Open questions (cross-department)
 | # | To | Question | Blocking |
 |---|---|---|---|
-| IX1 | → Combat | After play: is one sword picked for every fight? Is the Vitality sword in every Warden win? Is −0.05 s of dash cooldown felt at all? | No |
+| IX1 | → Combat | After play: is one sword picked for every fight? Is the Vitality sword in every Warden win? Is −0.05 s of dash cooldown felt at all? Juggernaut's Fangs kills a chaser with four light hits and no finisher (52). The routine the place rule leaves: Mending through the rooms, then a switch in the pre-boss room (Vitality there turns five Warden hits into six). | No |
 | IX2 | → Lore | Names of the 15 swords (working names; no SAO names). | No |
 | IX3 | → Art & Game Feel | Look of a drop on the floor, of the pickup moment, and of the Equipment list. | No |
 | IX4 | → Direction (phase 2) | What duplicates are for (shop, upgrades); whether death should lose anything (CX3). | No |

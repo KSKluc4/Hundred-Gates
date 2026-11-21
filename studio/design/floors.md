@@ -125,7 +125,7 @@ Checked by tests over the shipped tower, on top of the format rules:
   again (F-016, D-017; `studio/design/items.md`).
 - Swords can be switched in the town and in the last room before the boss room once that
   room is cleared (F-016; Lucas, 2026-11-21). A sword left on a room's floor is taken when
-  the player walks through the exit, and lost on death or Return to town.
+  the player leaves the room alive (the exit, or Return to town), and lost on death.
 - Progress is per character (D-005) and lives until the player quits to the title screen or
   closes the game (F-015: a new Start is a new character's progress), until save/load
   (phase 2).
