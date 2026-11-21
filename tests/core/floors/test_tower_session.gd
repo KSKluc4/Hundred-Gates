@@ -268,7 +268,7 @@ func test_ac11_a_cleared_visit_followed_by_a_death_still_returns_to_town_with_pr
 	_session.report_floor_cleared()
 	_session.report_player_died()
 	assert_false(_session.report_floor_exited(), "the pause is not a floor")
-	_tick_until_town(1.0 / 60.0)
+	_tick_and_confirm(1.0 / 60.0)
 	assert_true(_session.get_progress().is_floor_cleared(1))
 	assert_true(_session.get_progress().is_floor_unlocked(2))
 
@@ -291,18 +291,18 @@ func test_ac12_a_death_starts_the_pause_and_keeps_the_floor_on_show() -> void:
 	)
 
 
-func test_ac12_ticking_reaches_the_town_within_one_step_of_the_delay() -> void:
+func test_ac12_ticking_allows_the_return_within_one_step_of_the_delay() -> void:
 	for steps_per_second: int in [30, 60, 120]:
 		var step: float = 1.0 / steps_per_second
 		_session.setup(_tower, _rules)
 		_session.enter_floor(1, false)
 		_session.report_player_died()
-		var elapsed: float = _tick_until_town(step)
+		var elapsed: float = _tick_and_confirm(step)
 		assert_gte(elapsed, DELAY - 0.000001, "not early at %d Hz" % steps_per_second)
 		assert_lte(elapsed, DELAY + step + 0.000001, "within a step at %d Hz" % steps_per_second)
 
 
-func test_ac12_the_pause_counts_down_and_the_town_comes_once() -> void:
+func test_ac12_the_pause_counts_down_and_the_town_comes_once_it_is_confirmed() -> void:
 	_session.enter_floor(1, false)
 	_session.report_player_died()
 	_session.tick(1.0)
@@ -310,26 +310,32 @@ func test_ac12_the_pause_counts_down_and_the_town_comes_once() -> void:
 	assert_almost_eq(_session.get_death_time_left(), 0.5, 0.0001)
 	watch_signals(_session)
 	_session.tick(0.5)
+	assert_eq(_session.get_place(), TowerSession.Place.DEATH_PAUSE, "the count ran out: it waits")
+	assert_signal_not_emitted(_session, "place_changed")
+	assert_true(_session.confirm_death())
 	assert_eq(_session.get_place(), TowerSession.Place.TOWN)
 	_session.tick(1.0)
 	assert_signal_emit_count(_session, "place_changed", 1)
 	assert_signal_emitted_with_parameters(_session, "place_changed", [TowerSession.Place.TOWN])
 
 
-func test_ac12_after_the_pause_the_floor_is_gone_and_the_timer_is_zero() -> void:
+func test_ac12_after_the_confirmed_pause_the_floor_is_gone_and_the_timer_is_zero() -> void:
 	_session.enter_floor(1, false)
 	_session.report_player_died()
 	_session.tick(DELAY + 1.0)
+	assert_true(_session.confirm_death())
 	_assert_still_in_town()
 
 
-func test_ac12_a_delay_of_zero_reaches_the_town_on_the_next_tick() -> void:
+func test_ac12_a_delay_of_zero_still_waits_in_the_pause_for_the_confirmation() -> void:
 	_rules.death_return_delay = 0.0
 	_session.setup(_tower, _rules)
 	_session.enter_floor(1, false)
 	_session.report_player_died()
 	assert_eq(_session.get_place(), TowerSession.Place.DEATH_PAUSE, "not inside the report")
 	_session.tick(0.0)
+	assert_eq(_session.get_place(), TowerSession.Place.DEATH_PAUSE, "no town by itself")
+	assert_true(_session.confirm_death())
 	assert_eq(_session.get_place(), TowerSession.Place.TOWN)
 
 
@@ -337,7 +343,7 @@ func test_ac12_a_boss_reached_before_dying_is_still_reached() -> void:
 	_session.enter_floor(1, false)
 	_session.report_room_entered(BOSS_ROOM)
 	_session.report_player_died()
-	_tick_until_town(1.0 / 60.0)
+	_tick_and_confirm(1.0 / 60.0)
 	assert_true(_session.get_progress().is_boss_reached(1))
 	assert_true(_session.enter_floor(1, true), "and the gate offers it")
 	assert_eq(_session.get_start_room(), BOSS_ROOM)
@@ -412,7 +418,10 @@ func test_ac13_a_death_pause_round_trips_with_the_time_left() -> void:
 	assert_almost_eq(copy.get_death_time_left(), DELAY - 0.4, 0.0001)
 	assert_true(copy.get_progress().is_boss_reached(1))
 	copy.tick(DELAY)
-	assert_eq(copy.get_place(), TowerSession.Place.TOWN, "the restored pause runs out")
+	assert_eq(copy.get_place(), TowerSession.Place.DEATH_PAUSE, "the restored pause runs out")
+	assert_true(copy.can_confirm_death())
+	assert_true(copy.confirm_death())
+	assert_eq(copy.get_place(), TowerSession.Place.TOWN)
 
 
 func test_ac13_the_snapshot_includes_the_progress() -> void:
@@ -620,13 +629,15 @@ func _assert_still_in_town() -> void:
 	assert_eq(_session.get_death_time_left(), 0.0)
 
 
-## Ticks `step` at a time until the town; returns the time ticked. Stops after 10 s.
-func _tick_until_town(step: float) -> float:
+## Ticks `step` at a time until the return can be confirmed, confirms it (F-015/C3: the pause never
+## ends by itself) and returns the time ticked. Stops after 10 s.
+func _tick_and_confirm(step: float) -> float:
 	var elapsed: float = 0.0
-	while _session.get_place() == TowerSession.Place.DEATH_PAUSE and elapsed < 10.0:
+	while not _session.can_confirm_death() and elapsed < 10.0:
 		_session.tick(step)
 		elapsed += step
-	assert_eq(_session.get_place(), TowerSession.Place.TOWN, "the pause ended")
+	assert_true(_session.confirm_death(), "the pause could be confirmed")
+	assert_eq(_session.get_place(), TowerSession.Place.TOWN, "the return was confirmed")
 	return elapsed
 
 

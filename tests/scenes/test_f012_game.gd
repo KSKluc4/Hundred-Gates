@@ -168,19 +168,19 @@ func test_ac27_the_full_loop_on_a_fixture_tower() -> void:
 	assert_true(room().get_room_data().is_boss_room)
 	assert_true(progress.is_boss_reached(1), "reached the moment the room was entered")
 	assert_false(progress.is_floor_cleared(1))
-	# The player dies: "You died", and the floor is still the scene shown during the pause.
+	# The player dies: no banner (the death screen says it), and the floor is still the scene shown
+	# during the pause.
 	var dead_floor: FloorScene = floor_scene()
 	kill_player()
 	await run_ticks(2)
 	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
-	assert_true(hud().is_banner_visible())
-	assert_eq(hud().get_banner_text(), Game.DEATH_BANNER)
-	assert_eq(Game.DEATH_BANNER, "You died")
+	assert_false(hud().is_banner_visible(), "no banner at a death (F-015/C5)")
 	assert_same(floor_scene(), dead_floor, "the floor scene is still shown")
 	assert_true(dead_floor.is_inside_tree())
 	assert_null(town())
 	assert_eq(hp(), 0, "nobody refilled the player in the pause")
 	# The pause ends: the town, at full HP.
+	assert_true(await confirm_death_when_ready(), "the death was confirmed")
 	var back: Callable = func() -> bool: return town() != null
 	assert_true(await run_until(back, PAUSE_TICKS * 3), "the town came back")
 	await run_ticks(1)
@@ -332,6 +332,7 @@ func test_ac29_the_location_follows_the_town_every_room_the_boss_and_the_way_bac
 	kill_player()
 	await run_ticks(2)
 	assert_eq(location(), "Floor 2 · Boss", "the floor is still shown during the pause")
+	assert_true(await confirm_death_when_ready(), "the death was confirmed")
 	var back: Callable = func() -> bool: return town() != null
 	assert_true(await run_until(back, PAUSE_TICKS * 3))
 	assert_eq(location(), "Town", "after a death")
@@ -361,6 +362,7 @@ func test_ac29_the_health_bar_shows_the_current_rooms_player_after_every_swap() 
 	await run_ticks(2)
 	assert_eq(hud().get_health_bar().get_label_text(), "HP 0 / %d" % max_hp(), "the dead player")
 	assert_eq(hud().get_health_bar().get_fill_fraction(), 0.0)
+	assert_true(await confirm_death_when_ready(), "the death was confirmed")
 	var back: Callable = func() -> bool: return town() != null
 	assert_true(await run_until(back, PAUSE_TICKS * 3))
 	_assert_the_bar_shows(player())
@@ -376,6 +378,9 @@ func test_ac29_the_provider_never_answers_with_a_freed_player_through_the_whole_
 	skip_to_boss()
 	kill_player()
 	await _run_checking_the_provider(PAUSE_TICKS * 2)
+	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE, "it waits for the person")
+	assert_true(game().confirm_death())
+	await _run_checking_the_provider(PAUSE_TICKS)
 	assert_eq(session().get_place(), TowerSession.Place.TOWN, "the loop did come round")
 	assert_not_null(town())
 	assert_not_null(hud_player())
@@ -418,6 +423,7 @@ func test_ac30_inside_the_player_died_handler_the_floor_is_still_shown_and_the_p
 		await run_ticks(1)
 		assert_same(floor_scene(), _probe_floor, "still the floor during the pause")
 		assert_null(town())
+	assert_true(await confirm_death_when_ready(), "the death was confirmed")
 	var back: Callable = func() -> bool: return town() != null
 	assert_true(await run_until(back, PAUSE_TICKS * 3))
 	await run_ticks(1)
@@ -531,6 +537,7 @@ func test_c5_dying_in_the_boss_room_keeps_the_boss_reached() -> void:
 	skip_to_boss()
 	assert_true(progress.is_boss_reached(1))
 	kill_player()
+	assert_true(await confirm_death_when_ready(), "the death was confirmed")
 	var back: Callable = func() -> bool: return town() != null
 	assert_true(await run_until(back, PAUSE_TICKS * 3))
 	assert_true(progress.is_boss_reached(1), "still reached")
@@ -551,26 +558,28 @@ func test_c5_a_player_and_a_boss_dying_in_the_same_tick_is_a_death_and_the_floor
 	kill_player()
 	await run_ticks(2)
 	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
-	assert_eq(hud().get_banner_text(), Game.DEATH_BANNER, "a death, not a clear")
+	assert_eq(hud().get_banner_text(), "", "a death, not a clear: no banner")
 	assert_false(progress.is_floor_cleared(1))
 	assert_false(progress.is_floor_unlocked(2))
+	assert_true(await confirm_death_when_ready(), "the death was confirmed")
 	var back: Callable = func() -> bool: return town() != null
 	assert_true(await run_until(back, PAUSE_TICKS * 3))
 	assert_false(progress.is_floor_cleared(1), "nothing was cleared in the end either")
 	assert_true(progress.is_boss_reached(1))
 
 
-func test_c5_the_death_banner_stays_for_the_death_pause_not_the_banner_duration() -> void:
+func test_c5_the_death_shows_no_banner_and_the_return_shows_none_either() -> void:
 	set_death_delay(0.25)
 	await spawn_game(TowerFixtures.tower_of(1, 1))
 	await enter_floor_through_gate(1)
 	kill_player()
 	await run_ticks(2)
-	assert_true(hud().is_banner_visible())
+	assert_false(hud().is_banner_visible(), "the death screen says it, not the HUD")
+	assert_true(await confirm_death_when_ready(), "the death was confirmed")
 	var back: Callable = func() -> bool: return town() != null
 	assert_true(await run_until(back, PAUSE_TICKS * 3))
 	await run_ticks(PAUSE_TICKS * 2)
-	assert_false(hud().is_banner_visible(), "the banner went with the pause")
+	assert_false(hud().is_banner_visible(), "and none after the return")
 
 
 func test_c5_a_second_death_after_coming_back_works_the_same() -> void:
@@ -581,6 +590,7 @@ func test_c5_a_second_death_after_coming_back_works_the_same() -> void:
 		kill_player()
 		await run_ticks(2)
 		assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
+		assert_true(await confirm_death_when_ready(), "the death was confirmed")
 		var back: Callable = func() -> bool: return town() != null
 		assert_true(await run_until(back, PAUSE_TICKS * 3))
 		assert_eq(hp(), max_hp())
@@ -600,6 +610,7 @@ func test_cr18_a_stick_held_up_through_the_death_pause_does_not_move_the_new_tow
 	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
 	var old_town: TownScene = town()
 	_send_stick_y(-1.0)  # Pushed up during the pause, and held: the new menu gets no event.
+	assert_true(await confirm_death_when_ready(), "the death was confirmed")
 	var back: Callable = func() -> bool: return town() != null and town() != old_town
 	assert_true(await run_until(back, PAUSE_TICKS * 3), "a new town was built")
 	await open_gate_menu()
@@ -657,9 +668,11 @@ func test_cr4_during_the_death_pause_nothing_the_person_does_has_any_effect() ->
 	assert_eq(hp(), 0, "still dead")
 	assert_eq(player().motor.get_position_tiles(), start, "did not walk or dash")
 	assert_eq(states, [PlayerMotor.State.IDLE] as Array[int], "never moving, dashing or attacking")
-	assert_eq(hud().get_banner_text(), Game.DEATH_BANNER)
-	# The pause ends on its own, with the keys let go: the town, at full HP and with input.
+	assert_false(hud().is_banner_visible(), "no banner in the pause")
+	# The delay passes and the person confirms, with the keys let go: the town, at full HP and
+	# with input.
 	release_held_keys()
+	assert_true(await confirm_death_when_ready(), "the death was confirmed")
 	var back: Callable = func() -> bool: return town() != null
 	assert_true(await run_until(back, PAUSE_TICKS * 4), "the town came back")
 	await run_ticks(1)
@@ -883,24 +896,24 @@ func test_ac33_the_boss_dying_with_no_heal_banner_before_shows_the_cleared_text(
 	assert_eq(hud().get_banner_text(), "Floor 1 cleared — floor 2 unlocked")
 
 
-func test_ac33_a_heal_banner_does_not_replace_you_died() -> void:
+func test_ac33_a_heal_in_the_death_pause_shows_no_banner() -> void:
 	set_death_delay(DEATH_PAUSE_SECONDS)
 	await spawn_game(TowerFixtures.tower_of(2, 1))
 	await enter_floor_through_gate(1)
 	kill_player()
 	await run_ticks(2)
 	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
-	assert_eq(hud().get_banner_text(), Game.DEATH_BANNER)
+	assert_false(hud().is_banner_visible())
 	# A debug skip during the pause enters the boss room: the player carries 0 HP there and the
 	# room's entry HP is full, which is a heal to the floor scene but not to the person watching.
 	floor_scene().skip_room()
 	assert_true(room().get_room_data().is_boss_room, "the skip did swap the room")
 	await run_ticks(2)
-	assert_eq(hud().get_banner_text(), Game.DEATH_BANNER, "still You died")
+	assert_false(hud().is_banner_visible(), "still no banner")
 	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
 
 
-func test_ac33_dying_after_a_heal_replaces_the_heal_banner_with_you_died() -> void:
+func test_ac33_dying_after_a_heal_hides_the_heal_banner() -> void:
 	set_death_delay(DEATH_PAUSE_SECONDS)
 	await spawn_game(TowerFixtures.tower_of(2, 2))
 	await enter_floor_through_gate(1)
@@ -910,7 +923,7 @@ func test_ac33_dying_after_a_heal_replaces_the_heal_banner_with_you_died() -> vo
 	assert_eq(hud().get_banner_text(), "+30 HP")
 	kill_player()
 	await run_ticks(2)
-	assert_eq(hud().get_banner_text(), Game.DEATH_BANNER)
+	assert_false(hud().is_banner_visible(), "the heal banner is gone, and nothing replaced it")
 
 
 # --- helpers ---

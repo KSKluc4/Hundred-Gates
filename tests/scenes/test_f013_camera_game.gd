@@ -104,6 +104,7 @@ func test_ac5_the_town_after_a_death_in_a_floor() -> void:
 	put_player_at(Vector2(30.5, 14.5))
 	await run_ticks(30)
 	kill_player()
+	assert_true(await confirm_death_when_ready(), "the death was confirmed")
 	var back: Callable = func() -> bool: return town() != null
 	assert_true(await run_until(back, WALK_LIMIT_TICKS), "the death returned to the town")
 	await assert_on_start_target_and_after_a_frame("the town, after a death")

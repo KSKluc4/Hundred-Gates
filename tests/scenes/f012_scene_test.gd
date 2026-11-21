@@ -142,8 +142,11 @@ func release_held_keys() -> void:
 
 ## F-012/CR-2: the key goes down between two physics ticks, where the OS delivers it, and stays
 ## down until release_held_keys(). Posted from inside a physics tick (as hold_key() after a
-## `physics_frame`) Input counts the press for the tick after next, one later than the real
-## thing, and a tap (press and release together) is never "just pressed" when a tick polls it.
+## `physics_frame`, before the nodes' own step) Input counts the press as "just pressed" in the tick
+## after the one that is starting, one later than the real thing. Measured in 4.7.2 (F-015 review
+## round 1): a tap (a press and a release posted together) between two ticks reads "just pressed"
+## in the next tick, as a hold does; the key stays down here so that the player's input also reads
+## it as pressed, as it is for a person.
 func hold_key_between_ticks(key: Key) -> void:
 	await get_tree().process_frame
 	hold_key(key)

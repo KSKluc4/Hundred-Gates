@@ -115,10 +115,15 @@ Checked by tests over the shipped tower, on top of the format rules:
 - A boss room counts as **reached** the moment it is entered (D-006). Dying there, the
   character may start that floor again directly in the boss room.
 - Every entry into a floor starts at full HP. Room-clear healing is unchanged.
-- Death: a short pause (`death_return_delay`, 1.5 s), then the town. Nothing is lost.
-- A floor is left only by dying or through the cleared boss room's door (F-012 §10 Q1).
+- Death (F-015): the death screen. The floor stays on screen behind it and keeps running;
+  after `death_return_delay` (1.5 s) the player may confirm, and only then comes the town.
+  Nothing returns to town by itself, and nothing is lost.
+- A floor is left by dying, through the cleared boss room's door, or by choosing Return to
+  town in the pause menu (F-015; Lucas, 2026-11-20). Leaving by choice keeps every floor
+  cleared and every boss reached, also those of this visit; the floor's rooms start over.
 - Clearing a floor again gives nothing yet (rewards → Items & Economy).
-- Progress is per character (D-005) and lives for one run of the game until save/load
+- Progress is per character (D-005) and lives until the player quits to the title screen or
+  closes the game (F-015: a new Start is a new character's progress), until save/load
   (phase 2).
 
 ## Town (phase 1)
@@ -175,7 +180,7 @@ Notes:
 | FX2 | → Direction | Boss rooms: do floors 2 and 3 want pre-placed dormant adds (CX9)? Designed without. | No |
 | FX3 | → Combat | Hits ignore walls; casters shoot without a clear line (F-011 §10 Q1, Q2). | No |
 | FX4 | → Direction | Room transitions are hard cuts. Is a fade or a short corridor wanted (F-012/F-015)? | No |
-| FX5 | → Direction | Should the player be able to leave a floor mid-run without dying (F-012 §10 Q1)? | No |
+| FX5 | → Direction | Should the player be able to leave a floor mid-run without dying (F-012 §10 Q1)? **Answered by Lucas, 2026-11-20: yes, Return to town in the pause menu (F-015).** | No |
 | FX6 | → Items & Economy | What does replaying a cleared floor give (F-012 ASSUMPTION-4)? | No |
 | FX7 | → Direction | The floor 3 rooms and the Juggernaut's room now have blocks to charge into (F-013 §10 Q2). Keep, or open them up again? | No |
 | FX10 | → Direction | Waves: the starting values (kill targets, shares, how many are on the player at once, warning and interval), and whether the heal still fits (F-014 §10 Q1 to Q3). | No |

@@ -1,19 +1,23 @@
 extends F012GameTest
 ## F-012 T7 (AC26, AC31): the real scenes/main.tscn with the shipped tower. The rules of the loop
-## are tested on fixture towers in test_f012_game.
+## are tested on fixture towers in test_f012_game. F-015/T7: main.tscn now opens on the title
+## screen and the game is the shell's child; spawn_main() chooses Start, so every test here runs on
+## the game that Start builds (the title screen itself is test_f015_main).
 
 const FLOOR_PATH_FORMAT: String = "res://data/floors/floor_%d.tres"  # G5
 const FLOOR_NUMBERS: Array[int] = [1, 2, 3]
 const BOSSES: Dictionary = {1: &"warden", 2: &"hexer", 3: &"juggernaut"}
 const OVERLAY_NODE: NodePath = ^"DebugOverlay"
+const SHELL_NODE: NodePath = ^"Shell"
 
-# --- AC26: main.tscn starts in the town ---
+# --- AC26: main.tscn, once started, is in the town ---
 
 
-func test_ac26_main_starts_in_the_town_with_the_hud_showing_town_and_full_hp() -> void:
+func test_ac26_main_after_start_is_in_the_town_with_the_hud_showing_town_and_full_hp() -> void:
 	await spawn_main()
 	assert_eq(game().get_setup_errors(), PackedStringArray(), "no setup errors")
-	assert_eq(game().get_parent(), main_scene())
+	assert_eq(game().get_parent(), main_scene().get_node(SHELL_NODE), "the shell's child")
+	assert_eq(game().get_parent().get_parent(), main_scene())
 	assert_not_null(town())
 	assert_null(floor_scene())
 	assert_same(game().tower_data, load(Tunables.TOWER_PATH), "the shipped tower")
@@ -28,7 +32,8 @@ func test_ac26_main_starts_in_the_town_with_the_hud_showing_town_and_full_hp() -
 func test_ac26_main_still_holds_the_debug_overlay() -> void:
 	await spawn_main()
 	assert_true(main_scene().get_node_or_null(OVERLAY_NODE) is DebugOverlay)
-	assert_eq(main_scene().get_child_count(), 2, "the overlay and the game")
+	assert_true(main_scene().get_node_or_null(SHELL_NODE) is Shell)
+	assert_eq(main_scene().get_child_count(), 2, "the overlay and the shell")
 	assert_eq(main_scene().name, &"Main")
 
 

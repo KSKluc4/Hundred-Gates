@@ -1,9 +1,10 @@
 class_name Hud
 extends CanvasLayer
 ## F-012/C13: the bare HUD. A health bar (bottom left), where the player is (top right) and a banner
-## (top centre). It decides nothing and nothing reads it (G6): the game tells it what to say, and
-## the health bar asks `player_provider` for the player every frame. The look → Art & Game Feel
-## (§10 Q4).
+## (top centre). It decides nothing (G6): the game tells it what to say, and the health bar asks
+## `player_provider` for the player every frame. Nothing is decided from what it shows; only the
+## shell reads the location and kills lines, to write the death screen (F-015/C5: presentation
+## reading presentation). The look → Art & Game Feel (§10 Q4).
 
 ## F-012/C16: every player-facing string of the location line.
 const TOWN_TEXT: String = "Town"
@@ -128,6 +129,13 @@ func show_banner(text: String, duration: float) -> void:
 	_banner_label.text = text
 	_banner_label.visible = true
 	_banner_time_left = maxf(duration, 0.0)
+
+
+## F-015/C5: at once, not on the next `_process`: as if its time had run out.
+func hide_banner() -> void:
+	_banner_label.visible = false
+	_banner_label.text = ""
+	_banner_time_left = 0.0
 
 
 func is_banner_visible() -> bool:
