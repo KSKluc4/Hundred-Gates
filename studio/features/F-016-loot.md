@@ -567,8 +567,15 @@ The lead reads the last one before T2 starts.
   (313 files), core purity and the headless boot clean. The implementer broke six refusals
   one at a time (the tie-break, the chain cap, the second-bonus rule, the cooldown epsilon,
   percent < 1, chance > 1) and each failed a test.
-- [ ] T2
-- [ ] T3
+- [x] T2 — d2c81a0. Lead's run of the folders it touches: `tests/core/items` 235 tests,
+  `tests/core/floors` 603, `tests/core/combat` 182, `tests/core/shell` 34, all passing.
+  The implementer made the loot's call run only on the last step of a tick: 5 of the 16 sim
+  tests failed, the dash in reach only at steps 6 and 7 among them.
+- [x] T3 — 56f0dda (built in a private copy, brought in after T2). Lead's run on the tree
+  with both: `tests/core/player` 253 tests, `tests/core/enemies` 409, combat and items as
+  above, all passing; `gdlint`, `gdformat --check` (327 files), core purity and the boot
+  clean. The implementer broke the motor four ways (no damage passed, the class's cooldown,
+  the class's max HP in `setup`, no rebuild in `apply_data`): each failed tests.
 - [ ] T4
 - [ ] T5
 - [ ] T6
@@ -577,6 +584,39 @@ The lead reads the last one before T2 starts.
 ### Deviations from plan
 
 ### Assumptions made (small, reversible)
+- ASSUMPTION-10 (T2): `TowerSession.from_dict` requires the loot key. `CharacterLoot.
+  from_dict` is the last step that can fail, so a refusal changes nothing. A session
+  snapshot cannot be restored into a session that was not given the same catalog.
+- ASSUMPTION-11 (T2): `FloorRun.setup()` resets the heal bonus to 0: the caller calls
+  `set_loadout_values` after every `setup()`.
+- ASSUMPTION-12 (T2): `take_all()` with no player watched takes everything; it takes
+  nothing only when the watched player is dead. Every watched enemy of a boss room is
+  rolled as the boss (the data allows one spawn there).
+- ASSUMPTION-13 (T2): `RoomLoot.from_dict` accepts a boss floor only when it is 0, or the
+  room is the boss room and it is the room's own floor; it needs the catalog to know the
+  sword. Which enemies were already rolled is not saved: a restored dead enemy does not
+  fire `died` again. `CharacterLoot.from_dict` also refuses a taken-floor list with a
+  duplicate or a non-int.
+- ASSUMPTION-14 (T2): ids are written to snapshots as `String` and read back as either;
+  a drop's position is a `Vector2`. `Inventory.from_dict` emits `changed` once.
+  `CharacterLoot.setup` and `TowerSession.set_loot` keep the same `Inventory`, `LootRoller`
+  and `CharacterLoot` objects, so listeners keep working.
+- ASSUMPTION-15 (T2): additions beyond the spec's list, none against it: `restore_errors()`
+  on the four loot classes; `LootRoller.seed_with`, `get_seed`, `get_state`, `sum_of`;
+  `CharacterLoot.knows_sword`, `get_catalog`, `get_roller`, `report_taken`;
+  `RoomLoot.get_floor_number`, `is_boss_room`; the drop is its own class, `LootDrop`; a
+  shared test helper `tests/core/items/loot_fixtures.gd`. `TowerSession` passed gdlint's 20
+  public methods and carries a `max-public-methods` disable with its reason, as
+  `combatant.gd` does; `CombatSim` is now at exactly 20.
+- ASSUMPTION-16 (T2, measured in 4.7.2): `RandomNumberGenerator.new()` seeds itself, so
+  `LootRoller` seeds with 0 in `_init`; assigning `seed` rewinds `state`, so a restore sets
+  the seed first (a test shows the other order loses the state); `randi_range(0, 0)` does
+  not advance the state; `randi_range(1, 100)` and `(0, 100)` leave the same state, which is
+  why AC9 also compares outcomes.
+- ASSUMPTION-17 (T3): `PlayerMotor.get_loadout()` is null while the motor holds no class
+  data (`set_sword` before `setup`); never after. The motor asks the chain which hit comes
+  next (`AttackChain.get_start_index(size)`, the rule `start()` itself now uses), so the
+  rule exists once. `PlayerMotor` passed 20 public methods and carries the same disable.
 - ASSUMPTION-1 (T1): **what a duplicate id is.** The same `SwordData` resource on several
   floors (the shared regular pool) is not one. Refused: two different resources with one id
   anywhere in the catalog, the same sword twice inside one pool or one boss table (it would
@@ -608,6 +648,9 @@ The lead reads the last one before T2 starts.
   AC1's random weights; nothing under `src` draws yet.
 
 ### Things the Auditor should look at closely
+- **Existing tests edited so far (C22):** `tests/core/floors/test_f015_session.gd`,
+  `test_ac5_the_snapshot_keeps_its_keys`: `TowerSession.KEY_LOOT` added to the pinned key
+  list (the snapshot has a seventh key). `test_tower_session.gd` needed none.
 
 ### How to test
 
