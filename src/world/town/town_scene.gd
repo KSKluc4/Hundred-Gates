@@ -30,6 +30,9 @@ var _progress: TowerProgress
 var _room: Room
 ## F-016/C15: what the player fights with, given by the owner (null: the class's own values).
 var _sword: SwordData = null
+## F-016/C19: `() -> Dictionary` of `{floor_number: text}`, asked on every open of the gate list, so
+## the texts are the ones that are true then. Unset: the list opens with no odds.
+var _odds_provider: Callable
 var _gate: TownGate = TownGate.new()
 var _gate_menu: GateMenu
 var _setup_errors: PackedStringArray = []
@@ -107,6 +110,12 @@ func set_sword(sword: SwordData) -> void:
 		_room.get_player().motor.set_sword(sword, Tunables.items)
 
 
+## F-016/C19: who says what the gate shows under the list for each floor (`{floor_number: text}`).
+## It is asked on every open, the one after debug N included, and this node works nothing out.
+func set_odds_provider(provider: Callable) -> void:
+	_odds_provider = provider
+
+
 func get_room() -> Room:
 	return _room
 
@@ -159,7 +168,7 @@ func _build_room() -> void:
 ## tick on, _physics_process holds them on the position they had.
 func _open_gate_menu() -> void:
 	_room.get_player().input_enabled = false
-	_gate_menu.open(_progress.get_entries())
+	_gate_menu.open(_progress.get_entries(), _gate_odds())
 
 
 ## F-012/C10: a floor was chosen. The gate stays engaged, so the player stays held until whoever
@@ -200,4 +209,11 @@ func _clear_highest_unlocked_floor() -> void:
 	_progress.mark_boss_reached(floor_number)
 	_progress.mark_floor_cleared(floor_number)
 	if _gate_menu.is_open():
-		_gate_menu.open(_progress.get_entries())  # The list shown is the list that is true.
+		_gate_menu.open(_progress.get_entries(), _gate_odds())  # The list shown is the list that is true.
+
+
+## F-016/C19: the odds for the gate list, asked now; none without a provider.
+func _gate_odds() -> Dictionary:
+	if _odds_provider.is_valid():
+		return _odds_provider.call()
+	return {}

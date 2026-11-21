@@ -133,6 +133,31 @@ func get_loadout() -> PlayerLoadout:
 	return PlayerLoadout.of(class_data, get_equipped_sword(), Tunables.items)
 
 
+## F-016/C19: what the gate shows for each floor, `{floor_number: text}`: the boss's table with its
+## percents and either the guarantee line (no boss sword of that floor taken yet) or what is left to
+## 100. No entry for a floor without a table or with an empty one; empty with no catalog. Worked
+## out from the character's state each time it is asked, so the town's gate (which asks on every
+## open) always shows what is true then.
+func get_gate_odds() -> Dictionary:
+	var odds: Dictionary = {}
+	if _session == null or tower_data == null:
+		return odds
+	var loot: CharacterLoot = _session.get_loot()
+	var catalog: LootCatalog = loot.get_catalog()
+	if catalog == null:
+		return odds
+	for floor_number: int in range(1, tower_data.get_floor_count() + 1):
+		var text: String = ItemTexts.odds_text(
+			catalog.get_floor_loot(floor_number),
+			class_data,
+			Tunables.floors.room_clear_heal_fraction,
+			not loot.is_boss_sword_taken(floor_number)
+		)
+		if not text.is_empty():
+			odds[floor_number] = text
+	return odds
+
+
 ## F-016/C14, C15: whether a sword may be changed now. The session decides; this only says whether
 ## the floor shown is in its cleared room before the boss (false with no floor).
 func can_equip_sword() -> bool:
@@ -268,6 +293,7 @@ func _show_town() -> void:
 	town.set_progress(_session.get_progress())
 	town.class_data = class_data
 	town.set_sword(get_equipped_sword())  # F-016/C15
+	town.set_odds_provider(get_gate_odds)  # F-016/C19
 	town.player_input_enabled = player_input_enabled
 	town.debug_keys_enabled = debug_keys_enabled
 	town.floor_chosen.connect(_on_floor_chosen)
