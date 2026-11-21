@@ -52,7 +52,10 @@
 - **Added 2026-11-21 (Lucas, in chat):** the tutorial is built after every other part that
   changes what the player does or sees, so it teaches the game as it is: "tutorial you need to
   have all the features done before". It comes after loot, sprites and audio; the order of
-  those is still his to set.
+  those is still his to set. After playing F-015 he added: "later on we gonna work on make it
+  beautifull but first focus on making sure is working". The lead reads this as: the parts
+  that add or prove function (loot, export builds) come before the parts that change looks
+  and sound (sprites, audio). That reading is the lead's, not his words.
 - **Revisit if:** two parts turn out to need each other's code before either can be played.
 
 
