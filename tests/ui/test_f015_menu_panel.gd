@@ -27,6 +27,8 @@ const ABOVE_GUT_LAYER: int = 129
 const LATE_MSEC: int = 180
 const NOT_RESTARTED_MSEC: int = 350
 const GUARD_WAIT_LIMIT_MSEC: int = 3000
+## How much longer than the guard a stalled frame lasts, in milliseconds.
+const STALL_EXTRA_MSEC: int = 70
 ## How long the presses of the restart test go on: more than twice the guard.
 const RESTART_WATCH_MSEC: int = 700
 ## A real stick passes through every value on its way (as in test_gate_menu).
@@ -1081,11 +1083,14 @@ func test_flag_a_flagged_press_right_after_a_new_menu_is_the_only_one_lost() -> 
 	assert_eq(_chosen, [&"b"] as Array[StringName], "the first click chose, as the shell would")
 	_panel.open("Next", "", _entries(), &"a")  # What the shell does for that choice.
 	assert_true(await _wait_until_unguarded())
-	await _post_clicks(_button_point(1), [true, false, true] as Array[bool])
+	await _post_clicks(_button_point(1), [true] as Array[bool])
+	assert_eq(_chosen, [&"b"] as Array[StringName], "the flagged press after the new menu is lost")
+	assert_true(await _wait_until_unguarded(), "(it started the guard again: wait it out)")
+	await _post_clicks(_button_point(1), [false, true] as Array[bool])
 	assert_eq(
 		_chosen,
 		[&"b", &"b", &"b"] as Array[StringName],
-		"the flagged press after the new menu is lost, the next two are not"
+		"the plain click after it chooses, and the flagged one after that too"
 	)
 
 
@@ -1150,6 +1155,108 @@ func test_restart_a_press_after_the_guards_time_does_not() -> void:
 	assert_false(_panel.is_choose_guarded(), "a press after the guard does not start it")
 	_post_mouse(at, false, false)
 	assert_eq(_chosen, [&"b"] as Array[StringName], "and it chooses")
+
+
+## A press the panel consumes starts the guard again even when it had just ended: the click after a
+## consumed one is still a quick click (CR round 4). The entries ignore the pointer again.
+func test_restart_a_consumed_flagged_press_after_the_guard_ended_starts_it() -> void:
+	_spawn_panel_on_a_layer_above_gut(GUARD_SECONDS)
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_true(await _wait_until_unguarded())
+	var at: Vector2 = _window_point(_button_point(1))
+	var pressed_at: int = Time.get_ticks_msec()
+	_post_mouse(at, true, true)
+	assert_true(_panel.is_choose_guarded(), "the consumed press started the guard again")
+	for button: Button in _buttons():
+		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_IGNORE)
+	_post_mouse(at, false, false)
+	_post_mouse(at, true, false)
+	_post_mouse(at, false, false)
+	assert_eq(_chosen, [] as Array[StringName], "so the plain press right after it chose nothing")
+	assert_true(await _wait_until_unguarded(), "and it ends")
+	assert_gte(
+		Time.get_ticks_msec() - pressed_at, roundi(GUARD_SECONDS * 1000.0), "a guard's time from it"
+	)
+
+
+## A flagged press that is NOT consumed (the flag was cleared by a plain click) after the guard
+## ended is an ordinary click: it chooses and starts nothing.
+func test_restart_a_flagged_press_that_is_not_consumed_after_the_guard_does_not() -> void:
+	_spawn_panel_on_a_layer_above_gut(GUARD_SECONDS)
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_true(await _wait_until_unguarded())
+	var at: Vector2 = _window_point(_button_point(1))
+	_post_mouse(at, true, false)
+	_post_mouse(at, false, false)
+	_post_mouse(at, true, true)
+	assert_false(_panel.is_choose_guarded(), "nothing started the guard")
+	_post_mouse(at, false, false)
+	assert_eq(_chosen, [&"b", &"b"] as Array[StringName], "both chose")
+
+
+## A guard of 0 seconds set while a guard runs: the next press ends it properly, and the entries
+## take the pointer again (they were left on IGNORE until the next open()).
+func test_restart_with_a_guard_set_to_zero_during_one_gives_the_pointer_back() -> void:
+	_spawn_panel_on_a_layer_above_gut(LONG_GUARD_SECONDS)
+	_panel.open("Paused", "", _entries(), &"a")
+	await _lay_out()
+	assert_true(_panel.is_choose_guarded(), "the premise: a guard runs")
+	_panel.choose_guard_seconds = 0.0
+	var at: Vector2 = _window_point(_button_point(1))
+	_post_mouse(at, true, false)
+	_post_mouse(at, false, false)
+	assert_false(_panel.is_choose_guarded(), "the press ended it")
+	for button: Button in _buttons():
+		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP, "the entries take the pointer")
+	await _post_clicks(_button_point(1), [false] as Array[bool])
+	assert_eq(_chosen, [&"b"] as Array[StringName], "and a click chooses")
+
+
+## A frame stalled past the guard's time, then a plain press posted before any frame runs
+## (`_process` has not noticed the end): the guard's real time is over, so the press ends it, does
+## not start it again, and the entries take the pointer. (Whether that very press reaches a button
+## depends on the viewport's hover, which the stall left as it was: not asserted.)
+func test_restart_a_press_after_a_stall_that_ended_the_guard_does_not() -> void:
+	_spawn_panel_on_a_layer_above_gut(GUARD_SECONDS)
+	_panel.open("Paused", "", _entries(), &"a")
+	await _lay_out()
+	var at: Vector2 = _window_point(_button_point(1))
+	assert_true(_panel.is_choose_guarded(), "the premise: the guard has not ended yet")
+	OS.delay_msec(roundi(GUARD_SECONDS * 1000.0) + STALL_EXTRA_MSEC)
+	assert_true(_panel.is_choose_guarded(), "no frame ran, so the panel has not noticed")
+	_post_mouse(at, true, false)
+	assert_false(
+		_panel.is_choose_guarded(), "the press found the guard over and did not restart it"
+	)
+	for button: Button in _buttons():
+		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP, "the entries take the pointer")
+	_post_mouse(at, false, false)
+
+
+## A release is not a press: during the guard it does not start it again.
+func test_restart_a_release_during_the_guard_does_not() -> void:
+	_spawn_panel_on_a_layer_above_gut(GUARD_SECONDS)
+	_panel.open("Paused", "", _entries(), &"a")
+	var opened_at: int = Time.get_ticks_msec()
+	await _wait_msec(LATE_MSEC)
+	assert_true(_panel.is_choose_guarded(), "the premise: late in the guard, not past it")
+	_post_mouse(_window_point(_button_point(1)), false, false)
+	assert_true(await _wait_until_unguarded(), "the guard ended")
+	assert_lt(Time.get_ticks_msec() - opened_at, NOT_RESTARTED_MSEC, "on its first time")
+
+
+## And a release does not clear the double-click flag: the flagged press after it is consumed.
+func test_flag_a_release_does_not_clear_it() -> void:
+	_spawn_panel_on_a_layer_above_gut(0.0)
+	var seen: RawInput = _watch_raw_input_after_the_panel()
+	_panel.open("Paused", "", _entries(), &"a")
+	await _lay_out()
+	var at: Vector2 = _window_point(_button_point(1))
+	_post_mouse(at, false, false)
+	_post_mouse(at, true, true)
+	_post_mouse(at, false, false)
+	assert_eq(seen.mouse_presses, 0, "the flagged press was consumed: the release left the flag")
+	assert_eq(_chosen, [] as Array[StringName])
 
 
 ## Keys, the pad and the stick, accepted or not, do not start it again: it ends on its first time.

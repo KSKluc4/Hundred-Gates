@@ -19,7 +19,8 @@ extends ListMenu
 ## `set_entry_enabled`) do not start it again. A mouse button press that arrives while the guard
 ## runs starts it again, from that press, whether the guarded entries ignored it or the panel
 ## consumed it (below): someone clicking quickly keeps being ignored until the guard's time has
-## passed without a click. Keys do not start it again.
+## passed without a click. A consumed press starts it even when it had just ended. A plain press
+## after it ended is a deliberate click and starts nothing. Keys do not start it again.
 ##
 ## A double click that opened the next menu never chooses: the second press of a double click is
 ## marked by the OS (`InputEventMouseButton.double_click`, for Windows inside 500 ms and a few
@@ -189,22 +190,28 @@ func _may_choose_by_key() -> bool:
 
 ## What a mouse button press does to the panel's state; true when it is to be consumed: a flagged
 ## press (the OS's double-click mark) after the panel opened. Any press clears the flag.
-## One that arrives while the guard runs starts the guard again.
+## One that arrives while the guard runs starts the guard again, and so does one that is consumed,
+## also when the guard has just ended (a consumed press is a click on the menu that was left
+## behind, and the click after it is still a quick one). A plain press after the guard has ended is
+## a deliberate click: it chooses and starts nothing.
 func _consumes_press(press: InputEventMouseButton) -> bool:
 	if _choose_guarded and Time.get_ticks_msec() >= _choose_guard_until_msec:
 		_end_choose_guard()  # Its time is over; `_process` has not run since.
 	var consumed: bool = press.double_click and _changed_since_press
 	_changed_since_press = false
-	if _choose_guarded:
+	if _choose_guarded or consumed:
 		_start_choose_guard()
 	return consumed
 
 
+## The guard runs from now for `choose_guard_seconds`. With none (0, also set while a guard ran) it
+## is over: the entries take the pointer.
 func _start_choose_guard() -> void:
-	_choose_guarded = choose_guard_seconds > 0.0
-	set_process(_choose_guarded)
-	if not _choose_guarded:
+	if choose_guard_seconds <= 0.0:
+		_end_choose_guard()
 		return
+	_choose_guarded = true
+	set_process(true)
 	_choose_guard_until_msec = Time.get_ticks_msec() + roundi(choose_guard_seconds * 1000.0)
 	for button: Button in _buttons:
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
