@@ -28,6 +28,8 @@ const AFTER_RUNNER_PRIORITY: int = 1
 
 var _progress: TowerProgress
 var _room: Room
+## F-016/C15: what the player fights with, given by the owner (null: the class's own values).
+var _sword: SwordData = null
 var _gate: TownGate = TownGate.new()
 var _gate_menu: GateMenu
 var _setup_errors: PackedStringArray = []
@@ -96,6 +98,15 @@ func get_progress() -> TowerProgress:
 	return _progress
 
 
+## F-016/C15: the sword the player fights with (null: the class's own values). Before the node
+## enters the tree it is only stored; after, the player on screen takes it at once (max HP follows,
+## and never heals). The town has no loot, so this is all of it.
+func set_sword(sword: SwordData) -> void:
+	_sword = sword
+	if _room != null:
+		_room.get_player().motor.set_sword(sword, Tunables.items)
+
+
 func get_room() -> Room:
 	return _room
 
@@ -137,7 +148,9 @@ func _build_room() -> void:
 	_room = Room.new()
 	_room.name = ROOM_NAME
 	_room.player_input_enabled = player_input_enabled
-	_room.setup(town_room, class_data.max_hp, class_data)
+	var loadout: PlayerLoadout = PlayerLoadout.of(class_data, _sword, Tunables.items)
+	_room.setup(town_room, loadout.get_max_hp(), class_data)  # F-016/C15: the sword's max HP.
+	_room.set_loadout(_sword, Tunables.items)
 	add_child(_room)
 	_room.open_door()
 

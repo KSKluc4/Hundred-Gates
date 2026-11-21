@@ -1,3 +1,5 @@
+# gdlint:disable=max-public-methods
+# F-016/C9, C15 add set_loadout(), set_loot(), get_loot() and get_pickup_markers() to 19 methods.
 class_name Room
 extends Node2D
 ## One room of a floor, built in code from a RoomData (F-011/C6, C14, D-012). Walls, the door,
@@ -39,6 +41,13 @@ var _enemies: Array[Enemy] = []
 var _reserve: Array[Enemy] = []
 var _waves: RoomWaves = null
 var _wave_markers: WaveMarkers = null
+# F-016/C15: the sword the player is built with, given before the node enters the tree. Null: the
+# class's own values.
+var _sword: SwordData = null
+var _item_rules: ItemTunables = null
+# F-016/C9: this room's loot, null in the town and in a game without loot.
+var _loot: RoomLoot = null
+var _pickup_markers: PickupMarkers = null
 var _runner: CombatRunner
 var _door: StaticBody2D
 var _door_shape: CollisionShape2D
@@ -53,6 +62,18 @@ func setup(room_data: RoomData, entry_hp: int, class_data: ClassData = null) -> 
 	_room_data = room_data
 	_entry_hp = entry_hp
 	_class_data = class_data
+
+
+## F-016/C15: the sword the player is built with, before the node enters the tree, so it is set
+## before the entry HP is applied. Null keeps the class's own values.
+func set_loadout(sword: SwordData, rules: ItemTunables) -> void:
+	_sword = sword
+	_item_rules = rules
+
+
+## F-016/C9: the room's loot, before the node enters the tree. Null: a room without loot.
+func set_loot(loot: RoomLoot) -> void:
+	_loot = loot
 
 
 func _ready() -> void:
@@ -92,6 +113,16 @@ func get_waves() -> RoomWaves:
 ## F-014/C12: the warning rings, null in a room without reinforcements.
 func get_wave_markers() -> WaveMarkers:
 	return _wave_markers
+
+
+## F-016/C9: the room's loot, null in a room without.
+func get_loot() -> RoomLoot:
+	return _loot
+
+
+## F-016/C20: the markers of the swords lying here, null in a room without loot.
+func get_pickup_markers() -> PickupMarkers:
+	return _pickup_markers
 
 
 func get_runner() -> CombatRunner:
@@ -221,6 +252,8 @@ func _build_player() -> void:
 	_player.input_enabled = player_input_enabled
 	if _class_data != null:
 		_player.class_data = _class_data
+	if _sword != null:
+		_player.motor.set_sword(_sword, _item_rules)  # F-016/C15: before _ready() sets the motor up.
 	_player.position = Units.vector_tiles_to_px(_room_data.get_player_start_tiles())
 	var shake: PlaceholderShake = PlaceholderShake.new()
 	shake.name = SHAKE_NAME
@@ -342,11 +375,13 @@ func _build_runner() -> void:
 	_runner.shake_path = NodePath("../%s/%s" % [PLAYER_NAME, SHAKE_NAME])
 	_runner.refill_player_on_died = false  # F-011/AC20: the floor scene restarts the room.
 	_build_waves()  # Before the runner, which stays the last child.
+	_build_pickup_markers()  # F-016/C20: so is this.
 	add_child(_runner)
 	# F-011/C2: the nav grid comes from the same rows as the walls. Not in any snapshot.
 	_runner.get_sim().set_nav(NavGrid.from_rows(_room_data.rows))
 	if _waves != null:
 		_runner.get_sim().set_waves(_waves)  # F-014/C6: once every combatant is registered.
+	_attach_loot()  # F-016/C9: beside the waves.
 	_player.motor.get_combat_state().set_hp(_entry_hp)
 
 
@@ -374,6 +409,28 @@ func _build_waves() -> void:
 	_wave_markers.name = &"WaveMarkers"
 	_wave_markers.setup(_waves, radii_tiles)
 	add_child(_wave_markers)
+
+
+## F-016/C20: the markers draw what lies here. A room without loot has none.
+func _build_pickup_markers() -> void:
+	if _loot == null:
+		return
+	_pickup_markers = PickupMarkers.new()
+	_pickup_markers.name = &"PickupMarkers"
+	_pickup_markers.setup(_loot)
+	add_child(_pickup_markers)
+
+
+## F-016/C9: the loot hears every enemy that counts toward the kill target (the placed ones and the
+## reinforcements) and the player, and the sim tells it once at the end of every combat step. A room
+## without loot attaches nothing: its sim is as it was.
+func _attach_loot() -> void:
+	if _loot == null:
+		return
+	_loot.watch_player(_player.motor)
+	for enemy: Enemy in _enemies:
+		_loot.watch_enemy(enemy.logic)
+	_runner.get_sim().set_loot(_loot)
 
 
 ## A layer 1 static body over a rectangle of tiles, with a placeholder visual named `Visual`.

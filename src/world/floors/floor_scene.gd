@@ -14,6 +14,9 @@ signal player_died
 signal floor_exited(floor_number: int)
 ## F-012/AC33: HP gained between fights, positive only.
 signal healed(amount: int)
+## F-016/C16, C20: swords the player took, by id, in the order taken. Emitted at once where it is
+## decided (a tick, leaving a room, Return to town), never empty.
+signal loot_taken(sword_ids: Array[StringName])
 
 const RESET_ACTION: StringName = &"debug_reset"
 const NEXT_ROOM_ACTION: StringName = &"debug_next_room"
@@ -39,6 +42,10 @@ const AFTER_RUNNER_PRIORITY: int = 1
 
 var _run: FloorRun
 var _room: Room
+## F-016/C15: what the player fights with, given by the owner (null: the class's own values).
+var _sword: SwordData = null
+## F-016/C9: the character's loot, given by the owner. Null: a floor without loot.
+var _character_loot: CharacterLoot = null
 var _setup_errors: PackedStringArray = []
 ## F-012: set when the death was reported, or the exit; restart_room() clears both.
 var _death_reported: bool = false
@@ -56,8 +63,10 @@ func _ready() -> void:
 		return
 	if class_data == null:
 		class_data = load(Tunables.WARRIOR_PATH)  # G5
+	var loadout: PlayerLoadout = _make_loadout()
 	_run = FloorRun.new()
-	_run.setup(floor_data, Tunables.floors, class_data.max_hp, start_room)
+	_run.setup(floor_data, Tunables.floors, loadout.get_max_hp(), start_room)
+	_run.set_loadout_values(loadout.get_max_hp(), loadout.get_room_heal_bonus())  # F-016/C15
 	_run.floor_cleared.connect(_on_run_floor_cleared)
 	_build_room()
 
@@ -66,6 +75,7 @@ func _ready() -> void:
 func _physics_process(_delta: float) -> void:
 	if _room == null or _death_reported:
 		return  # F-012/AC14: after a reported death nothing of the flow runs.
+	_report_taken()  # F-016/C20: what this tick's steps took, read before anything else.
 	if _player_hp() <= 0:
 		# F-012/C5: the death is read first, so a death and a boss kill in one tick is a death.
 		if death_restarts_room:
@@ -84,6 +94,7 @@ func _physics_process(_delta: float) -> void:
 	if _run.is_exit_reached(_room.get_player().motor.get_position_tiles()):
 		if not _advance_room(_player_hp()) and _is_boss_exit_reached() and not _exit_reported:
 			_exit_reported = true  # F-012/AC15: once, however long the player stands there.
+			take_loot_here()  # F-016/C16: the door of the boss room leaves the room too.
 			floor_exited.emit(floor_data.floor_number)
 
 
@@ -98,6 +109,34 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func get_run() -> FloorRun:
 	return _run
+
+
+## F-016/C15: the character's loot, before the node enters the tree. The floor then makes a RoomLoot
+## for every room it builds. Null (the default) is a floor without loot.
+func set_loot(character_loot: CharacterLoot) -> void:
+	_character_loot = character_loot
+
+
+## F-016/C15: the sword the player fights with (null: the class's own values). Before the node
+## enters the tree it is only stored; after, the player on screen takes it at once and the run's max
+## HP and heal bonus follow (the entry HP is clamped down, never raised). Rooms built later get it
+## before their entry HP is applied.
+func set_sword(sword: SwordData) -> void:
+	_sword = sword
+	if _run == null or _room == null:
+		return
+	_room.get_player().motor.set_sword(sword, Tunables.items)
+	var loadout: PlayerLoadout = _make_loadout()
+	_run.set_loadout_values(loadout.get_max_hp(), loadout.get_room_heal_bonus())
+
+
+## F-016/C16: takes what lies in the room whatever the player's place, and reports it. Nothing is
+## taken when the player is dead. Whoever leaves the room calls this before it is freed.
+func take_loot_here() -> void:
+	if _room == null or _room.get_loot() == null:
+		return
+	_room.get_loot().take_all()
+	_report_taken()
 
 
 func get_room() -> Room:
@@ -170,6 +209,8 @@ func _build_room() -> void:
 	_room.name = ROOM_NAME
 	_room.player_input_enabled = player_input_enabled
 	_room.setup(_run.get_room(), _run.get_entry_hp(), class_data)
+	_room.set_loadout(_sword, Tunables.items)  # F-016/C15: before the entry HP is applied.
+	_room.set_loot(_make_room_loot())
 	add_child(_room)
 	room_entered.emit(_run.get_room_index())
 
@@ -180,6 +221,7 @@ func _build_room() -> void:
 func _advance_room(carried_hp: int) -> bool:
 	if not _run.advance(carried_hp):
 		return false
+	take_loot_here()  # F-016/C16: before the room is freed; the heal banner below is joined to it.
 	_build_room()
 	_report_healed(_run.get_entry_hp() - carried_hp)
 	return true
@@ -197,6 +239,29 @@ func _report_healed(amount: int) -> void:
 ## answers "cleared and on an exit tile"; advance() has just refused, so this is the last room.
 func _is_boss_exit_reached() -> bool:
 	return _run.get_room().is_boss_room and _run.is_floor_cleared()
+
+
+## F-016/C15: the class and the sword the player has now, as the four numbers the floor reads.
+func _make_loadout() -> PlayerLoadout:
+	return PlayerLoadout.of(class_data, _sword, Tunables.items)
+
+
+## F-016/C9: null with no loot (no character given, or one with no catalog): the room then has none.
+func _make_room_loot() -> RoomLoot:
+	if _character_loot == null or _character_loot.get_catalog() == null:
+		return null
+	return _character_loot.make_room_loot(
+		floor_data.floor_number, floor_data, _run.get_room_index(), Tunables.items
+	)
+
+
+## F-016/C20: what the room's loot took since the last call, told once.
+func _report_taken() -> void:
+	if _room == null or _room.get_loot() == null:
+		return
+	var taken: Array[StringName] = _room.get_loot().pop_taken()
+	if not taken.is_empty():
+		loot_taken.emit(taken)
 
 
 func _player_hp() -> int:
