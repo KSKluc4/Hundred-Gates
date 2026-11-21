@@ -1,8 +1,8 @@
 ---
 id: F-016
 title: Basic loot — swords with one trait, drops, the Equipment list (slice 3, second part)
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-21
 updated: 2026-11-21
 depends_on: [F-001, F-011, F-012, F-014, F-015, D-005, D-006, D-014, D-016, D-017]
@@ -778,6 +778,122 @@ The lead reads the last one before T2 starts.
 ---
 
 ## 9. Code Review  ·  _Auditor_
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** b4815d4 (the diff `main..b4815d4` under `src`, `tests` and `data`: 128 files)
+
+**Date:** 2026-11-21 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+Two fresh reviewers on private copies of `b4815d4`, neither told what the other looked for.
+Both returned APPROVE_WITH_NOTES; the lead asks for the changes because two of the findings
+are things Lucas would see in his first minutes of play (CR-1, CR-2).
+
+**The reader** went through every changed source file against C1 to C23, read the diff of
+every modified existing test, and ran 99 mutations (87 killed, 12 survived: four real gaps
+below, eight that change nothing observable). It rebuilt a room 100 times in a running game
+and found no `RoomLoot`, enemy logic or motor left alive (0 of 300), and no cycle.
+
+**The attacker** wrote probes on the test bases: a random bot through the real `Shell` with
+real key, pad and mouse events (8 seeds, 24,000 steps, 747 equips, 84 deaths, 195 pickups, 27
+games started: **no invariant broken**, no error or warning line, no orphan); twins at 30, 60
+and 120 ticks per second (61 scenarios, 183 runs, compared per combat step); 48,000 fuzzed
+snapshots; the drop rates on the shipped floors; the screens.
+
+**AC evidence (reader):** AC1, AC3 (the seven sword refusals it broke), AC5 to AC7, AC9
+(ranges and `boss_pick`), AC11 to AC19, AC21, AC23, AC25 to AC27: proven by tests that fail
+on a wrong build. AC2, AC4, AC8, AC10, AC22, AC24: read, not mutated. AC20: weak (CR-4).
+AC28: purity run by the reviewer; lint, format, boot and the full suite by the lead (§8).
+
+**Measured by the attacker:** regular drops through `RoomLoot` on the shipped floors: floor 1,
+four seeds of 81,000 kills, 2,957 / 2,942 / 2,968 / 3,038 against 3,000 expected (one
+standard deviation 54); floor 2, three seeds of 76,500, 1,524 / 1,544 / 1,492 against 1,500;
+floor 3, 57,000 kills, 1,474 against 1,500; in the running game 889 of 34,800 against 900.
+35.4 to 36.5 % of runs drop nothing. Boss tables, 6,000 wins per seed: guaranteed wins
+2,966 / 2,033 / 1,001 and never nothing; repeat wins 1,796 / 1,212 / 639 and 2,353 times
+nothing, all within 1.7 standard deviations. The 15 swords match `items.md` and give 4 / 3 / 9
+hits. Screens on the 640 × 360 canvas: the largest Equipment panel 300 × 265 (15 swords) and
+276 × 287 (the middle page of 18 with long names); the gate with 7 entries 160 × 152 with its
+odds panel 400 × 72 below it, 24 px apart, the same for every focus.
+
+### CR-1 🟡 A kill in the floor's last tick after Return to town is rolled and its sword is lost  ·  `src/world/game.gd:188-193`
+Attack beside a 1-HP chaser, pause 8 ticks later, Return to town, confirm: the floor's sim
+runs one more tick after the confirm, the chaser dies in it, the roller draws, the drop stays
+in the freed room (owned 1 → 1). With the body within reach it is taken instead, with no
+banner. The window is one physics tick. C16 says what lies in the room is taken before the
+room is freed. No exploit: the session ignores a clear or a death in that tick.
+
+### CR-2 🟡 Equipping Vitality in town leaves the town player at 100/108  ·  `src/world/town/town_scene.gd:107-110`
+Start, own the Vitality sword, pause in town, Equipment, choose it: HP is 100/108 and stays
+there; entering a floor gives 108/108. `items.md` says the town is at full HP. Lucas would
+see a bar that is not full in the safe town the first time he equips Guard's Blade.
+
+### CR-3 🟡 No test sees a reinforcement's death reach the loot  ·  `src/world/floors/room.gd:431`
+The build is right (`_enemies` holds the reserve too). With `_attach_loot` changed to skip the
+reserve, all 98 tests of the six `test_f016_*.gd` scene files pass. The shipped kill counts
+(27 / 51 / 38) include reinforcements, so that wrong build would cut the drop rate unseen.
+
+### CR-4 🟡 `Next page` is never stepped from a page with two pages after it  ·  `src/world/shell.gd:206`
+With `_equipment_page + 2` all 143 equipment, gate and UI tests pass: the test with 17 swords
+opens on the middle page, so `Next page` only ever lands on the clamped last page.
+
+### CR-5 🟡 Unlogged addition: a boss's sword is drawn in its own colour  ·  `src/world/floors/pickup_markers.gd:11, 65-66`
+C20 says one shape with size and colour exports; §8 has no line for `boss_marker_color`.
+Harmless (it reads only the drop). An unlogged difference all the same.
+
+### CR-6 🔵 Two more wrong builds the suite accepts  ·  `src/core/items/character_loot.gd:81`, `loot_roller.gd:39`
+Without the once-per-floor guard of the boss-taken list, 141 tests pass, and that build writes
+a snapshot its own `from_dict` refuses ("listed twice"). And `randi_range(0, n − 1) if n > 2
+else 0` passes: the pick is not pinned for a pool of two (the shipped pools hold five).
+
+### CR-7 🔵 `PlayerLoadout.get_hit_damage` against its own comment  ·  `src/core/items/player_loadout.gd:27`
+A sword with three weights on a class with a two-hit chain returns the sword's third hit for
+index 2, not −1 (ASSUMPTION-6 says −1). Reachable only by an F5 reload to a class with another
+chain size, since `apply_data` does not validate the sword again.
+
+### CR-8 🔵 `RoomLoot.from_dict` accepts a drop at NaN or infinity  ·  `src/core/items/room_loot.gd:216`
+8 of 8,000 fuzzed snapshots were accepted with `Vector2(nan, inf)`. Such a drop is never in
+reach; only `take_all()` takes it.
+
+### CR-9 🔵 A player-facing separator outside the texts file  ·  `src/world/game.gd:27`
+`Game.BANNER_JOIN = " · "` joins the `Found:` notice to another banner (C18: no item string
+anywhere else). `&"PickupMarkers"` is a literal where the room's other node names are
+constants (`WaveMarkers` has the same habit).
+
+### CR-10 🔵 Debug R is live in the game the shell builds, and now farms swords  ·  `src/world/game.gd:36`, `src/world/floors/floor_scene.gd:153`
+Three presses of R with a certain-drop fixture took the owned swords from 2 to 5; R in the
+boss room rolls the guaranteed drop again. The debug keys are F-012/C17's, not new; what is
+new is that they pay.
+
+### CR-11 🔵 For the record
+(a) C23 names one inherited per-tick difference; there is a second: after a room's last kill
+at step 1, HP is 40 at 30 ticks per second and 70 at 120 for the rest of that tick, because
+the clear and its heal are read once per tick (drops, pickups, inventory and roller were
+equal in all four exit twins). Of 16 boss twins with the player on the boss, 6 differ in
+"floor cleared" only: C23's named exception. (b) A banner wider than 320 px grows to the
+right, off centre (355 px measured for a text the shipped data cannot produce; the longest
+reachable one is 243 px). (c) A session snapshot survives `var_to_bytes` but is refused after
+a JSON round trip: its ints come back as floats. Not checked whether `main` is the same.
+
+**Checked and found sound:** C1 to C23 implemented as written, with the file and line of each
+(the differences are §8's, except CR-5 and CR-7); nothing of §3 or D-017's rejected list
+exists in the code (no `Area2D`, no scrolling, no automatic equip, `menu_panel.gd` untouched,
+no shared resource written: the mutant that writes the chain's own attack fails three tests);
+six existing test files are modified, all in C22's list plus DEV-1, and no assertion in them
+was weakened or removed; §8's counts per file match, and DEV-1 to DEV-3 and 21 of the 22
+assumptions match the code; every reader of the class's max HP and dash cooldown goes through
+the loadout; 200,000 rolls at chance 1 all drop; equip is refused in an uncleared room, an
+earlier cleared room, the boss room and the death pause; toggling Vitality, the starter and
+Mending in the cleared pre-boss room gains nothing; a key, pad button or mouse button held
+through an equip and the resume gives no dash and no attack for 20 ticks; a pause in which
+the Equipment menu was only opened and paged leaves the world's snapshot unchanged; a boss
+win with the sword left and a death, three times: guaranteed each time; quit to title and
+Start: the starter alone, no flags, a new seed.
+
+**Not checked by either:** a real keyboard, mouse or gamepad; a rendered window (the lead's
+run, §8); `tests/scenes/test_f015_clicks.gd` (read, not run); rooms with reinforcements under
+the bot; kills on one step by real hits; floor 3's boss table; a session restored in the
+running game (nothing calls it); whether `randf()` can return exactly 1.
 
 ---
 
