@@ -23,8 +23,6 @@ const CLEARED_LAST_FORMAT: String = "Floor %d cleared — no floor above yet"
 const CLEARED_REPLAY_FORMAT: String = "Floor %d cleared"
 ## F-012/AC33: HP that came back between fights.
 const HEALED_FORMAT: String = "+%d HP"
-## F-016/C20: the banner's parts, the other one first and `Found:` last, when they come together.
-const BANNER_JOIN: String = " · "
 
 ## Null loads Tunables.TOWER_PATH.
 @export var tower_data: TowerData
@@ -190,7 +188,14 @@ func leave_floor() -> bool:
 		return false
 	if _session.get_place() == TowerSession.Place.FLOOR and is_instance_valid(_floor):
 		_floor.take_loot_here()  # F-016/C16: what lies in the room is taken before it is freed.
-	return _session.leave_floor()
+	var left: bool = _session.leave_floor()
+	if left and is_instance_valid(_floor):
+		# F-016/C16 (CR-1): the floor is gone from this moment, though it is freed on this node's
+		# next tick. Stopping the whole subtree (the room's runner, the player, the enemies) keeps
+		# its sim from stepping once more: a kill in that step would be rolled in a room already
+		# emptied, and its sword lost or taken without a word. A refusal stops nothing.
+		_floor.process_mode = Node.PROCESS_MODE_DISABLED
+	return left
 
 
 ## F-015/C5: whether the pause menu may open now. It decides nothing about the game: it says the
@@ -413,7 +418,7 @@ func _render_banner() -> void:
 		parts.append(_banner_other)
 	if not _banner_found.is_empty():
 		parts.append(ItemTexts.found_text(_banner_found))
-	_hud.show_banner(BANNER_JOIN.join(parts), Tunables.tower.banner_duration)
+	_hud.show_banner(ItemTexts.BANNER_JOIN.join(parts), Tunables.tower.banner_duration)
 
 
 func _hide_banner() -> void:

@@ -103,11 +103,15 @@ func get_progress() -> TowerProgress:
 
 ## F-016/C15: the sword the player fights with (null: the class's own values). Before the node
 ## enters the tree it is only stored; after, the player on screen takes it at once (max HP follows,
-## and never heals). The town has no loot, so this is all of it.
+## and never heals on a floor). The town has no loot, so this is all of it. F-016 (CR-2): the town
+## is always at full HP (items.md, "Owning and switching"), so here the player is also given the new
+## max HP: Vitality in town reads 108 / 108, and taking it off reads 100 / 100.
 func set_sword(sword: SwordData) -> void:
 	_sword = sword
 	if _room != null:
-		_room.get_player().motor.set_sword(sword, Tunables.items)
+		var motor: PlayerMotor = _room.get_player().motor
+		motor.set_sword(sword, Tunables.items)
+		motor.get_combat_state().refill()
 
 
 ## F-016/C19: who says what the gate shows under the list for each floor (`{floor_number: text}`).

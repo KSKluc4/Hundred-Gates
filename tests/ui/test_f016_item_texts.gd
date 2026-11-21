@@ -209,3 +209,10 @@ func _entry(sword_id: StringName, count: int, equipped: bool) -> String:
 
 func _floor_loot(floor_number: int) -> FloorLoot:
 	return (load(Tunables.LOOT_CATALOG_PATH) as LootCatalog).get_floor_loot(floor_number)
+
+
+## CR-9: what joins the `Found:` notice to a heal or a clear of the same moment lives here, pinned
+## as a literal (a space, a middle dot, a space).
+func test_cr9_the_banner_join_is_a_middle_dot_between_spaces() -> void:
+	assert_eq(ItemTexts.BANNER_JOIN, " · ")
+	assert_eq(ItemTexts.BANNER_JOIN.length(), 3)

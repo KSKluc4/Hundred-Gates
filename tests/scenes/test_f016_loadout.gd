@@ -43,15 +43,14 @@ func _back_in_town() -> void:
 # --- AC18: the town ---------------------------------------------------------------------------
 
 
-func test_ac18_equipping_vitality_in_town_changes_the_town_players_max_hp_and_does_not_heal(
-) -> void:
+func test_ac18_equipping_vitality_in_town_changes_the_town_players_max_hp_and_fills_it() -> void:
 	await _start()
 	assert_eq(max_hp(), CLASS_MAX_HP)
 	give(VITALITY_ID)
 	assert_true(game().can_equip_sword())
 	assert_true(game().equip_sword(VITALITY_ID))
 	assert_eq(max_hp(), VITALITY_MAX_HP, "at once, on the player on screen")
-	assert_eq(hp(), CLASS_MAX_HP, "and it does not heal")
+	assert_eq(hp(), VITALITY_MAX_HP, "the town is at full HP")
 	assert_eq(game().get_equipped_sword().id, VITALITY_ID)
 	assert_eq(game().get_loadout().get_max_hp(), VITALITY_MAX_HP)
 
@@ -129,6 +128,31 @@ func test_ac18_equipping_mending_in_town_changes_the_next_floors_room_clear_heal
 	assert_eq(healed, 40, "30 % and the sword's 10")
 	assert_eq(hp(), HURT_HP + healed)
 	assert_eq(banner(), "+%d HP" % healed)
+
+
+## CR-2: the town is always at full HP (items.md, "Owning and switching"), whatever is equipped.
+func test_cr2_vitality_in_town_reads_108_of_108_and_taking_it_off_reads_100_of_100() -> void:
+	await _start()
+	give(VITALITY_ID)
+	assert_true(game().equip_sword(VITALITY_ID))
+	assert_eq(hp(), VITALITY_MAX_HP)
+	assert_eq(hud().get_health_bar().get_label_text(), "HP 108 / 108", "and the bar says so")
+	assert_true(game().equip_sword(ItemFixtures.STARTER_ID))
+	assert_eq(max_hp(), CLASS_MAX_HP)
+	assert_eq(hp(), CLASS_MAX_HP)
+	assert_true(game().equip_sword(VITALITY_ID))
+	assert_eq(hp(), VITALITY_MAX_HP, "and on again")
+
+
+func test_cr2_on_a_floor_equipping_still_heals_nothing() -> void:
+	await _start()
+	await enter_frozen_floor()
+	await _clear_here()
+	set_hp(HURT_HP)
+	give(VITALITY_ID)
+	assert_true(game().equip_sword(VITALITY_ID))
+	assert_eq(max_hp(), VITALITY_MAX_HP)
+	assert_eq(hp(), HURT_HP, "no heal on a floor")
 
 
 # --- AC18: the cleared room before a boss -----------------------------------------------------

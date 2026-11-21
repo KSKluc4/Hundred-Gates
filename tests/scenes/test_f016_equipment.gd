@@ -331,6 +331,29 @@ func test_ac20_seventeen_swords_the_middle_page_has_both_page_entries() -> void:
 	assert_false(panel().get_entry_ids().has(EquipmentMenu.PREVIOUS_ID), "none on the first page")
 
 
+## CR-4: opened on page 0, `Next page` is stepped from a page that has two pages after it, so the
+## page it lands on is the next one, not the last (a step of two would clamp to the last).
+func test_cr4_next_page_from_the_first_of_three_pages_lands_on_the_middle_one() -> void:
+	await _start_with_many(16)
+	assert_eq(inventory().get_ids().size(), 17)
+	assert_eq(inventory().get_equipped_id(), STARTER, "the first page's sword")
+	await open_equipment()
+	var first: Array[StringName] = sword_entry_ids()
+	assert_eq(first.size(), PAGE_SIZE)
+	var middle: Array[StringName] = []
+	for number: int in range(8, 16):
+		middle.append(_entry_of(number))
+	var last: Array[StringName] = [_entry_of(16)]
+	choose(EquipmentMenu.NEXT_ID)
+	assert_eq(sword_entry_ids(), middle, "once: exactly the middle page's swords")
+	choose(EquipmentMenu.NEXT_ID)
+	assert_eq(sword_entry_ids(), last, "twice: the last page's")
+	choose(EquipmentMenu.PREVIOUS_ID)
+	assert_eq(sword_entry_ids(), middle, "back once: the middle page")
+	choose(EquipmentMenu.PREVIOUS_ID)
+	assert_eq(sword_entry_ids(), first, "back twice: the first page")
+
+
 func test_ac20_pages_are_changed_by_key_pad_and_click_too() -> void:
 	await _start_with_many(8)
 	await open_equipment()
@@ -381,7 +404,7 @@ func _assert_equips_in_place(method: StringName) -> void:
 	assert_eq(inventory().get_equipped_id(), VITALITY)
 	assert_eq(game().get_equipped_sword().id, VITALITY)
 	assert_eq(max_hp(), VITALITY_MAX_HP, "the town player on screen has it at once")
-	assert_eq(hp(), CLASS_MAX_HP, "and no heal")
+	assert_eq(hp(), VITALITY_MAX_HP, "the town is at full HP (CR-2)")
 	assert_true(_game_is_stopped(), "the game stayed stopped")
 
 

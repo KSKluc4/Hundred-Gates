@@ -109,6 +109,26 @@ func test_ac9_the_pool_pick_maps_every_index_to_its_own_sword() -> void:
 	assert_eq(seen.size(), 5, "and nothing outside 0 to 4")
 
 
+## CR-6: the pick is `randi_range(0, n - 1)` for every pool size, one draw each (a pool of one
+## draws too, and gives 0), each index of a pool of two reached.
+func test_cr6_the_pool_pick_follows_the_reference_for_pools_of_one_two_and_three() -> void:
+	for pool_size: int in [1, 2, 3]:
+		var roller: LootRoller = LootRoller.new()
+		roller.seed_with(SEED)
+		var reference: RandomNumberGenerator = _reference()
+		var seen: Dictionary[int, int] = {}
+		for _kill: int in KILLS:
+			reference.randf()
+			var expected: int = reference.randi_range(0, pool_size - 1)
+			var got: int = roller.roll_regular(1.0, pool_size)
+			assert_eq(got, expected, "a pool of %d" % pool_size)
+			seen[got] = seen.get(got, 0) + 1
+		assert_eq(seen.size(), pool_size, "every index of a pool of %d came up" % pool_size)
+		assert_eq(
+			roller.to_dict(), {LootRoller.KEY_SEED: SEED, LootRoller.KEY_STATE: reference.state}
+		)
+
+
 func test_ac9_a_guaranteed_boss_win_draws_once_over_one_to_the_sum() -> void:
 	var reference: RandomNumberGenerator = _reference()
 	var mismatches: int = 0

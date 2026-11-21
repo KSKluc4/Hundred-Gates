@@ -781,3 +781,26 @@ func test_ac12_a_room_of_a_character_without_a_catalog_refuses_any_drop() -> voi
 	}
 	_assert_refused(room, snapshot, "no catalog to know the sword")
 	assert_true(room.from_dict({RoomLoot.KEY_DROPS: []}), "the empty list is fine")
+
+
+## CR-8: a drop at a position that is not a number can never be reached and is refused.
+func test_cr8_a_drop_at_a_nan_or_infinite_position_is_refused_and_changes_nothing() -> void:
+	var room: RoomLoot = _room_with_two_drops()
+	var pool_id: String = String(_pool[0].id)
+	for bad: Vector2 in [
+		Vector2(NAN, 1.0),
+		Vector2(1.0, NAN),
+		Vector2(INF, 1.0),
+		Vector2(1.0, -INF),
+		Vector2(NAN, INF),
+	]:
+		_assert_refused(
+			room, {RoomLoot.KEY_DROPS: [_drop_entry(pool_id, bad, 0)]}, "position %s" % bad
+		)
+	var good: Dictionary = _drop_entry(pool_id, Vector2(1, 1), 0)
+	_assert_refused(
+		room,
+		{RoomLoot.KEY_DROPS: [good, _drop_entry(pool_id, Vector2(NAN, NAN), 0)]},
+		"one bad position among good entries"
+	)
+	assert_true(room.from_dict({RoomLoot.KEY_DROPS: [good]}), "a finite position is still fine")

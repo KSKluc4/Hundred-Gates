@@ -215,6 +215,9 @@ func _drop_error(entry: Variant) -> String:
 	var text: bool = entry[KEY_SWORD] is String or entry[KEY_SWORD] is StringName
 	if not (text and entry[KEY_POSITION] is Vector2 and entry[KEY_BOSS_FLOOR] is int):
 		return "room loot: a drop has wrong types"
+	var at: Vector2 = entry[KEY_POSITION]
+	if not (is_finite(at.x) and is_finite(at.y)):
+		return "room loot: %s lies at a position that is not a number" % entry[KEY_SWORD]
 	if _character == null or not _character.knows_sword(StringName(entry[KEY_SWORD])):
 		return "room loot: %s is not a sword of the catalog" % entry[KEY_SWORD]
 	var boss_floor: int = entry[KEY_BOSS_FLOOR]

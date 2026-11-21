@@ -12,6 +12,8 @@ const BETWEEN: Vector2 = Vector2(10.2, 4.0)
 const APART_A: Vector2 = Vector2(8.0, 4.0)
 const APART_B: Vector2 = Vector2(14.0, 4.0)
 const HURT_HP: int = 60
+## Ticks to wait for the reinforcements of a room: three warnings, with the interval between.
+const WAVE_LOOP_LIMIT_TICKS: int = 2000
 
 
 func _enter(spawn_counts: Array[int] = [1], catalog: LootCatalog = null) -> void:
@@ -218,6 +220,38 @@ func test_ac24_a_boss_sword_is_marked_in_its_own_colour() -> void:
 	assert_eq(markers.get_markers().size(), 1)
 	assert_true(markers.get_markers()[0]["boss"])
 	assert_eq(markers.get_markers()[0]["color"], markers.boss_marker_color)
+
+
+## CR-3: the reinforcements are watched too. The room's loot hears as many enemies as the room's
+## kill target (placed ones and reserve), and an arrived reinforcement that is killed leaves one.
+func test_cr3_a_reinforcement_that_arrived_and_fell_leaves_a_sword() -> void:
+	await spawn_loot_game(WaveFixtures.wave_tower(1))
+	await enter_floor_through_gate(1)
+	var target: int = room().get_kill_target()
+	assert_eq(target, 5, "two placed enemies and three reinforcements")
+	assert_eq(room().get_reserve_enemies().size(), 3)
+	assert_eq(room().get_loot()._enemies.size(), target, "watched: every enemy of the target")
+	kill(room().get_enemies()[0])
+	kill(room().get_enemies()[1])
+	await run_ticks(1)
+	assert_eq(drops().size(), 2, "the placed ones dropped")
+	var fallen: Array[Vector2] = []
+	for _i: int in WAVE_LOOP_LIMIT_TICKS:
+		if room().get_kill_count() >= target:
+			break
+		for node: Enemy in room().get_reserve_enemies():
+			if node.logic.is_alive():
+				fallen.append(node.logic.get_position_tiles())
+				kill(node)  # One that arrived: it falls before it moves.
+		await run_ticks(1)
+	await run_ticks(1)
+	assert_eq(fallen.size(), 3, "three reinforcements arrived and fell")
+	assert_eq(drops().size(), target, "every kill of the target left a sword, reserve included")
+	for at: Vector2 in fallen:
+		var found: bool = false
+		for drop: LootDrop in drops():
+			found = found or drop.position == at
+		assert_true(found, "a sword lies where the reinforcement at %s fell" % at)
 
 
 ## What the engine draws by: the node's z_index plus those of its ancestors while each is relative.

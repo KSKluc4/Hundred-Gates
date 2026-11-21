@@ -17,18 +17,24 @@ static func of(class_data: ClassData, sword: SwordData, rules: ItemTunables) -> 
 	loadout._sword = sword
 	loadout._min_dash_cooldown = rules.min_dash_cooldown if rules != null else 0.0
 	if sword != null:
-		loadout._hits = sword.get_hit_damages(class_data)
+		var hits: PackedInt32Array = sword.get_hit_damages(class_data)
+		# A sword whose hits do not fit the chain is not applied to the hits at all: every hit stays the
+		# class attack's own. Only a reload to a class with another chain can show one (the sword was
+		# validated against the class it was built for).
+		if hits.size() == class_data.attack_chain.size():
+			loadout._hits = hits
 	return loadout
 
 
-## The damage of hit `index` of the chain: the sword's split, or the class attack's own damage.
-## -1 for a hit the chain does not have (AttackChain.start() reads -1 as "the attack's own").
+## The damage of hit `index` of the chain: the sword's split, or the class attack's own damage (also
+## for every hit of a sword whose hits do not fit the chain). -1 for a hit the CLASS chain does not
+## have, whatever the sword's weights (AttackChain.start() reads -1 as "the attack's own").
 func get_hit_damage(index: int) -> int:
-	if _sword != null and index >= 0 and index < _hits.size():
+	if index < 0 or index >= _class_data.attack_chain.size():
+		return -1
+	if index < _hits.size():
 		return _hits[index]
-	if index >= 0 and index < _class_data.attack_chain.size():
-		return _class_data.attack_chain[index].damage
-	return -1
+	return _class_data.attack_chain[index].damage
 
 
 func get_max_hp() -> int:

@@ -32,6 +32,9 @@ const FOUND_FORMAT: String = "Found: %s"
 const FOUND_MORE_FORMAT: String = " +%d more"
 ## At most this many names are written out; the rest are counted.
 const FOUND_NAMES_SHOWN: int = 2
+## F-016/C20: what joins the `Found:` notice to the heal or the clear shown in the same moment
+## (the other part first, `Found:` last).
+const BANNER_JOIN: String = " · "
 
 ## The odds at the tower gate.
 const BOSS_DROPS_HEADING: String = "Boss drops:"

@@ -116,3 +116,35 @@ func test_c7_a_loadout_reads_the_class_it_was_built_from() -> void:
 func test_c7_without_rules_there_is_no_floor_for_the_cooldown() -> void:
 	var sword: SwordData = ItemFixtures.make_sword(&"a", 44, SwordData.Kind.QUICKSTEP, [], 0, 0.3)
 	assert_almost_eq(PlayerLoadout.of(_class, sword, null).get_dash_cooldown(), 0.05, 0.00001)
+
+
+## CR-7. A sword whose hits do not fit the class chain is not applied to the hits at all: every hit
+## the chain has is the class attack's own, and an index the chain does not have is -1.
+func test_cr7_a_sword_with_more_weights_than_the_chain_has_hits_is_not_applied() -> void:
+	var short_class: ClassData = _class.duplicate()
+	short_class.attack_chain = [_class.attack_chain[0], _class.attack_chain[1]]
+	var sword: SwordData = ItemFixtures.make_sword(&"a", 48, SwordData.Kind.NONE, [10, 10, 22])
+	var loadout: PlayerLoadout = PlayerLoadout.of(short_class, sword, _rules)
+	assert_eq(loadout.get_hit_damage(0), short_class.attack_chain[0].damage, "the class's own")
+	assert_eq(loadout.get_hit_damage(1), short_class.attack_chain[1].damage, "the class's own")
+	assert_eq(loadout.get_hit_damage(2), -1, "the class chain has no third hit")
+	assert_eq(loadout.get_hit_damage(3), -1)
+	assert_eq(loadout.get_hit_damage(-1), -1)
+
+
+func test_cr7_a_sword_with_fewer_weights_than_the_chain_has_hits_is_not_applied_either() -> void:
+	var sword: SwordData = ItemFixtures.make_sword(&"a", 30, SwordData.Kind.NONE, [10, 20])
+	var loadout: PlayerLoadout = PlayerLoadout.of(_class, sword, _rules)
+	for index: int in _class.attack_chain.size():
+		assert_eq(loadout.get_hit_damage(index), _class.attack_chain[index].damage)
+	assert_eq(loadout.get_hit_damage(_class.attack_chain.size()), -1)
+
+
+func test_cr7_a_sword_with_the_chains_size_is_still_applied() -> void:
+	var short_class: ClassData = _class.duplicate()
+	short_class.attack_chain = [_class.attack_chain[0], _class.attack_chain[1]]
+	var sword: SwordData = ItemFixtures.make_sword(&"a", 30, SwordData.Kind.NONE, [10, 20])
+	var loadout: PlayerLoadout = PlayerLoadout.of(short_class, sword, _rules)
+	assert_eq(loadout.get_hit_damage(0), 10)
+	assert_eq(loadout.get_hit_damage(1), 20)
+	assert_eq(loadout.get_hit_damage(2), -1)

@@ -160,6 +160,22 @@ func test_ac12_a_played_character_round_trips() -> void:
 	assert_false(copy.is_boss_sword_taken(1))
 
 
+## CR-6: two boss swords of one floor are two takes but one entry in the list of floors, so the
+## snapshot is one the character itself accepts back.
+func test_cr6_two_boss_swords_of_one_floor_round_trip_with_the_floor_listed_once() -> void:
+	var source: CharacterLoot = LootFixtures.character(_catalog, SEED)
+	source.report_taken(&"fixture_boss_2_1", 2)
+	source.report_taken(&"fixture_boss_2_2", 2)
+	var snapshot: Dictionary = source.to_dict()
+	assert_eq(snapshot[CharacterLoot.KEY_BOSS_TAKEN], [2], "the floor once")
+	var copy: CharacterLoot = LootFixtures.character(_catalog, 1)
+	assert_true(copy.from_dict(snapshot), "its own snapshot is accepted")
+	assert_eq_deep(copy.to_dict(), snapshot)
+	assert_true(copy.is_boss_sword_taken(2))
+	assert_eq(copy.get_inventory().get_count(&"fixture_boss_2_1"), 1)
+	assert_eq(copy.get_inventory().get_count(&"fixture_boss_2_2"), 1)
+
+
 func test_ac12_the_roller_goes_on_where_the_saved_one_was() -> void:
 	var source: CharacterLoot = _played()
 	var snapshot: Dictionary = source.to_dict()

@@ -263,3 +263,55 @@ func test_ac16_clearing_a_floor_keeps_what_was_owned_and_adds_what_was_taken() -
 	assert_gte(owned(kept), 1)
 	assert_true(loot().is_boss_sword_taken(1), "the boss's sword came with the clear")
 	assert_eq(_owned_total(), 4, "the starter, the one given, the regular drop and the boss's")
+
+
+# --- CR-1: the floor does not step once more after Return to town ------------------------------
+
+
+func test_cr1_a_kill_after_the_yes_of_return_to_town_is_not_rolled() -> void:
+	await _enter(TWO_IN_A_ROOM)
+	kill(enemy(0))
+	await run_ticks(1)
+	assert_eq(drops().size(), 1, "one sword lies when the person leaves")
+	var lying: StringName = drops()[0].sword_id
+	var roller_before: Dictionary = loot().get_roller().to_dict()
+	var old_floor: FloorScene = floor_scene()
+	assert_true(game().leave_floor(), "the yes")
+	assert_eq(owned(lying), 1, "what lay there was taken at the yes")
+	assert_eq(banner(), "Found: %s" % name_of(lying), "and shown")
+	assert_eq(old_floor.process_mode, Node.PROCESS_MODE_DISABLED, "the floor stands still")
+	# The other enemy dies after the yes and before the next tick: the floor must not step.
+	kill(enemy(1))
+	await _wait_for_the_town()
+	assert_false(is_instance_valid(old_floor) and old_floor.is_inside_tree(), "the floor is gone")
+	assert_eq(loot().get_roller().to_dict(), roller_before, "nothing was rolled")
+	assert_eq(_owned_total(), 2, "the starter and the one taken at the yes")
+	assert_eq(owned(lying), 1)
+	assert_eq(banner(), "Found: %s" % name_of(lying), "the notice is the same")
+
+
+func test_cr1_a_sword_in_reach_of_a_kill_after_the_yes_is_not_taken_without_a_banner() -> void:
+	await _enter(TWO_IN_A_ROOM)
+	var roller_before: Dictionary = loot().get_roller().to_dict()
+	var near: Vector2 = enemy(1).logic.get_position_tiles()
+	put_player_at(near + Vector2(0.3, 0.0))
+	assert_true(game().leave_floor())
+	assert_eq(_owned_total(), 1, "nothing lay there")
+	kill(enemy(1))
+	await _wait_for_the_town()
+	assert_eq(loot().get_roller().to_dict(), roller_before)
+	assert_eq(_owned_total(), 1)
+	assert_eq(banner(), "")
+
+
+func test_cr1_a_refused_leave_changes_nothing() -> void:
+	set_death_delay(DEATH_DELAY)
+	await _enter(TWO_IN_A_ROOM)
+	var old_floor: FloorScene = floor_scene()
+	kill_player()
+	await run_ticks(2)
+	assert_eq(session().get_place(), TowerSession.Place.DEATH_PAUSE)
+	assert_false(game().leave_floor(), "refused in the death pause")
+	assert_ne(old_floor.process_mode, Node.PROCESS_MODE_DISABLED, "the floor is as it was")
+	assert_eq(floor_scene(), old_floor)
+	assert_eq(_owned_total(), 1)
