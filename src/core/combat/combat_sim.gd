@@ -14,6 +14,9 @@ var _time: float = 0.0
 var _nav: NavGrid = null
 ## F-014/C6: the room's director, stepped once per step. Null: no waves, and the sim is as it was.
 var _waves: RoomWaves = null
+## F-016/C9: the room's loot, told once at the end of every step. Null: no loot, and the sim is
+## as it was. Never in to_dict() (the snapshot's keys are pinned).
+var _loot: RoomLoot = null
 
 
 ## The sim stores its own rate: only a checked reload may change it (F-003/C18).
@@ -68,6 +71,16 @@ func get_waves() -> RoomWaves:
 	return _waves
 
 
+## F-016/C9: attaches the room's loot. It listens to the combatants it was told to watch, so there
+## is nothing to register here. Null detaches it. With none, nothing here changes.
+func set_loot(loot: RoomLoot) -> void:
+	_loot = loot
+
+
+func get_loot() -> RoomLoot:
+	return _loot
+
+
 ## F-003/C15. Commands were submitted before this call. move_bodies is empty in core tests,
 ## where the logic's own integration stands.
 func tick(delta: float, move_bodies: Callable = Callable()) -> void:
@@ -89,6 +102,8 @@ func tick(delta: float, move_bodies: Callable = Callable()) -> void:
 		_apply_contact()
 		for combatant: Combatant in _combatants:
 			combatant.end_step()  # F-006/C7: after this step's contact, in registration order.
+		if _loot != null:
+			_loot.end_step()  # F-016/C9: once per step, never per tick: the rate changes nothing.
 	for combatant: Combatant in _combatants:
 		combatant.finish_tick()
 
