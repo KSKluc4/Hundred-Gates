@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="FloorLoot" format=3]
+
+[ext_resource type="Script" path="res://src/core/items/floor_loot.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/items/sword_data.gd" id="2"]
+[ext_resource type="Resource" path="res://data/items/swords/iron_cleaver.tres" id="3"]
+[ext_resource type="Resource" path="res://data/items/swords/twin_edge.tres" id="4"]
+[ext_resource type="Resource" path="res://data/items/swords/guards_blade.tres" id="5"]
+[ext_resource type="Resource" path="res://data/items/swords/swift_blade.tres" id="6"]
+[ext_resource type="Resource" path="res://data/items/swords/pilgrims_blade.tres" id="7"]
+[ext_resource type="Resource" path="res://data/items/swords/wardens_mercy.tres" id="8"]
+[ext_resource type="Resource" path="res://data/items/swords/wardens_stride.tres" id="9"]
+[ext_resource type="Resource" path="res://data/items/swords/wardens_verdict.tres" id="10"]
+
+[resource]
+script = ExtResource("1")
+regular_drops_per_run = 1.0
+regular_swords = Array[ExtResource("2")]([ExtResource("3"), ExtResource("4"), ExtResource("5"), ExtResource("6"), ExtResource("7")])
+boss_swords = Array[ExtResource("2")]([ExtResource("8"), ExtResource("9"), ExtResource("10")])
+boss_percents = PackedInt32Array(30, 20, 10)

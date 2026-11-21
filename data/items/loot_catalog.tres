@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="LootCatalog" format=3]
+
+[ext_resource type="Script" path="res://src/core/items/loot_catalog.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/items/floor_loot.gd" id="2"]
+[ext_resource type="Resource" path="res://data/items/swords/recruits_sword.tres" id="3"]
+[ext_resource type="Resource" path="res://data/items/floor_1_loot.tres" id="4"]
+[ext_resource type="Resource" path="res://data/items/floor_2_loot.tres" id="5"]
+[ext_resource type="Resource" path="res://data/items/floor_3_loot.tres" id="6"]
+
+[resource]
+script = ExtResource("1")
+starter_sword = ExtResource("3")
+floors = Array[ExtResource("2")]([ExtResource("4"), ExtResource("5"), ExtResource("6")])

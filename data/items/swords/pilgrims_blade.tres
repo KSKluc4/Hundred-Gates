@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="SwordData" format=3]
+
+[ext_resource type="Script" path="res://src/core/items/sword_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"pilgrims_blade"
+display_name = "Pilgrim's Blade"
+damage = 44
+weights = PackedInt32Array()
+kind = 5
+max_hp_bonus = 0
+dash_cooldown_cut = 0.0
+room_heal_bonus = 0.05

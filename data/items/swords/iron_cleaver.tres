@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="SwordData" format=3]
+
+[ext_resource type="Script" path="res://src/core/items/sword_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"iron_cleaver"
+display_name = "Iron Cleaver"
+damage = 46
+weights = PackedInt32Array(9, 9, 28)
+kind = 1
+max_hp_bonus = 0
+dash_cooldown_cut = 0.0
+room_heal_bonus = 0.0
