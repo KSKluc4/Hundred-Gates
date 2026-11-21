@@ -27,6 +27,8 @@ const ABOVE_GUT_LAYER: int = 129
 const LATE_MSEC: int = 180
 const NOT_RESTARTED_MSEC: int = 350
 const GUARD_WAIT_LIMIT_MSEC: int = 3000
+## How long the presses of the restart test go on: more than twice the guard.
+const RESTART_WATCH_MSEC: int = 700
 ## A real stick passes through every value on its way (as in test_gate_menu).
 const RAMP: Array[float] = [0.1, 0.3, 0.45, 0.7, 1.0]
 const HANDLED_ACTIONS: Array[StringName] = [
@@ -918,7 +920,7 @@ func test_guard_changes_in_place_after_the_guard_do_not_start_it() -> void:
 	assert_eq(_chosen, [&"a"] as Array[StringName], "and a key still chooses")
 
 
-# --- a double click never chooses (real clicks, on a layer above GUT's) ---
+# --- a double click that opened something never chooses (real clicks, on a layer above GUT's) ---
 
 
 func test_double_click_a_flagged_press_never_chooses_during_the_guard() -> void:
@@ -939,7 +941,7 @@ func test_double_click_a_flagged_press_never_chooses_after_the_guard() -> void:
 	await _post_clicks(_button_point(1), [true] as Array[bool])
 	assert_eq(_chosen, [] as Array[StringName], "the flagged press and its release chose nothing")
 	assert_eq(_panel.get_focus_id(), &"a", "the press did not even take the focus")
-	assert_eq(seen.mouse_presses, 0, "consumed, as the panel is open")
+	assert_eq(seen.mouse_presses, 0, "consumed: the menu had just opened")
 
 
 func test_double_click_with_no_guard_at_all_it_still_never_chooses() -> void:
@@ -960,16 +962,6 @@ func test_double_click_an_ordinary_click_after_the_guard_chooses_and_during_it_d
 	assert_eq(_chosen, [&"b"] as Array[StringName], "after it, an ordinary click chooses")
 
 
-func test_double_click_a_flagged_press_between_two_ordinary_clicks_is_the_only_one_lost() -> void:
-	_spawn_panel_on_a_layer_above_gut(GUARD_SECONDS)
-	_panel.open("Paused", "", _entries(), &"a")
-	assert_true(await _wait_until_unguarded())
-	await _post_clicks(_button_point(1), [false, true, false] as Array[bool])
-	assert_eq(
-		_chosen, [&"b", &"b"] as Array[StringName], "the two ordinary clicks, not the flagged"
-	)
-
-
 func test_double_click_a_flagged_press_and_the_release_after_it_press_nothing() -> void:
 	_spawn_panel_on_a_layer_above_gut(0.0)
 	_panel.open("Paused", "", _entries(), &"a")
@@ -981,17 +973,213 @@ func test_double_click_a_flagged_press_and_the_release_after_it_press_nothing() 
 	assert_eq(_panel.get_focus_id(), &"a")
 
 
+## Never opened and never closed: nothing to follow, so nothing to consume.
 func test_double_click_while_the_panel_is_closed_is_not_consumed() -> void:
 	_spawn_panel()
 	var seen: RawInput = _watch_raw_input_after_the_panel()
 	_post_mouse(Vector2(5.0, 5.0), true, true)
 	_post_mouse(Vector2(5.0, 5.0), false, false)
 	await get_tree().process_frame
-	assert_eq(seen.mouse_presses, 1, "a closed panel handles no input at all")
+	assert_eq(seen.mouse_presses, 1, "a panel that never opened has nothing to follow")
 	assert_eq(_chosen, [] as Array[StringName])
 
 
+# --- the flag: opened or closed since the last press (CR-23) ---
+
+
+## `open()` sets it; the flagged press that follows is consumed, once and only then: the next
+## flagged press, with no menu opened or closed in between, is an ordinary press and chooses.
+func test_flag_open_sets_it_and_a_consumed_press_clears_it() -> void:
+	_spawn_panel_on_a_layer_above_gut(0.0)
+	var seen: RawInput = _watch_raw_input_after_the_panel()
+	_panel.open("Paused", "", _entries(), &"a")
+	await _post_clicks(_button_point(1), [true] as Array[bool])
+	assert_eq(seen.mouse_presses, 0, "the first flagged press: consumed")
+	assert_eq(_chosen, [] as Array[StringName])
+	await _post_clicks(_button_point(1), [true] as Array[bool])
+	assert_eq(seen.mouse_presses, 1, "the second: not consumed")
+	assert_eq(_chosen, [&"b"] as Array[StringName], "and it chose")
+
+
+## Every `open()` sets it again, also one that rebuilds the menu that is open.
+func test_flag_every_open_sets_it_again() -> void:
+	_spawn_panel_on_a_layer_above_gut(0.0)
+	var seen: RawInput = _watch_raw_input_after_the_panel()
+	_panel.open("Paused", "", _entries(), &"a")
+	await _lay_out()
+	await _post_clicks(_button_point(1), [false] as Array[bool])
+	assert_eq(_chosen, [&"b"] as Array[StringName], "the premise: an ordinary click cleared it")
+	_panel.open("Other", "", _entries(), &"a")
+	await _lay_out()
+	await _post_clicks(_button_point(1), [true] as Array[bool])
+	assert_eq(seen.mouse_presses, 1, "only the ordinary click reached what is behind the panel")
+	assert_eq(_chosen, [&"b"] as Array[StringName], "the flagged press after the new menu: lost")
+
+
+## A closed panel looks at no mouse button at all: after open() and close(), flagged or not, every
+## press reaches what is behind it. (A double click on an entry that closes the menu reaches the
+## game as an ordinary click.) Opening it again sets the flag by that open.
+func test_flag_a_closed_panel_consumes_nothing_and_the_next_open_sets_it() -> void:
+	_spawn_panel()
+	var seen: RawInput = _watch_raw_input_after_the_panel()
+	_panel.open("Paused", "", _entries(), &"a")
+	_panel.close()
+	for flagged: bool in [true, true, false, true]:
+		_post_mouse(Vector2(5.0, 5.0), true, flagged)
+		_post_mouse(Vector2(5.0, 5.0), false, false)
+	assert_eq(seen.mouse_presses, 4, "a closed panel consumes nothing, flagged or not")
+	_panel.open("Paused", "", _entries(), &"a")
+	_post_mouse(Vector2(5.0, 5.0), true, true)
+	_post_mouse(Vector2(5.0, 5.0), false, false)
+	assert_eq(
+		seen.mouse_presses, 4, "the open after it set the flag: the flagged press is consumed"
+	)
+
+
+## An ordinary press of any button clears it; a flagged press after that is an ordinary one.
+func test_flag_an_unflagged_press_of_any_button_clears_it() -> void:
+	for button_index: MouseButton in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
+		_spawn_panel()
+		var seen: RawInput = _watch_raw_input_after_the_panel()
+		_panel.open("Paused", "", _entries(), &"a")
+		_post_mouse(Vector2(5.0, 5.0), true, false, button_index)
+		_post_mouse(Vector2(5.0, 5.0), false, false, button_index)
+		assert_eq(
+			seen.mouse_presses, 1, "the premise: the press went by (button %d)" % button_index
+		)
+		_post_mouse(Vector2(5.0, 5.0), true, true)
+		_post_mouse(Vector2(5.0, 5.0), false, false)
+		assert_eq(
+			seen.mouse_presses, 2, "the flagged press passed (after button %d)" % button_index
+		)
+		_panel.queue_free()
+		await get_tree().process_frame
+
+
+## A menu open for a long time and an ordinary click on it: a flagged press is a choice. It is
+## pressed, not only left alone: the button chooses on its release.
+func test_flag_a_flagged_press_on_a_menu_open_for_long_chooses_after_an_ordinary_click() -> void:
+	_spawn_panel_on_a_layer_above_gut(GUARD_SECONDS)
+	var seen: RawInput = _watch_raw_input_after_the_panel()
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_true(await _wait_until_unguarded())
+	await _post_clicks(_button_point(0), [false] as Array[bool])
+	assert_eq(_chosen, [&"a"] as Array[StringName], "the premise: the ordinary click chose")
+	await _wait_msec(LATE_MSEC)
+	await _post_clicks(_button_point(1), [true] as Array[bool])
+	assert_eq(seen.mouse_presses, 2, "the flagged press reached what is behind the panel")
+	assert_eq(_chosen, [&"a", &"b"] as Array[StringName], "and the button chose on it")
+
+
+## A flagged press right after another menu opened is lost; the next ordinary click is not, and
+## neither is a flagged one after it.
+func test_flag_a_flagged_press_right_after_a_new_menu_is_the_only_one_lost() -> void:
+	_spawn_panel_on_a_layer_above_gut(GUARD_SECONDS)
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_true(await _wait_until_unguarded())
+	await _post_clicks(_button_point(1), [false] as Array[bool])
+	assert_eq(_chosen, [&"b"] as Array[StringName], "the first click chose, as the shell would")
+	_panel.open("Next", "", _entries(), &"a")  # What the shell does for that choice.
+	assert_true(await _wait_until_unguarded())
+	await _post_clicks(_button_point(1), [true, false, true] as Array[bool])
+	assert_eq(
+		_chosen,
+		[&"b", &"b", &"b"] as Array[StringName],
+		"the flagged press after the new menu is lost, the next two are not"
+	)
+
+
+# --- a press during the guard starts it again (CR-24) ---
+
+
+## A press every frame for far longer than the guard: each one that comes less than a guard after
+## the one before (every one but a frame stalled by a busy machine) finds the guard still running.
+## Without the restart the guard would have ended 0.25 s after open(), and a press at 0.3 s would
+## find it over. The presses are on a button: the guarded entries ignore them, nothing is chosen.
+func test_restart_a_press_during_the_guard_starts_it_again() -> void:
+	_spawn_panel_on_a_layer_above_gut(GUARD_SECONDS)
+	_panel.open("Paused", "", _entries(), &"a")
+	var at: Vector2 = _window_point(_button_point(1))
+	var started: int = Time.get_ticks_msec()
+	var last_press: int = started
+	var checked: int = 0
+	while Time.get_ticks_msec() < started + RESTART_WATCH_MSEC:
+		var now: int = Time.get_ticks_msec()
+		if now - last_press < roundi(GUARD_SECONDS * 1000.0):
+			assert_true(_panel.is_choose_guarded(), "still guarded %d ms in" % (now - started))
+			checked += 1
+		last_press = now
+		_post_mouse(at, true, false)
+		_post_mouse(at, false, false)
+		await get_tree().process_frame
+	assert_gte(checked, 10, "the premise: enough presses came inside the guard's time")
+	assert_eq(_chosen, [] as Array[StringName], "the guarded entries ignored every press")
+	assert_true(await _wait_until_unguarded(), "and it ends")
+	assert_gte(
+		Time.get_ticks_msec() - last_press,
+		roundi(GUARD_SECONDS * 1000.0),
+		"a guard's time after the LAST press"
+	)
+
+
+## A press the panel consumes (a flagged one) starts it again too.
+func test_restart_a_consumed_flagged_press_starts_it_again() -> void:
+	_spawn_panel_on_a_layer_above_gut(GUARD_SECONDS)
+	_panel.open("Paused", "", _entries(), &"a")
+	await _wait_msec(LATE_MSEC)
+	assert_true(_panel.is_choose_guarded(), "the premise: late in the guard, not past it")
+	var at: Vector2 = _window_point(_button_point(1))
+	var pressed_at: int = Time.get_ticks_msec()
+	_post_mouse(at, true, true)
+	_post_mouse(at, false, false)
+	assert_true(await _wait_until_unguarded(), "it ends")
+	assert_gte(
+		Time.get_ticks_msec() - pressed_at, roundi(GUARD_SECONDS * 1000.0), "a guard's time from it"
+	)
+	assert_eq(_chosen, [] as Array[StringName])
+
+
+## A press after the guard's time is over, before `_process` has noticed, is a press on entries
+## that take the pointer: it is not ignored, and the guard does not start again for it.
+func test_restart_a_press_after_the_guards_time_does_not() -> void:
+	_spawn_panel_on_a_layer_above_gut(GUARD_SECONDS)
+	_panel.open("Paused", "", _entries(), &"a")
+	assert_true(await _wait_until_unguarded())
+	var at: Vector2 = _window_point(_button_point(1))
+	_post_mouse(at, true, false)
+	assert_false(_panel.is_choose_guarded(), "a press after the guard does not start it")
+	_post_mouse(at, false, false)
+	assert_eq(_chosen, [&"b"] as Array[StringName], "and it chooses")
+
+
+## Keys, the pad and the stick, accepted or not, do not start it again: it ends on its first time.
+func test_restart_a_key_during_the_guard_does_not() -> void:
+	_spawn_guarded_panel()
+	_panel.choose_guard_seconds = GUARD_SECONDS
+	_panel.open("Paused", "", _entries(), &"a")
+	var opened_at: int = Time.get_ticks_msec()
+	await _wait_msec(LATE_MSEC)
+	assert_true(_panel.is_choose_guarded(), "the premise: late in the guard, not past it")
+	_press(&"ui_down")
+	_press_key(KEY_ENTER)
+	_press_key(KEY_UP)
+	_press_pad_button(JOY_BUTTON_A)
+	_press_pad_button(JOY_BUTTON_DPAD_DOWN)
+	_press(&"ui_cancel")
+	assert_true(await _wait_until_unguarded(), "the guard ended")
+	var elapsed_msec: int = Time.get_ticks_msec() - opened_at
+	assert_lt(elapsed_msec, NOT_RESTARTED_MSEC, "on its first time, not restarted by a key")
+	assert_eq(_chosen, [] as Array[StringName], "(and the choose keys chose nothing in it)")
+
+
 # --- helpers ---
+
+
+## The frames in which the buttons of a menu that was just opened take their places: a rectangle
+## read before them is the old menu's.
+func _lay_out() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
 
 
 ## Real time, on process frames (the guard counts real time, not frames).
@@ -1078,14 +1266,17 @@ func _post_clicks(at: Vector2, flags: Array[bool]) -> void:
 		await get_tree().process_frame
 
 
-func _post_mouse(window_at: Vector2, pressed: bool, double: bool) -> void:
+func _post_mouse(
+	window_at: Vector2, pressed: bool, double: bool, button_index: MouseButton = MOUSE_BUTTON_LEFT
+) -> void:
 	var event: InputEventMouseButton = InputEventMouseButton.new()
-	event.button_index = MOUSE_BUTTON_LEFT
+	event.button_index = button_index
 	event.pressed = pressed
 	event.double_click = double
 	event.position = window_at
 	event.global_position = window_at
-	event.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed else 0
+	var left: bool = pressed and button_index == MOUSE_BUTTON_LEFT
+	event.button_mask = MOUSE_BUTTON_MASK_LEFT if left else 0
 	Input.parse_input_event(event)
 	Input.flush_buffered_events()
 

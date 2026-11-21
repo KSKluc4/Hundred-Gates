@@ -5,11 +5,15 @@ extends Node
 ## none when a setting changes. Only an explicit call to load_from() or save_to() does. The shell
 ## makes those calls; tests that change `settings` call reset_to_defaults() afterwards.
 ##
-## The file is a ConfigFile on the way out and plain text on the way in (F-015 code review round 2,
-## CR-10). `ConfigFile.load()` reads Godot's variant text, which can build objects and run a script
-## from a hand-written line; cleaning up after the parser cannot be made complete. So load_from()
-## reads the bytes itself and understands only a `[settings]` line and, below it, `key=true` and
-## `key=false` for the two known keys. Nothing else in the file is ever built from or looked at.
+## The file is plain text both ways, read and written here by hand, and no `ConfigFile` is used
+## (F-015 code review rounds 2 and 3, CR-10, CR-27). `ConfigFile.load()` reads Godot's variant text,
+## which can build objects and run a script from a hand-written line; cleaning up after the parser
+## cannot be made complete. So load_from() reads the bytes itself and understands only a
+## `[settings]` line and, below it, `key=true` and `key=false` for the two known keys. Nothing else
+## in the file is ever built from or looked at. And save_to() writes the same few lines itself, so
+## a later Godot that writes a bool or a header differently cannot make saved settings read as the
+## defaults. The lines are exactly what `ConfigFile` wrote until then, so a file of the old writer
+## is still read.
 
 const DEFAULT_PATH: String = "user://settings.cfg"  # G5
 const SECTION: String = "settings"
@@ -109,18 +113,39 @@ func _read_line(line: String, values: Dictionary) -> void:
 		values.erase(key)
 
 
-## Writes `settings` to `path`. A failed write is false and one warning; the setting keeps its
-## value for this run.
+## Writes `settings` to `path`: `[settings]`, an empty line, then `screen_shake_enabled=<bool>` and
+## `fullscreen=<bool>`, each line ended by `\n`, no BOM. A failed write is false and one warning;
+## the setting keeps its value for this run. The file is written to `path` itself, in one
+## `store_string()` call. If the file cannot be opened nothing is touched (an older file stays as it
+## was). If the write fails after the open (the disk is full), the file is removed rather than left
+## half written, so the next load finds no file and gives the defaults; a half line could otherwise
+## read as a setting (`screen_shake_enabled=fals` is the default, which is on).
 func save_to(path: String) -> bool:
-	var file: ConfigFile = ConfigFile.new()
-	var values: Dictionary = settings.to_dict()
-	for key: String in values:
-		file.set_value(SECTION, key, values[key])
-	var error: Error = file.save(path)
-	if error != OK:
-		push_warning("settings file %s could not be written (%s)" % [path, error_string(error)])
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		_warn_not_written(path, FileAccess.get_open_error())
+		return false
+	var stored: bool = file.store_string(_file_text())
+	var error: Error = file.get_error()
+	file.close()
+	if not stored or error != OK:
+		DirAccess.remove_absolute(path)
+		_warn_not_written(path, error if error != OK else ERR_FILE_CANT_WRITE)
 		return false
 	return true
+
+
+## The whole file, as `ConfigFile` wrote it: the section line, an empty line, one line a setting.
+func _file_text() -> String:
+	var text: String = "[%s]\n\n" % SECTION
+	var values: Dictionary = settings.to_dict()
+	for key: String in values:
+		text += "%s=%s\n" % [key, _TRUE_TEXT if values[key] else _FALSE_TEXT]
+	return text
+
+
+func _warn_not_written(path: String, error: Error) -> void:
+	push_warning("settings file %s could not be written (%s)" % [path, error_string(error)])
 
 
 ## Both settings back to the data's defaults, in place.

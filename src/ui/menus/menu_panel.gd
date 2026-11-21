@@ -5,21 +5,36 @@ extends ListMenu
 ## opens it with what ShellMenus says for the flow's state and answers `entry_chosen` and
 ## `cancelled`. A key, a pad button and a click all end in `choose(id)` (a click is the button's
 ## own `pressed`). Neither signal closes the panel: the shell decides what is shown next. Hidden
-## until open(), and while closed it handles no input. Keys, d-pad, stick and the disabled entry
-## are ListMenu's.
+## until open(), and while closed it handles no input at all. Keys, d-pad, stick and the disabled
+## entry are ListMenu's.
 ##
-## The choose guard (F-015 code review, fixes A): a choice that opens the next menu often leaves an
-## entry of it under the cursor or under the focus, and a second click, key or pad press that comes
-## right after would act on whatever entry lies there ("Settings" opens a menu whose "Fullscreen" is
-## where "Settings" was, and whose focus is on "Screen shake"). So for `choose_guard_seconds` of
-## real time after `open()` the entries take no pointer input (`MOUSE_FILTER_IGNORE`) and a choice
-## by `ui_accept` or `interact` (a key or the pad) does nothing, though the menu still consumes the
-## key. Moving the focus, `ui_cancel` and `choose(id)` called by code are not guarded; the in-place
-## changes (`set_body`, `set_entry_text`, `set_entry_enabled`) do not start it again.
-## A double click never chooses, guard or no guard: a mouse button event the OS marks as a double
-## click is consumed while the panel is open, so a second click that comes later than the guard
-## (Windows allows 500 ms) or after a stalled frame is still not a choice. A deliberate second
-## click, which the OS does not mark, acts once the guard has passed.
+## The choose guard (F-015 code review, fixes A, round 3): a choice that opens the next menu often
+## leaves an entry of it under the cursor or under the focus, and a second click, key or pad press
+## that comes right after would act on whatever entry lies there ("Settings" opens a menu whose
+## "Fullscreen" is where "Settings" was, and whose focus is on "Screen shake"). So for
+## `choose_guard_seconds` of real time after `open()` the entries take no pointer input
+## (`MOUSE_FILTER_IGNORE`) and a choice by `ui_accept` or `interact` (a key or the pad) does
+## nothing, though the menu still consumes the key. Moving the focus, `ui_cancel` and `choose(id)`
+## called by code are not guarded; the in-place changes (`set_body`, `set_entry_text`,
+## `set_entry_enabled`) do not start it again. A mouse button press that arrives while the guard
+## runs starts it again, from that press, whether the guarded entries ignored it or the panel
+## consumed it (below): someone clicking quickly keeps being ignored until the guard's time has
+## passed without a click. Keys do not start it again.
+##
+## A double click that opened the next menu never chooses: the second press of a double click is
+## marked by the OS (`InputEventMouseButton.double_click`, for Windows inside 500 ms and a few
+## pixels of the first), and while the panel is open such a press is consumed when the panel was
+## opened since the previous mouse button press: the first click chose something that opened the
+## next menu, and the second must not act on what is there now, however late it comes (a stalled
+## frame, a slow double click). One flag keeps this: set by `open()`, cleared by any unflagged mouse
+## button press and by the consume. So a quick second click on an entry that changed nothing
+## (Fullscreen, Screen shake) is a choice, and so is a flagged press on a menu that has been open a
+## while, after a click on it. Only presses are consumed: the mark is on the second press alone,
+## and a release the panel did not see go down presses nothing. A closed panel looks at nothing, so
+## a double click on an entry that closes the menu (Resume) reaches the game as an ordinary click,
+## and the player attacks once (measured, accepted: the game is running by then). Consuming that
+## press would not stop it anyway: `Input.is_action_just_pressed()` is set by the engine before any
+## `_input`, and the game's own `_input` is asked before the panel's.
 ## The look → Art & Game Feel (F-015 §10 Q5).
 
 ## Once per choice of an enabled entry, with its id. Not emitted by a disabled or unknown one.
@@ -38,6 +53,9 @@ var _ids: Array[StringName] = []
 ## `Time.get_ticks_msec()` at which the choose guard ends (meaningful while `_choose_guarded`).
 var _choose_guard_until_msec: int = 0
 var _choose_guarded: bool = false
+## True from `open()` until the next mouse button press (see the header): a flagged press while it
+## is true is the second click of a double click whose first click opened this menu.
+var _changed_since_press: bool = false
 
 @onready var _content: VBoxContainer = $Panel/Content
 @onready var _heading_label: Label = $Panel/Content/Heading
@@ -61,10 +79,11 @@ func _process(_delta: float) -> void:
 		_end_choose_guard()
 
 
-## A double click is consumed before the buttons see it (and before the keys' handler: it is not
-## one). Everything else is ListMenu's.
+## While open, mouse button presses first: the flag, the guard and the consume of a double click's
+## second press (header). Everything else is ListMenu's, which handles nothing while closed.
 func _input(event: InputEvent) -> void:
-	if _is_open and _is_double_click(event):
+	var press: InputEventMouseButton = event as InputEventMouseButton
+	if _is_open and press != null and press.pressed and _consumes_press(press):
 		get_viewport().set_input_as_handled()
 		return
 	super._input(event)
@@ -86,6 +105,7 @@ func open(
 		_ids.append(entry.id)
 	_show_list()
 	_set_focus(maxi(_ids.find(focus_id), 0))
+	_changed_since_press = true
 	_start_choose_guard()
 
 
@@ -167,10 +187,17 @@ func _may_choose_by_key() -> bool:
 	return not _choose_guarded
 
 
-## A mouse button event the OS marked as the second press of a double click.
-func _is_double_click(event: InputEvent) -> bool:
-	var button: InputEventMouseButton = event as InputEventMouseButton
-	return button != null and button.double_click
+## What a mouse button press does to the panel's state; true when it is to be consumed: a flagged
+## press (the OS's double-click mark) after the panel opened. Any press clears the flag.
+## One that arrives while the guard runs starts the guard again.
+func _consumes_press(press: InputEventMouseButton) -> bool:
+	if _choose_guarded and Time.get_ticks_msec() >= _choose_guard_until_msec:
+		_end_choose_guard()  # Its time is over; `_process` has not run since.
+	var consumed: bool = press.double_click and _changed_since_press
+	_changed_since_press = false
+	if _choose_guarded:
+		_start_choose_guard()
+	return consumed
 
 
 func _start_choose_guard() -> void:

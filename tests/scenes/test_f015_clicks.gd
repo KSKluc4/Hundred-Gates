@@ -20,13 +20,21 @@ extends F015ShellTest
 ##
 ## Timing is never taken on trust. A watcher node (`Arrival`) sits in the menu layer in front of the
 ## panel in the input order and stamps every press and mouse release with the real time and the
-## panel's guard at the moment the event ARRIVES. A double-click case is judged only when the second
-## press really came inside the guard (a fast one) or really after it (a slow one); when the machine
-## was too slow to produce that, the case is run again, up to ATTEMPTS times, and then fails with
-## the numbers it measured. It never passes by luck and never fails because a frame was long.
+## panel's guard at the moment the event ARRIVES. A case is judged only when its presses really came
+## when the case needs them: inside the guard (a fast one) or after it (a slow one). The gaps are
+## real time, never frame counts (a busy machine stretches frames, not milliseconds). When a try did
+## not produce its timing the case is run again, up to ATTEMPTS times; when none did, the test is
+## PENDING with the numbers it measured: a test that could not set up its precondition has not found
+## a bug. A case whose timing was produced and whose guard did not hold fails, as it should.
 ##
 ## `double_click = true` is set BY HAND on the second press of the flagged cases, as the OS does it:
 ## the engine never makes that flag itself from events posted with `parse_input_event`.
+##
+## Round 3 (CR-23, CR-24): a flagged press is consumed only when the panel opened since the previous
+## mouse button press (so a quick second click on the same toggle is a choice), and any press during
+## the guard starts it again (so the third click of a triple click is ignored too). A double click
+## on Resume (which closes the menu) reaches the game as an ordinary click and the player attacks
+## once: accepted (CR-26), so no test requires it either way.
 
 enum From { TITLE, TOWN_PAUSE, FLOOR_PAUSE }
 
@@ -42,12 +50,8 @@ const GUARD_LIMIT_MSEC: int = 3000
 const LONG_GUARD_SECONDS: float = 30.0
 ## How many times a case that did not get its timing is run again before it fails.
 const ATTEMPTS: int = 3
-## The second click of a fast double click: Vector2i(frames after the first click, real msec after
-## it); the msec is used when it is above 0. 2 to 20 frames is 15 to 120 ms at the test's frame
-## rate.
-const DOUBLE_CLICK_GAPS: Array[Vector2i] = [
-	Vector2i(2, 0), Vector2i(8, 0), Vector2i(20, 0), Vector2i(0, 100)
-]
+## The second click of a fast double click, in real milliseconds after the first click's release.
+const FAST_GAPS_MSEC: Array[int] = [30, 100, 200]
 ## The second press of a slow double click, at least this long after the first, in milliseconds
 ## (Windows' default double-click time is 500).
 const SLOW_GAPS_MSEC: Array[int] = [350, 500]
@@ -55,6 +59,21 @@ const SLOW_GAPS_MSEC: Array[int] = [350, 500]
 const STALL_MSEC: int = 500
 ## The key or pad press that follows an Enter or an A, in milliseconds.
 const KEY_GAP_MSEC: int = 80
+## Between two clicks on an entry that changed nothing (Fullscreen), and the second's: the first is
+## after the guard (so nothing is started again), the second is or is not flagged.
+const QUICK_GAPS_MSEC: Array[int] = [100, 250, 400]
+const QUICK_CLICK_COUNTS: Array[int] = [2, 3, 4, 5]
+const QUICK_CLICKS_APART_MSEC: int = 150
+## A triple click: the second click this long after the first, the third this long after the second
+## (+200/+400 and +280/+560 from the first), and the deliberate fourth this long after the third.
+const TRIPLE_STEPS_MSEC: Array[int] = [200, 280]
+const FOURTH_CLICK_AFTER_MSEC: int = 350
+## A double click in the running game: the second press this long after the first's release.
+const DOUBLE_CLICK_IN_GAME_GAP_MSEC: int = 100
+## How many physics ticks the player is watched for an attack after the second press.
+const WATCH_TICKS: int = 60
+## How long a click that must attack is held: several physics ticks.
+const ATTACK_HOLD_MSEC: int = 40
 ## Where in "Quit to title" the double click lands: pixels below its top edge. The confirm's own
 ## "Quit to title" overlaps the top 3 px of it.
 const TOP_EDGE_OFFSETS_PX: Array[float] = [0.5, 1.5]
@@ -66,6 +85,8 @@ const DEATH_WAIT_LIMIT_MSEC: int = 6000
 const SETTLE_FRAMES: int = 6
 
 var _arrival: Arrival
+## Where the last triple click was made: the fourth lands on the same spot, on another menu.
+var _spot: Vector2 = Vector2.ZERO
 
 # --- a single click ---
 
@@ -117,9 +138,9 @@ func test_a_double_click_on_settings_from_a_floors_pause_menu_changes_nothing() 
 func test_a_double_click_on_the_top_edge_of_quit_to_title_only_opens_the_confirm() -> void:
 	for flagged: bool in [true, false]:
 		for offset: float in TOP_EDGE_OFFSETS_PX:
-			for gap: Vector2i in DOUBLE_CLICK_GAPS:
+			for gap: int in FAST_GAPS_MSEC:
 				var where: String = (
-					"%.1f px below the top, gap %s, flagged %s" % [offset, gap, flagged]
+					"%.1f px below the top, gap %d ms, flagged %s" % [offset, gap, flagged]
 				)
 				var gesture: Callable = _double_click_from.bind(
 					From.TOWN_PAUSE, ShellMenus.QUIT_TO_TITLE, offset, gap, flagged, false
@@ -131,8 +152,8 @@ func test_a_double_click_on_the_top_edge_of_quit_to_title_only_opens_the_confirm
 
 func test_a_double_click_on_return_to_town_only_opens_the_confirm() -> void:
 	for flagged: bool in [true, false]:
-		for gap: Vector2i in DOUBLE_CLICK_GAPS:
-			var where: String = "gap %s, flagged %s" % [gap, flagged]
+		for gap: int in FAST_GAPS_MSEC:
+			var where: String = "gap %d ms, flagged %s" % [gap, flagged]
 			var gesture: Callable = _double_click_from.bind(
 				From.FLOOR_PAUSE, ShellMenus.LEAVE, CENTER, gap, flagged, false
 			)
@@ -167,7 +188,7 @@ func test_a_slow_flagged_second_click_on_the_top_edge_of_quit_to_title_does_not_
 	for slow: int in SLOW_GAPS_MSEC:
 		var where: String = "0.5 px below the top, %d ms" % slow
 		var gesture: Callable = _double_click_from.bind(
-			From.TOWN_PAUSE, ShellMenus.QUIT_TO_TITLE, 0.5, Vector2i(0, slow), true, true
+			From.TOWN_PAUSE, ShellMenus.QUIT_TO_TITLE, 0.5, slow, true, true
 		)
 		if await _produced(gesture, false, slow, where):
 			await _assert_confirm_quit_and_alive(where)
@@ -187,12 +208,48 @@ func test_a_slow_second_click_without_the_flag_on_quit_to_title_acts_on_the_conf
 	for slow: int in SLOW_GAPS_MSEC:
 		var where: String = "0.5 px below the top, %d ms" % slow
 		var gesture: Callable = _double_click_from.bind(
-			From.TOWN_PAUSE, ShellMenus.QUIT_TO_TITLE, 0.5, Vector2i(0, slow), false, true
+			From.TOWN_PAUSE, ShellMenus.QUIT_TO_TITLE, 0.5, slow, false, true
 		)
 		if await _produced(gesture, false, slow, where):
 			assert_eq(
 				flow().get_state(), ShellFlow.State.TITLE, "a deliberate click quit, %s" % where
 			)
+			assert_null(shell().get_game(), "the game is gone, %s" % where)
+			await _drop_shell()
+
+
+# --- a triple click (CR-24) ---
+
+
+## Three clicks on one spot, the second flagged, +200/+400 and +280/+560 ms from the first: the
+## second is consumed (the menu had just opened) and the third is an ordinary click that comes while
+## the guard the second one started again still runs. Nothing is chosen, and a fourth, deliberate
+## click 0.35 s after the third acts.
+func test_a_triple_click_on_settings_from_the_title_changes_nothing_and_a_fourth_acts() -> void:
+	for step: int in TRIPLE_STEPS_MSEC:
+		var where: String = "title, +%d/+%d ms" % [step, 2 * step]
+		var gesture: Callable = _triple_click_from.bind(
+			From.TITLE, ShellMenus.SETTINGS, CENTER, step
+		)
+		if await _produced(gesture, true, 0, where):
+			_assert_settings_open_and_untouched(where)
+			await _fourth_click()
+			assert_eq(flow().get_state(), ShellFlow.State.SETTINGS, "still settings, %s" % where)
+			assert_true(UserSettings.settings.fullscreen, "the deliberate fourth acted, %s" % where)
+			assert_eq(window_modes().size(), 2, "the window applier ran for it, %s" % where)
+			await _drop_shell()
+
+
+func test_a_triple_click_on_quit_to_title_does_not_quit_and_a_fourth_acts() -> void:
+	for step: int in TRIPLE_STEPS_MSEC:
+		var where: String = "town pause menu, 1 px below the top, +%d/+%d ms" % [step, 2 * step]
+		var gesture: Callable = _triple_click_from.bind(
+			From.TOWN_PAUSE, ShellMenus.QUIT_TO_TITLE, 1.0, step
+		)
+		if await _produced(gesture, true, 0, where):
+			await _assert_confirm_quit_and_alive(where)
+			await _fourth_click()
+			assert_eq(flow().get_state(), ShellFlow.State.TITLE, "the fourth quit, %s" % where)
 			assert_null(shell().get_game(), "the game is gone, %s" % where)
 			await _drop_shell()
 
@@ -312,13 +369,95 @@ func test_two_slow_clicks_on_fullscreen_toggle_twice() -> void:
 	assert_eq(flow().get_state(), ShellFlow.State.SETTINGS)
 
 
+## Two quick clicks on "Fullscreen", the second flagged as a real mouse would send it, 100, 250 and
+## 400 ms after the first (CR-23). Both toggle: no menu opened or closed between them. What this
+## relies on: the first click comes after the guard (so nothing starts it again), and a click on an
+## entry of the settings menu changes it in place (`set_entry_text`), which does not open anything.
+func test_a_quick_flagged_second_click_on_fullscreen_toggles_twice() -> void:
+	for gap: int in QUICK_GAPS_MSEC:
+		await _spawn_title()
+		choose(ShellMenus.SETTINGS)
+		await _wait_guard()
+		var at: Vector2 = _rect_of(ShellMenus.FULLSCREEN).get_center()
+		await _click(at)
+		assert_true(UserSettings.settings.fullscreen, "the first click switched it on, %d ms" % gap)
+		await _wait_msec(gap)
+		await _click(at, true)
+		assert_false(
+			UserSettings.settings.fullscreen,
+			"the flagged second click switched it off, %d ms" % gap
+		)
+		assert_eq(window_modes().size(), 3, "the start call, then one per click, %d ms" % gap)
+		assert_eq(flow().get_state(), ShellFlow.State.SETTINGS)
+		await _drop_shell()
+
+
+## 2, 3, 4 and 5 clicks on "Fullscreen" 150 ms apart, every second one flagged: one toggle each.
+## Relies on what the test above does, and on the gaps: the guard is over when the first comes and
+## no click is the first of anything new.
+func test_two_to_five_quick_clicks_on_fullscreen_toggle_once_each() -> void:
+	for count: int in QUICK_CLICK_COUNTS:
+		await _spawn_title()
+		choose(ShellMenus.SETTINGS)
+		await _wait_guard()
+		var at: Vector2 = _rect_of(ShellMenus.FULLSCREEN).get_center()
+		for index: int in count:
+			if index > 0:
+				await _wait_msec(QUICK_CLICKS_APART_MSEC)
+			await _click(at, index % 2 == 1)
+		assert_eq(window_modes().size(), 1 + count, "%d clicks, %d toggles" % [count, count])
+		assert_eq(UserSettings.settings.fullscreen, count % 2 == 1, "%d clicks" % count)
+		assert_eq(flow().get_state(), ShellFlow.State.SETTINGS)
+		await _drop_shell()
+
+
+## A flagged press on "Back" after the menu has been open a while and a click on it (the shake
+## entry): it goes back. Nothing opened or closed between the click and the press.
+func test_a_flagged_press_on_back_after_an_ordinary_click_goes_back() -> void:
+	await _spawn_title()
+	choose(ShellMenus.SETTINGS)
+	await _wait_guard()
+	await _click(_rect_of(ShellMenus.SHAKE).get_center())
+	assert_false(UserSettings.settings.screen_shake_enabled, "the premise: the click switched it")
+	await _wait_msec(QUICK_CLICKS_APART_MSEC)
+	await _click(_rect_of(ShellMenus.BACK).get_center(), true)
+	assert_eq(flow().get_state(), ShellFlow.State.TITLE, "Back went back")
+
+
+## A double click in the running game, with no menu involved, attacks twice: the first press,
+## unflagged, clears the flag, so the flagged second one is not consumed and both reach the game.
+## (The click is held a few ticks: `attack` is read as pressed at a tick.)
+func test_a_double_click_in_the_running_game_attacks_twice() -> void:
+	await _spawn_resume_menu()
+	choose(ShellMenus.RESUME)
+	await wait_for_guard()
+	await get_tree().physics_frame
+	var reach: Reach = _watch_what_reaches_the_game()
+	var watcher: AttackWatcher = _watch_attacks()
+	await _click(CLICK_POSITION, false, ATTACK_HOLD_MSEC)
+	await _wait_msec(DOUBLE_CLICK_IN_GAME_GAP_MSEC)
+	await _click(CLICK_POSITION, true, ATTACK_HOLD_MSEC)
+	await _wait_physics_ticks(WATCH_TICKS)
+	assert_eq(reach.count, 2, "both presses reached the game: the panel consumed neither")
+	assert_eq(watcher.starts, 2, "and the player attacked twice")
+
+
+## A watcher on the player's attack chain, after the player's own tick, counting the attacks it
+## starts from now on.
+func _watch_attacks() -> AttackWatcher:
+	var watcher: AttackWatcher = AttackWatcher.new()
+	watcher.chain = player().motor.get_attack_chain()
+	add_child_autofree(watcher)
+	return watcher
+
+
 # --- case runners ---
 
 
 func _fast_cases_on_settings(from: From, name_of_menu: String) -> void:
 	for flagged: bool in [true, false]:
-		for gap: Vector2i in DOUBLE_CLICK_GAPS:
-			var where: String = "%s, gap %s, flagged %s" % [name_of_menu, gap, flagged]
+		for gap: int in FAST_GAPS_MSEC:
+			var where: String = "%s, gap %d ms, flagged %s" % [name_of_menu, gap, flagged]
 			var gesture: Callable = _double_click_from.bind(
 				from, ShellMenus.SETTINGS, CENTER, gap, flagged, false
 			)
@@ -331,7 +470,7 @@ func _slow_cases_on_settings(from: From, name_of_menu: String, flagged: bool) ->
 	for slow: int in SLOW_GAPS_MSEC:
 		var where: String = "%s, %d ms, flagged %s" % [name_of_menu, slow, flagged]
 		var gesture: Callable = _double_click_from.bind(
-			from, ShellMenus.SETTINGS, CENTER, Vector2i(0, slow), flagged, true
+			from, ShellMenus.SETTINGS, CENTER, slow, flagged, true
 		)
 		if await _produced(gesture, false, slow, where):
 			_assert_settings_open_and_untouched(where)
@@ -343,7 +482,7 @@ func _slow_cases_that_act_on_fullscreen(from: From, name_of_menu: String) -> voi
 	for slow: int in SLOW_GAPS_MSEC:
 		var where: String = "%s, %d ms, not flagged" % [name_of_menu, slow]
 		var gesture: Callable = _double_click_from.bind(
-			from, ShellMenus.SETTINGS, CENTER, Vector2i(0, slow), false, true
+			from, ShellMenus.SETTINGS, CENTER, slow, false, true
 		)
 		if await _produced(gesture, false, slow, where):
 			assert_eq(flow().get_state(), ShellFlow.State.SETTINGS, "the settings menu, %s" % where)
@@ -355,7 +494,9 @@ func _slow_cases_that_act_on_fullscreen(from: From, name_of_menu: String) -> voi
 ## Runs `gesture` (it spawns what it needs, posts the events and returns the Timing it measured)
 ## until the timing is the wanted one: the second press inside the guard (`inside_guard`) or after
 ## it and at least `min_gap_msec` after the first. A try that missed is dropped. Returns true with
-## the scene alive for the test to judge, or false after failing with every measurement.
+## the scene alive for the test to judge, or false after marking the test pending with every
+## measurement: a machine too busy to produce the timing has not shown a bug. Whatever else the
+## test checks still counts.
 func _produced(gesture: Callable, inside_guard: bool, min_gap_msec: int, where: String) -> bool:
 	var seen: Array[String] = []
 	for _attempt: int in ATTEMPTS:
@@ -366,7 +507,7 @@ func _produced(gesture: Callable, inside_guard: bool, min_gap_msec: int, where: 
 		gut.p("RETRY %s: the timing was not produced (%s)" % [where, timing.describe()])
 		await _drop_shell()
 	var wanted: String = "inside the guard" if inside_guard else "after it, >= %d ms" % min_gap_msec
-	fail_test(
+	pending(
 		(
 			"%s: the second press was not %s in %d tries (measured: %s)"
 			% [where, wanted, ATTEMPTS, "; ".join(seen)]
@@ -379,11 +520,11 @@ func _produced(gesture: Callable, inside_guard: bool, min_gap_msec: int, where: 
 
 
 ## Two clicks on entry `id` of the menu `from` gives; `top_offset` is pixels below the entry's top
-## edge, or CENTER. The second press is `gap.x` frames after the first release, or `gap.y`
-## milliseconds of real time after it when that is above 0 (and, with `after_guard`, not before the
-## guard is over). `flagged` sets the OS's double-click mark on it.
+## edge, or CENTER. The second press is `gap_msec` milliseconds of real time after the first release
+## (and, with `after_guard`, not before the guard is over). `flagged` sets the OS's double-click
+## mark on it.
 func _double_click_from(
-	from: From, id: StringName, top_offset: float, gap: Vector2i, flagged: bool, after_guard: bool
+	from: From, id: StringName, top_offset: float, gap_msec: int, flagged: bool, after_guard: bool
 ) -> Timing:
 	await _spawn_from(from)
 	var at: Vector2 = _point_of(id, top_offset)
@@ -393,16 +534,12 @@ func _double_click_from(
 	await get_tree().process_frame
 	_send_mouse(at, false, false)
 	var released: int = Time.get_ticks_msec()
-	if gap.y > 0:
-		var limit: int = released + gap.y + GUARD_LIMIT_MSEC
-		while Time.get_ticks_msec() < limit:
-			var over: bool = Time.get_ticks_msec() >= released + gap.y
-			if over and not (after_guard and panel().is_choose_guarded()):
-				break
-			await get_tree().process_frame
-	else:
-		for _i: int in gap.x:
-			await get_tree().process_frame
+	var limit: int = released + gap_msec + GUARD_LIMIT_MSEC
+	while Time.get_ticks_msec() < limit:
+		var over: bool = Time.get_ticks_msec() >= released + gap_msec
+		if over and not (after_guard and panel().is_choose_guarded()):
+			break
+		await get_tree().process_frame
 	_send_mouse(at, true, flagged)
 	await get_tree().process_frame
 	_send_mouse(at, false, false)
@@ -429,6 +566,40 @@ func _stalled_double_click_from(from: From, id: StringName, top_offset: float) -
 	await get_tree().process_frame
 	await get_tree().process_frame
 	return _arrival.timing_of_a_click_and_the_next_press()
+
+
+## Three clicks on entry `id` of the menu `from` gives: the second, flagged, `step_msec` after the
+## first click's release and the third, not flagged, `step_msec` after the second press (+200/+400
+## from the first for a step of 200). Nothing waits for the guard: the point is that it runs.
+func _triple_click_from(from: From, id: StringName, top_offset: float, step_msec: int) -> Timing:
+	await _spawn_from(from)
+	var at: Vector2 = _point_of(id, top_offset)
+	_spot = at
+	_move_mouse(at)
+	await get_tree().process_frame
+	_send_mouse(at, true, false)
+	await get_tree().process_frame
+	_send_mouse(at, false, false)
+	await _wait_until(Time.get_ticks_msec() + step_msec)
+	var second_at: int = Time.get_ticks_msec()
+	_send_mouse(at, true, true)
+	await get_tree().process_frame
+	_send_mouse(at, false, false)
+	await _wait_until(second_at + step_msec)
+	_send_mouse(at, true, false)
+	await get_tree().process_frame
+	_send_mouse(at, false, false)
+	await get_tree().process_frame
+	return _arrival.timing_of_a_triple_click()
+
+
+## The deliberate click: FOURTH_CLICK_AFTER_MSEC after the last press the watcher saw, on the spot
+## of the triple click (whatever is there now), not flagged. Waits for what it does.
+func _fourth_click() -> void:
+	var last_press: int = _arrival.presses[_arrival.presses.size() - 1].x
+	await _wait_until(last_press + FOURTH_CLICK_AFTER_MSEC)
+	await _click(_spot)
+	await _settle()
 
 
 func _enter_twice_on_the_title() -> Timing:
@@ -509,6 +680,27 @@ func _spawn_from(from: From) -> void:
 	_arrival.forget()
 
 
+## The town paused with Escape, the player's input ON (the others have it off), the guard over: the
+## Resume entry is on screen and a press that reaches the game may attack.
+func _spawn_resume_menu() -> void:
+	await _spawn_title_with(func(shell_node: Shell) -> void: shell_node.player_input_enabled = true)
+	await start_game()
+	await tap_key(KEY_ESCAPE)
+	assert_eq(flow().get_state(), ShellFlow.State.PAUSED, "paused")
+	await _wait_guard()
+	_arrival.forget()
+
+
+## A node that counts the mouse button presses the panel did not consume: it sits in the menu layer
+## after the panel in the input order.
+func _watch_what_reaches_the_game() -> Reach:
+	var reach: Reach = Reach.new()
+	var layer: Node = shell().get_node(MENU_LAYER_PATH)
+	layer.add_child(reach)
+	layer.move_child(reach, 0)
+	return reach
+
+
 ## The game started, on a floor or in the town, paused with Escape, the guard over.
 func _spawn_paused(on_floor: bool) -> void:
 	await _spawn_title()
@@ -549,9 +741,18 @@ func _wait_guard() -> void:
 	await get_tree().process_frame
 
 
+func _wait_physics_ticks(ticks: int) -> void:
+	for _i: int in ticks:
+		await get_tree().physics_frame
+
+
 func _wait_msec(msec: int) -> void:
-	var until: int = Time.get_ticks_msec() + msec
-	while Time.get_ticks_msec() < until:
+	await _wait_until(Time.get_ticks_msec() + msec)
+
+
+## Process frames until the real time `until_msec` (`Time.get_ticks_msec()`).
+func _wait_until(until_msec: int) -> void:
+	while Time.get_ticks_msec() < until_msec:
 		await get_tree().process_frame
 
 
@@ -616,12 +817,15 @@ func _window_point(canvas_point: Vector2) -> Vector2:
 	return get_viewport().get_final_transform() * canvas_point
 
 
-## The pointer moves to `at`, the left button goes down and, a frame later, up.
-func _click(at: Vector2) -> void:
+## The pointer moves to `at`, the left button goes down (`flagged`: with the OS's double-click mark)
+## and, a frame later (`hold_msec` later when that is above 0), up. The player's `attack` reads the
+## button as pressed at a physics tick, so a click that must attack is held across a few of them.
+func _click(at: Vector2, flagged: bool = false, hold_msec: int = 0) -> void:
 	_move_mouse(at)
 	await get_tree().process_frame
-	_send_mouse(at, true, false)
+	_send_mouse(at, true, flagged)
 	await get_tree().process_frame
+	await _wait_msec(hold_msec)
 	_send_mouse(at, false, false)
 	await get_tree().process_frame
 
@@ -663,26 +867,69 @@ class Timing:
 	## When the second press arrived, and the panel's guard at that moment.
 	var second_msec: int = -1
 	var guarded_at_second: bool = false
+	## When the third press of a triple click arrived, and the guard then; -1 when there was none.
+	var third_msec: int = -1
+	var guarded_at_third: bool = false
 
 	func gap_msec() -> int:
 		return second_msec - opened_msec
 
 	## `inside_guard`: the second press came while the guard held, and under the guard's time since
-	## the choice (the flag alone may be a frame late). Otherwise: the guard was over, and at least
-	## `min_gap_msec` had passed.
+	## the choice (the flag alone may be a frame late); a third press, when there is one, came less
+	## than a guard's time after the second. Its guard flag is only told, never asked for: whether
+	## the second press started the guard again is what the case tests. Otherwise: the guard was
+	## over, and at least `min_gap_msec` had passed.
 	func is_wanted(inside_guard: bool, min_gap_msec: int) -> bool:
 		if opened_msec < 0 or second_msec < 0:
 			return false
 		if inside_guard:
-			return guarded_at_second and gap_msec() < GUARD_MSEC
+			if not (guarded_at_second and gap_msec() < GUARD_MSEC):
+				return false
+			return third_msec < 0 or third_msec - second_msec < GUARD_MSEC
 		return not guarded_at_second and gap_msec() >= min_gap_msec
 
 	func describe() -> String:
 		if opened_msec < 0 or second_msec < 0:
 			return "the events never arrived"
-		return (
+		var text: String = (
 			"%d ms after the choice, guard %s" % [gap_msec(), "on" if guarded_at_second else "off"]
 		)
+		if third_msec >= 0:
+			text += (
+				"; the third %d ms after the second, guard %s"
+				% [third_msec - second_msec, "on" if guarded_at_third else "off"]
+			)
+		return text
+
+
+## Counts the attacks the player starts: the times its chain enters the windup. It runs after the
+## player's tick.
+class AttackWatcher:
+	extends Node
+	var chain: AttackChain
+	var starts: int = 0
+	var _last: AttackChain.Phase = AttackChain.Phase.NONE
+
+	func _init() -> void:
+		process_physics_priority = 10
+
+	func _physics_process(_delta: float) -> void:
+		var phase: AttackChain.Phase = chain.get_phase()
+		if phase == AttackChain.Phase.WINDUP and _last != AttackChain.Phase.WINDUP:
+			starts += 1
+		_last = phase
+
+
+## Counts the mouse button presses that reach it: put after the panel in the input order, the ones
+## it did not consume (the game's own `_input` is asked before the panel, and sees every press).
+class Reach:
+	extends Node
+	var count: int = 0
+
+	func _input(event: InputEvent) -> void:
+		var button: InputEventMouseButton = event as InputEventMouseButton
+		if button != null and button.pressed:
+			count += 1
 
 
 ## Stamps every press (key, pad button, mouse button) and every mouse release at the moment it
@@ -724,4 +971,12 @@ class Arrival:
 			timing.opened_msec = mouse_releases[0].x
 			timing.second_msec = presses[1].x
 			timing.guarded_at_second = presses[1].y == 1
+		return timing
+
+	## As above, and the press after the second is the third (a triple click's).
+	func timing_of_a_triple_click() -> Timing:
+		var timing: Timing = timing_of_a_click_and_the_next_press()
+		if presses.size() >= 3:
+			timing.third_msec = presses[2].x
+			timing.guarded_at_third = presses[2].y == 1
 		return timing

@@ -187,6 +187,83 @@ func test_the_file_is_lines_a_person_can_edit() -> void:
 	)
 
 
+## Round 3 (CR-27): the writer is this script's own, not `ConfigFile`'s, so a later Godot cannot
+## change what a saved file says. These are the bytes, for each of the four combinations: the
+## section line, an empty line, the two keys in that order, each line ended by `\n`, no BOM.
+func test_the_file_is_exactly_these_lines_for_every_combination() -> void:
+	for shake: bool in [true, false]:
+		for fullscreen: bool in [true, false]:
+			UserSettings.settings.screen_shake_enabled = shake
+			UserSettings.settings.fullscreen = fullscreen
+			assert_true(UserSettings.save_to(_file))
+			var expected: String = (
+				"[settings]\n\nscreen_shake_enabled=%s\nfullscreen=%s\n"
+				% ["true" if shake else "false", "true" if fullscreen else "false"]
+			)
+			var bytes: PackedByteArray = FileAccess.get_file_as_bytes(_file)
+			assert_eq(bytes.get_string_from_utf8(), expected, "saved %s, %s" % [shake, fullscreen])
+			assert_eq(bytes.size(), expected.length(), "and no byte more: no BOM, no `\\r`")
+
+
+## The same bytes the old writer gave (what `ConfigFile` writes today): files of earlier saves are
+## read, and a file this writes could be handed to it.
+func test_the_file_is_what_a_config_file_writes_and_a_config_file_made_file_is_read() -> void:
+	for shake: bool in [true, false]:
+		for fullscreen: bool in [true, false]:
+			var old_file: ConfigFile = ConfigFile.new()
+			old_file.set_value("settings", "screen_shake_enabled", shake)
+			old_file.set_value("settings", "fullscreen", fullscreen)
+			var old_path: String = _dir.path_join("old_writer.cfg")
+			assert_eq(old_file.save(old_path), OK)
+			UserSettings.settings.screen_shake_enabled = shake
+			UserSettings.settings.fullscreen = fullscreen
+			assert_true(UserSettings.save_to(_file))
+			assert_eq(
+				FileAccess.get_file_as_bytes(_file),
+				FileAccess.get_file_as_bytes(old_path),
+				"the bytes of the old writer, saved %s, %s" % [shake, fullscreen]
+			)
+			UserSettings.settings.screen_shake_enabled = not shake
+			UserSettings.settings.fullscreen = not fullscreen
+			assert_true(UserSettings.load_from(old_path), "the old writer's file is read")
+			_assert_settings(shake, fullscreen, "(old file of %s, %s)" % [shake, fullscreen])
+	_assert_quiet()
+
+
+## A save rewrites the whole file, whatever was there (a longer older file leaves nothing behind).
+func test_a_save_replaces_a_longer_older_file() -> void:
+	_write_text(
+		_file, "[settings]\n\nscreen_shake_enabled=true\nfullscreen=true\n; " + "x".repeat(300)
+	)
+	UserSettings.settings.fullscreen = false
+	assert_true(UserSettings.save_to(_file))
+	assert_eq(
+		FileAccess.get_file_as_string(_file),
+		"[settings]\n\nscreen_shake_enabled=true\nfullscreen=false\n"
+	)
+
+
+## A path that cannot be opened for writing (here a folder): false, one warning, and what was there
+## is as it was.
+func test_a_save_that_cannot_open_the_file_touches_nothing() -> void:
+	_write_text(_marker, "kept")
+	UserSettings.settings.fullscreen = true
+	assert_false(UserSettings.save_to(_dir))
+	assert_eq(_log.warnings, 1, "one warning")
+	assert_true(DirAccess.dir_exists_absolute(_dir), "the folder is still a folder")
+	assert_eq(FileAccess.get_file_as_string(_marker), "kept")
+	assert_true(UserSettings.settings.fullscreen, "the value stays for this run")
+
+
+## `ConfigFile` is not used by the script at all (comments apart): neither to write nor to read.
+func test_the_script_does_not_use_config_file() -> void:
+	var source: String = FileAccess.get_file_as_string(SOURCE_PATH)
+	assert_false(source.is_empty(), "the script was read")
+	for line: String in source.split("\n"):
+		if not line.strip_edges().begins_with("#"):
+			assert_false(line.contains("ConfigFile"), line)
+
+
 # --- a file that is missing, empty, or not a settings file ---
 
 
@@ -393,6 +470,39 @@ func test_a_key_given_twice_takes_the_last_line() -> void:
 	_assert_settings(true, false, "(the later line is not a bool: the default)")
 
 
+## The FIRST `=` splits a line into the key and the text (`find`, not `rfind`): a line with more
+## `=` has the rest as its text, which is neither `true` nor `false`, so the key is at its default.
+## Each case has an earlier good line for the same key, because the difference between the first
+## and the last `=` shows only there: the first reads a known key with a bad text (the earlier line
+## is undone, the default), the last reads an unknown key `fullscreen=a` and ignores the line (the
+## earlier line stands).
+func test_the_first_equals_sign_splits_the_line() -> void:
+	var cases: Array[String] = ["fullscreen=a=b", "fullscreen=true=false", "fullscreen=a=true"]
+	for bad: String in cases:
+		var text: String = "[settings]\nfullscreen = true\n%s\n" % bad
+		assert_true(_load_text(text), bad)
+		_assert_settings(true, false, "(%s: the last line decides, and it is not a bool)" % bad)
+	assert_true(_load_text("[settings]\nscreen_shake_enabled=false\nscreen_shake_enabled=x=y\n"))
+	_assert_settings(true, false, "(the same for the other key)")
+	_assert_quiet()
+
+
+## And the same line before the good one: the good one is the last and decides.
+func test_a_good_line_after_a_line_with_two_equals_signs_decides() -> void:
+	assert_true(_load_text("[settings]\nfullscreen=a=b\nfullscreen=true\n"))
+	_assert_settings(true, true)
+	_assert_quiet()
+
+
+## `a=fullscreen=true` is the key `a`: not a known one, so the line is ignored.
+func test_a_known_key_after_the_first_equals_sign_is_not_a_key() -> void:
+	assert_true(_load_text("[settings]\na=fullscreen=true\nb=screen_shake_enabled=false\n"))
+	_assert_defaults()
+	assert_true(_load_text("[settings]\nfullscreen=true\na=fullscreen=false\n"))
+	_assert_settings(true, true, "(an unknown key leaves the earlier line alone)")
+	_assert_quiet()
+
+
 # --- the byte order mark ---
 
 
@@ -424,6 +534,30 @@ func test_a_bom_with_windows_line_ends_is_read() -> void:
 	assert_true(UserSettings.load_from(_file))
 	_assert_settings(true, true, "(shake is the file's missing key: its default is on)")
 	_assert_quiet()
+
+
+## Only the first byte order mark is taken off. A second one is three bytes that are not whitespace
+## (read as ASCII: three characters, none of them blank): they stay at the start of the first line,
+## so that line is not `[settings]`. A file whose only section line is that first line is not a
+## settings file (the defaults, false, one warning); a file with the section line on a line of its
+## own is read, the second mark being a line that means nothing.
+func test_a_second_bom_stays_in_the_first_line_and_is_not_whitespace() -> void:
+	var marks: PackedByteArray = PackedByteArray([0xEF, 0xBB, 0xBF, 0xEF, 0xBB, 0xBF])
+	var bytes: PackedByteArray = marks.duplicate()
+	bytes.append_array("[settings]\nfullscreen=true\nscreen_shake_enabled=false\n".to_utf8_buffer())
+	_write_bytes(_file, bytes)
+	_set_away_from_the_defaults()
+	assert_false(UserSettings.load_from(_file), "the first line is not the section line")
+	_assert_defaults()
+	_assert_one_warning()
+	bytes = marks.duplicate()
+	bytes.append_array(
+		"\n[settings]\nfullscreen=true\nscreen_shake_enabled=false\n".to_utf8_buffer()
+	)
+	_write_bytes(_file, bytes)
+	_set_away_from_the_defaults()
+	assert_true(UserSettings.load_from(_file), "the section line on a line of its own is read")
+	_assert_settings(false, true)
 
 
 # --- objects, scripts and anything else the engine's own parser would build ---
