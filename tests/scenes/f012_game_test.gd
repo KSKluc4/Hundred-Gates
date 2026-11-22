@@ -8,6 +8,9 @@ extends F012SceneTest
 ## tick per `await physics_frame`.
 ## Two tunables are changed for the test and restored after it: the banner stays long enough to be
 ## read in a slow test, and a test may shorten the death pause with set_death_delay().
+## F-016/C22: the loot catalog is taken off too, so every game these tests build runs without loot
+## (no sword, no drop), also the games a shell builds on Start; the loot tests give the game one of
+## their own (f016_loot_test.gd).
 
 const GAME_SCENE_PATH: String = "res://src/world/game.tscn"
 const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
@@ -27,6 +30,7 @@ var _game: Game
 var _main: Node
 var _death_delay_before: float
 var _banner_duration_before: float
+var _loot_catalog_before: LootCatalog
 var _main_settings_file: String = ""
 var _main_file_count: int = 0
 
@@ -36,11 +40,14 @@ func before_each() -> void:
 	_death_delay_before = Tunables.tower.death_return_delay
 	_banner_duration_before = Tunables.tower.banner_duration
 	Tunables.tower.banner_duration = TEST_BANNER_SECONDS
+	_loot_catalog_before = Tunables.loot_catalog
+	Tunables.loot_catalog = null  # F-016/C22
 
 
 func after_each() -> void:
 	Tunables.tower.death_return_delay = _death_delay_before
 	Tunables.tower.banner_duration = _banner_duration_before
+	Tunables.loot_catalog = _loot_catalog_before  # F-016/C22
 	# F-015/C12: spawn_main()'s shell touched the global settings and the physics space.
 	UserSettings.reset_to_defaults()
 	if not _main_settings_file.is_empty() and FileAccess.file_exists(_main_settings_file):

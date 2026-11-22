@@ -19,6 +19,8 @@ const BACK: StringName = &"back"
 const CONFIRM: StringName = &"confirm"
 const CANCEL: StringName = &"cancel"
 const RETURN: StringName = &"return"
+## F-016/C17: the pause menu's entry that opens the Equipment menu.
+const EQUIPMENT_ID: StringName = &"equipment"
 
 ## Headings.
 const TITLE_HEADING: String = "Hundred Gates"
@@ -42,6 +44,8 @@ const START_TEXT: String = "Start"
 const SETTINGS_TEXT: String = "Settings"
 const QUIT_TEXT: String = "Quit"
 const RESUME_TEXT: String = "Resume"
+## F-016/C18: the pause entry's text lives here; the Equipment menu's own texts are ItemTexts'.
+const EQUIPMENT_TEXT: String = "Equipment"
 const LEAVE_TEXT: String = "Return to town"
 const QUIT_TO_TITLE_TEXT: String = "Quit to title"
 const SHAKE_ON_TEXT: String = "Screen shake: On"
@@ -71,6 +75,8 @@ static func heading(state: ShellFlow.State) -> String:
 			return CONFIRM_QUIT_HEADING
 		ShellFlow.State.DEAD:
 			return DEAD_HEADING
+		ShellFlow.State.EQUIPMENT:
+			return ItemTexts.EQUIPMENT_HEADING
 		_:
 			return ""
 
@@ -78,6 +84,7 @@ static func heading(state: ShellFlow.State) -> String:
 ## The body of `state`'s menu; empty when it has none. `location_text` and `kills_text` are the
 ## HUD's two lines (the death screen's; the kills one is empty in the town and in a boss room) and
 ## `start_error_count` is how many errors the last Start failed with (the title's; 0 for none).
+## EQUIPMENT's body is empty here: it depends on the inventory and comes from `EquipmentMenu`.
 static func body(
 	state: ShellFlow.State, location_text: String, kills_text: String, start_error_count: int
 ) -> String:
@@ -101,6 +108,7 @@ static func body(
 ## The entries of `state`'s menu, in order, freshly made. `on_floor` is whether the session is on a
 ## floor (only then the pause menu offers the way back to town), `shake_enabled` and `fullscreen`
 ## are the settings the settings menu shows, `can_confirm_death` enables the death screen's entry.
+## EQUIPMENT has no entries here: they depend on the inventory and come from `EquipmentMenu`.
 static func entries(
 	state: ShellFlow.State,
 	on_floor: bool,
@@ -116,6 +124,7 @@ static func entries(
 			list.append(MenuEntry.make(QUIT, QUIT_TEXT))
 		ShellFlow.State.PAUSED:
 			list.append(MenuEntry.make(RESUME, RESUME_TEXT))
+			list.append(MenuEntry.make(EQUIPMENT_ID, EQUIPMENT_TEXT))
 			if on_floor:
 				list.append(MenuEntry.make(LEAVE, LEAVE_TEXT))
 			list.append(MenuEntry.make(SETTINGS, SETTINGS_TEXT))
@@ -150,6 +159,8 @@ static func focus(state: ShellFlow.State, previous: ShellFlow.State) -> StringNa
 					return LEAVE
 				ShellFlow.State.CONFIRM_QUIT:
 					return QUIT_TO_TITLE
+				ShellFlow.State.EQUIPMENT:
+					return EQUIPMENT_ID
 				_:
 					return RESUME
 		ShellFlow.State.SETTINGS:

@@ -1,3 +1,5 @@
+# gdlint:disable=max-public-methods
+# F-016/C14 adds set_loot(), get_loot(), can_equip() and equip_sword() to 18 public methods.
 class_name TowerSession
 extends RefCounted
 ## Where the character is in the tower loop: town, on a floor, or in the pause after dying
@@ -18,10 +20,15 @@ const KEY_START_ROOM: String = "start_room"
 const KEY_DEATH_TIME_LEFT: String = "death_time_left"
 const KEY_PROGRESS: String = "progress"
 const KEY_CLEARED_IN_RUN: String = "cleared_in_run"
+## F-016/C14: the character's loot (inventory, roller, boss swords taken).
+const KEY_LOOT: String = "loot"
 
 var _tower: TowerData
 var _rules: TowerTunables
 var _progress: TowerProgress = TowerProgress.new()
+## F-016/C14: lives as long as the progress. Never touched by _clear_visit(): death, the return to
+## town and clearing a floor keep it.
+var _loot: CharacterLoot = CharacterLoot.new()
 var _place: Place = Place.TOWN
 var _floor_number: int = 0
 var _start_room: int = 0
@@ -37,12 +44,42 @@ func setup(tower: TowerData, rules: TowerTunables) -> void:
 	_rules = rules
 	_progress = TowerProgress.new()
 	_progress.setup(tower.get_floor_count())
+	_loot = CharacterLoot.new()  # F-016/C14: a new character; no catalog and seed 0 until set_loot().
+	_loot.setup(null, 0)
 	_place = Place.TOWN
 	_clear_visit()
 
 
 func get_progress() -> TowerProgress:
 	return _progress
+
+
+## F-016/C14: gives the character its catalog (null: a game without loot) and starts its loot over:
+## the starter sword, equipped, and a roller seeded with `loot_seed`. Call it after setup(). The
+## character's loot is the same object as before.
+func set_loot(catalog: LootCatalog, loot_seed: int) -> void:
+	_loot.setup(catalog, loot_seed)
+
+
+func get_loot() -> CharacterLoot:
+	return _loot
+
+
+## F-016/C14: swords may be changed in the town, and on a floor only where the caller says it is the
+## cleared room before the boss (`FloorRun.is_pre_boss_room_cleared()`). Never in the death pause.
+func can_equip(pre_boss_room_cleared: bool) -> bool:
+	match _place:
+		Place.TOWN:
+			return true
+		Place.FLOOR:
+			return pre_boss_room_cleared
+	return false
+
+
+## F-016/C14: false, and nothing changes, when equipping is not allowed here or the sword is not
+## owned. Equipping the sword already equipped is a yes.
+func equip_sword(sword_id: StringName, pre_boss_room_cleared: bool) -> bool:
+	return can_equip(pre_boss_room_cleared) and _loot.get_inventory().equip(sword_id)
 
 
 func get_place() -> Place:
@@ -170,6 +207,7 @@ func to_dict() -> Dictionary:
 		KEY_DEATH_TIME_LEFT: _death_time_left,
 		KEY_PROGRESS: _progress.to_dict(),
 		KEY_CLEARED_IN_RUN: _cleared_in_run and _place == Place.FLOOR,
+		KEY_LOOT: _loot.to_dict(),
 	}
 
 
@@ -183,6 +221,11 @@ func from_dict(snapshot: Dictionary) -> bool:
 	scratch.setup(_tower.get_floor_count())
 	if not scratch.from_dict(snapshot[KEY_PROGRESS]) or not _fits(snapshot, scratch):
 		return false
+	# F-016/C14: the loot is checked with the rest, before anything changes.
+	if not snapshot.has(KEY_LOOT) or not snapshot[KEY_LOOT] is Dictionary:
+		return false
+	if not _loot.from_dict(snapshot[KEY_LOOT]):
+		return false  # The character's loot refuses a bad state and then changes nothing.
 	var before: Place = _place
 	_progress.from_dict(snapshot[KEY_PROGRESS])
 	_place = snapshot[KEY_PLACE] as Place

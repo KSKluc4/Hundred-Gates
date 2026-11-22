@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ItemTunables" format=3]
+
+[ext_resource type="Script" path="res://src/core/tunables/item_tunables.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+max_chain_damage = 49
+max_light_hits_damage = 29
+max_finisher_damage = 29
+max_hp_bonus_cap = 8
+min_dash_cooldown = 0.2
+pickup_radius_tiles = 0.8
+equipment_page_size = 8

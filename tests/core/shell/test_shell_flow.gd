@@ -11,9 +11,10 @@ const STATES: Dictionary = {
 	"CONFIRM_LEAVE": ShellFlow.State.CONFIRM_LEAVE,
 	"CONFIRM_QUIT": ShellFlow.State.CONFIRM_QUIT,
 	"DEAD": ShellFlow.State.DEAD,
+	"EQUIPMENT": ShellFlow.State.EQUIPMENT,
 }
 
-# Every method of the C2 table, in the table's order.
+# Every method of the C2 table, in the table's order (F-016/C17 added the last two but `back`).
 const METHODS: Array[StringName] = [
 	&"start_game",
 	&"pause",
@@ -27,6 +28,8 @@ const METHODS: Array[StringName] = [
 	&"confirm_quit",
 	&"player_died",
 	&"death_confirmed",
+	&"open_equipment",
+	&"close_equipment",
 	&"back",
 ]
 
@@ -41,6 +44,7 @@ const SITUATIONS: Array[String] = [
 	"CONFIRM_LEAVE",
 	"CONFIRM_QUIT",
 	"DEAD",
+	"EQUIPMENT",
 ]
 
 # method -> {situation -> the state it lands in}. A situation that is absent is refused.
@@ -57,6 +61,8 @@ const ACTS: Dictionary = {
 	&"confirm_quit": {"CONFIRM_QUIT": "TITLE"},
 	&"player_died": {"PLAYING": "DEAD"},
 	&"death_confirmed": {"DEAD": "PLAYING"},
+	&"open_equipment": {"PAUSED": "EQUIPMENT"},
+	&"close_equipment": {"EQUIPMENT": "PAUSED"},
 	&"back":
 	{
 		"PAUSED": "PLAYING",
@@ -64,6 +70,7 @@ const ACTS: Dictionary = {
 		"SETTINGS_FROM_PAUSED": "PAUSED",
 		"CONFIRM_LEAVE": "PAUSED",
 		"CONFIRM_QUIT": "PAUSED",
+		"EQUIPMENT": "PAUSED",
 	},
 }
 
@@ -73,6 +80,7 @@ const GAME_PAUSED: Array[String] = [
 	"SETTINGS_FROM_PAUSED",
 	"CONFIRM_LEAVE",
 	"CONFIRM_QUIT",
+	"EQUIPMENT",
 ]
 
 var _flow: ShellFlow
@@ -119,6 +127,10 @@ func _drive_to(situation: String) -> void:
 		"DEAD":
 			_flow.start_game()
 			_flow.player_died()
+		"EQUIPMENT":
+			_flow.start_game()
+			_flow.pause(true)
+			_flow.open_equipment()
 		_:
 			fail_test("unknown start situation %s" % situation)
 
@@ -143,10 +155,10 @@ func test_ac1_starts_in_title() -> void:
 	assert_eq(_flow.get_state(), ShellFlow.State.TITLE)
 
 
-func test_ac1_the_table_covers_all_13_methods_and_8_start_situations() -> void:
-	assert_eq(METHODS.size(), 13)
-	assert_eq(ACTS.size(), 13)
-	assert_eq(SITUATIONS.size(), 8, "7 states, SETTINGS counted twice")
+func test_ac1_the_table_covers_all_15_methods_and_9_start_situations() -> void:
+	assert_eq(METHODS.size(), 15)
+	assert_eq(ACTS.size(), 15)
+	assert_eq(SITUATIONS.size(), 9, "8 states, SETTINGS counted twice")
 	for method: StringName in METHODS:
 		assert_true(ACTS.has(method), "the table lists %s" % method)
 		assert_true(_flow.has_method(method), "ShellFlow has %s()" % method)
@@ -178,7 +190,7 @@ func test_ac1_every_state_times_every_method_acts_or_is_refused() -> void:
 				assert_eq(_flow.get_state(), before, "%s: state unchanged" % label)
 				assert_eq(_emissions.size(), 0, "%s: no signal" % label)
 			checked += 1
-	assert_eq(checked, 8 * 13, "every pair was checked")
+	assert_eq(checked, 9 * 15, "every pair was checked")
 
 
 func test_ac1_pause_is_refused_when_it_cannot_pause() -> void:

@@ -28,6 +28,11 @@ const AFTER_RUNNER_PRIORITY: int = 1
 
 var _progress: TowerProgress
 var _room: Room
+## F-016/C15: what the player fights with, given by the owner (null: the class's own values).
+var _sword: SwordData = null
+## F-016/C19: `() -> Dictionary` of `{floor_number: text}`, asked on every open of the gate list, so
+## the texts are the ones that are true then. Unset: the list opens with no odds.
+var _odds_provider: Callable
 var _gate: TownGate = TownGate.new()
 var _gate_menu: GateMenu
 var _setup_errors: PackedStringArray = []
@@ -96,6 +101,25 @@ func get_progress() -> TowerProgress:
 	return _progress
 
 
+## F-016/C15: the sword the player fights with (null: the class's own values). Before the node
+## enters the tree it is only stored; after, the player on screen takes it at once (max HP follows,
+## and never heals on a floor). The town has no loot, so this is all of it. F-016 (CR-2): the town
+## is always at full HP (items.md, "Owning and switching"), so here the player is also given the new
+## max HP: Vitality in town reads 108 / 108, and taking it off reads 100 / 100.
+func set_sword(sword: SwordData) -> void:
+	_sword = sword
+	if _room != null:
+		var motor: PlayerMotor = _room.get_player().motor
+		motor.set_sword(sword, Tunables.items)
+		motor.get_combat_state().refill()
+
+
+## F-016/C19: who says what the gate shows under the list for each floor (`{floor_number: text}`).
+## It is asked on every open, the one after debug N included, and this node works nothing out.
+func set_odds_provider(provider: Callable) -> void:
+	_odds_provider = provider
+
+
 func get_room() -> Room:
 	return _room
 
@@ -137,7 +161,9 @@ func _build_room() -> void:
 	_room = Room.new()
 	_room.name = ROOM_NAME
 	_room.player_input_enabled = player_input_enabled
-	_room.setup(town_room, class_data.max_hp, class_data)
+	var loadout: PlayerLoadout = PlayerLoadout.of(class_data, _sword, Tunables.items)
+	_room.setup(town_room, loadout.get_max_hp(), class_data)  # F-016/C15: the sword's max HP.
+	_room.set_loadout(_sword, Tunables.items)
 	add_child(_room)
 	_room.open_door()
 
@@ -146,7 +172,7 @@ func _build_room() -> void:
 ## tick on, _physics_process holds them on the position they had.
 func _open_gate_menu() -> void:
 	_room.get_player().input_enabled = false
-	_gate_menu.open(_progress.get_entries())
+	_gate_menu.open(_progress.get_entries(), _gate_odds())
 
 
 ## F-012/C10: a floor was chosen. The gate stays engaged, so the player stays held until whoever
@@ -187,4 +213,11 @@ func _clear_highest_unlocked_floor() -> void:
 	_progress.mark_boss_reached(floor_number)
 	_progress.mark_floor_cleared(floor_number)
 	if _gate_menu.is_open():
-		_gate_menu.open(_progress.get_entries())  # The list shown is the list that is true.
+		_gate_menu.open(_progress.get_entries(), _gate_odds())  # The list shown is the list that is true.
+
+
+## F-016/C19: the odds for the gate list, asked now; none without a provider.
+func _gate_odds() -> Dictionary:
+	if _odds_provider.is_valid():
+		return _odds_provider.call()
+	return {}

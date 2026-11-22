@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="SwordData" format=3]
+
+[ext_resource type="Script" path="res://src/core/items/sword_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"hexers_slip"
+display_name = "Hexer's Slip"
+damage = 46
+weights = PackedInt32Array()
+kind = 4
+max_hp_bonus = 0
+dash_cooldown_cut = 0.08
+room_heal_bonus = 0.0

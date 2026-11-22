@@ -99,6 +99,7 @@
 - If a buffered dash and a buffered attack can both fire at one instant, the dash fires and the attack is discarded (principle 3). A dash that can't fire yet doesn't block an attack that can.
 - Getting hit interrupts any attack and resets the chain.
 - The chain is data: the Warrior class resource holds an ordered list of attack resources, one per hit (G9, D-005).
+- **The damage of each hit comes from the equipped sword** (F-016, D-017; `studio/design/items.md`): a sword's damage is the damage of one full chain, split over the hits. Windup, active, recovery, arc, range and knockback stay the class attack's. The sword may also raise max HP, shorten the dash cooldown or raise the room-clear heal, one of the three at most. With no sword the class's own values apply. Limits Combat set: a chain deals at most 49, the hits before the last at most 29 together, the last at most 29 (chaser 4 hits, caster 3, brute 9, as before).
 
 ## Hit / hurt system
 - **Hurtbox:** a circle that can receive hits. **Hitbox:** a sector (origin, direction, arc, range) that deals damage while active; a full circle = 360° sector.

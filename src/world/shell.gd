@@ -4,10 +4,15 @@ extends Node
 ## and the resume, the settings, the two confirms, the death screen, and the guard that keeps a menu
 ## key from acting in the game. It shows what the `ShellFlow` says (C2): when the flow changes state
 ## it opens the panel with what `ShellMenus` has for that state, or closes it in PLAYING. It keeps
-## no variable about which menu is open or where it came from. It decides nothing about the game
-## either: the game is built, disabled, enabled and freed here, and everything inside it is its own.
-## Where a choice changes the session (leave a floor, confirm a death) the game is asked first and
-## the flow moves only when it said yes (C21).
+## no variable about which menu is open or where it came from; the one menu variable it has is the
+## page of the Equipment menu being shown (F-016/C17: the page is not the flow's, and the entries
+## and the body of that menu come from `EquipmentMenu`, not from `ShellMenus`). It decides nothing
+## about the game either: the game is built, disabled, enabled and freed here, and everything inside
+## it is its own. Where a choice changes the session (leave a floor, confirm a death, equip a sword)
+## the game is asked first and the flow or the menu moves only when it said yes (C21): an equip that
+## was accepted rewrites the two entries it changed in place (F-015 DEV-11: the panel is never
+## rebuilt to change one entry), and a page change is the one thing that opens the Equipment menu
+## again.
 ##
 ## The shell follows the session by polling, never by a signal (C21): in its own tick, after the
 ## game's, it sees the death pause and opens the death screen, and while that is up it enables its
@@ -84,6 +89,9 @@ var _space_follows: bool = false
 var _start_error_count: int = 0
 ## C7: this node's physics ticks left before the game is enabled; 0 when it is not held back.
 var _guard_ticks_left: int = 0
+## F-016/C17: the page (0-based) of the Equipment menu on show; meaningful while the flow is in
+## EQUIPMENT. Set when that menu opens and on each page change.
+var _equipment_page: int = 0
 
 @onready var _dim: ColorRect = get_node(DIM_PATH)
 @onready var _menu: MenuPanel = get_node(MENU_PATH)
@@ -189,8 +197,16 @@ func _on_entry_chosen(id: StringName) -> void:
 			_flow.resume()
 		ShellMenus.SETTINGS:
 			_flow.open_settings()
+		ShellMenus.EQUIPMENT_ID:
+			_flow.open_equipment()  # F-016/C17
 		ShellMenus.BACK:
-			_flow.close_settings()
+			_go_back(state)
+		EquipmentMenu.NEXT_ID:
+			if state == ShellFlow.State.EQUIPMENT:
+				_open_equipment_page(_equipment_page + 1, &"")
+		EquipmentMenu.PREVIOUS_ID:
+			if state == ShellFlow.State.EQUIPMENT:
+				_open_equipment_page(_equipment_page - 1, &"")
 		ShellMenus.SHAKE:
 			if state == ShellFlow.State.SETTINGS:
 				_flip_shake()
@@ -207,6 +223,20 @@ func _on_entry_chosen(id: StringName) -> void:
 			_flow.cancel_confirm()
 		ShellMenus.RETURN:
 			_confirm_death(state)
+		_:
+			var sword_id: StringName = EquipmentMenu.sword_of(id)
+			if state == ShellFlow.State.EQUIPMENT and not sword_id.is_empty():
+				_equip_sword(sword_id)
+
+
+## F-016/C17: `Back` is in two menus and means what the state says: the settings close, or the
+## Equipment menu does (the flow lands on the pause menu with the focus on the entry that led here).
+func _go_back(state: ShellFlow.State) -> void:
+	match state:
+		ShellFlow.State.SETTINGS:
+			_flow.close_settings()
+		ShellFlow.State.EQUIPMENT:
+			_flow.close_equipment()
 
 
 ## `ui_cancel` on a menu: one step back, which the flow refuses in TITLE.
@@ -279,6 +309,48 @@ func _save_settings() -> void:
 		UserSettings.save_to(settings_path)
 
 
+## F-016/C17: the game is asked to equip the sword; on a yes the entries that changed (the one that
+## lost the mark and the one that gained it) are rewritten in place: the panel is not opened again,
+## so the focus stays and the choose guard does not restart. On a no nothing changes. The texts are
+## `EquipmentMenu`'s, read again from the inventory.
+func _equip_sword(sword_id: StringName) -> void:
+	if not _game.equip_sword(sword_id):
+		return
+	for entry: MenuEntry in _equipment_entries(_equipment_page):
+		if _menu.get_entry_text(entry.id) != entry.text:
+			_menu.set_entry_text(entry.id, entry.text)
+
+
+## F-016/C17: opens the Equipment menu on `page` (clamped to the pages there are), with the focus on
+## `focus_id`, or on the first entry when there is none: the first sword of the page, or `Back` with
+## no swords. This is an `open()`: used when the menu is shown and on a page change.
+func _open_equipment_page(page: int, focus_id: StringName) -> void:
+	var inventory: Inventory = _game.get_session().get_loot().get_inventory()
+	_equipment_page = clampi(
+		page, 0, EquipmentMenu.page_count(inventory, Tunables.items.equipment_page_size) - 1
+	)
+	_menu.open(
+		ShellMenus.heading(ShellFlow.State.EQUIPMENT),
+		EquipmentMenu.body(inventory, _game.can_equip_sword()),
+		_equipment_entries(_equipment_page),
+		focus_id
+	)
+
+
+## The entries of Equipment page `page` as the game's inventory and the equip rule say now.
+func _equipment_entries(page: int) -> Array[MenuEntry]:
+	var loot: CharacterLoot = _game.get_session().get_loot()
+	return EquipmentMenu.entries(
+		loot.get_inventory(),
+		loot.get_catalog(),
+		_game.class_data,
+		Tunables.floors.room_clear_heal_fraction,
+		_game.can_equip_sword(),
+		page,
+		Tunables.items.equipment_page_size
+	)
+
+
 ## C21: after the game's own tick (priority 3). In PLAYING, when the game is running and the session
 ## is in the death pause, the death screen opens in this very tick, with the lines the game fed into
 ## the HUD in its tick. In DEAD, when the session is no longer in the death pause (something other
@@ -341,6 +413,17 @@ func _keep_bodies_in_space() -> void:
 ## Opens the panel with `state`'s menu, having come from `previous`. The title screen has no game
 ## behind it, so its dim is the opaque one.
 func _show_menu(state: ShellFlow.State, previous: ShellFlow.State) -> void:
+	if state == ShellFlow.State.EQUIPMENT:
+		# F-016/C17: on the page of the equipped sword, the focus on it (the first entry with none).
+		var inventory: Inventory = _game.get_session().get_loot().get_inventory()
+		var equipped: StringName = inventory.get_equipped_id()
+		_open_equipment_page(
+			EquipmentMenu.page_of(inventory, equipped, Tunables.items.equipment_page_size),
+			EquipmentMenu.sword_entry_id(equipped)
+		)
+		_dim.color = dim_color
+		_dim.visible = true
+		return
 	var settings: GameSettings = UserSettings.settings
 	var location: String = ""
 	var kills: String = ""

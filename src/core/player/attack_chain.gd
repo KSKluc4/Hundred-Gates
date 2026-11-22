@@ -20,9 +20,13 @@ var _window_remaining: float = 0.0
 
 
 ## AC3: `direction` is the facing at the first instant of windup. The chain must not be empty.
-func start(chain: Array[AttackData], direction: Vector2) -> void:
-	var index: int = _next_index if _next_index < chain.size() else 0
+## F-016/C8: a `damage` of 0 or more is written into the latched copy only (never into the
+## chain's shared resource); a negative one leaves the attack's own damage.
+func start(chain: Array[AttackData], direction: Vector2, damage: int = -1) -> void:
+	var index: int = get_start_index(chain.size())
 	_attack = chain[index].duplicate()
+	if damage >= 0:
+		_attack.damage = damage
 	_next_index = (index + 1) % chain.size()
 	_direction = direction
 	_hit_ids = []
@@ -72,6 +76,12 @@ func get_phase_time_left() -> float:
 
 func get_next_index() -> int:
 	return _next_index
+
+
+## F-016/C8: the index of the hit start() latches for a chain of this size: the one the rule
+## lives in, so the motor asks the chain which hit comes next instead of repeating the rule.
+func get_start_index(chain_size: int) -> int:
+	return _next_index if _next_index < chain_size else 0
 
 
 func get_window_remaining() -> float:

@@ -49,6 +49,10 @@ enum Want {
 	## At least the guard's length after it, the third press less than the guard's length after the
 	## second.
 	SECOND_AFTER_GUARD,
+	## The second press inside the guard's length, the third at least a guard's length (and the
+	## margin) after the first click's release, so after the ORIGINAL guard, and less than a guard's
+	## length (less the margin) after the second, so inside the guard the second restarted.
+	THIRD_AFTER_ORIGINAL_GUARD,
 }
 
 const ABOVE_GUT_LAYER: int = 129
@@ -94,6 +98,10 @@ const LATE_TRIPLE_TIMINGS_MSEC: Array[Vector2i] = [
 	Vector2i(310, 400), Vector2i(310, 470), Vector2i(320, 560), Vector2i(305, 360)
 ]
 const FOURTH_CLICK_AFTER_MSEC: int = 350
+## An UNFLAGGED second click inside the guard and a third after the original guard's end: the second
+## restarts the guard (150 + 300 ms), the third (350 ms) is after the original one (300 ms) and well
+## inside the restarted one. Vector2i(the second click, the third click), as TRIPLE_TIMINGS_MSEC.
+const UNFLAGGED_TRIPLE_TIMING_MSEC: Vector2i = Vector2i(150, 350)
 ## A double click in the running game: the second press this long after the first's release.
 const DOUBLE_CLICK_IN_GAME_GAP_MSEC: int = 100
 ## How many physics ticks the player is watched for an attack after the second press.
@@ -153,14 +161,23 @@ func test_a_double_click_on_settings_from_the_title_changes_nothing() -> void:
 	await _fast_cases_on_settings(From.TITLE, "title")
 
 
+## F-016/T4 (the pause menu got an Equipment entry): the click is aimed at where the pause menu's
+## Settings entry and the settings menu's Fullscreen overlap, measured at run time and asserted.
 func test_a_double_click_on_settings_from_the_towns_pause_menu_changes_nothing() -> void:
-	await _fast_cases_on_settings(From.TOWN_PAUSE, "town pause menu")
+	await _fast_cases_on_settings(From.TOWN_PAUSE, "town pause menu", ShellMenus.FULLSCREEN)
 
 
+## By today's geometry the floor's Settings entry (y 200..220) lies over the settings menu's Back
+## (200..220), not over Fullscreen: its centre is inside both, and a late click on Back leaves the
+## settings menu, which `_assert_settings_open_and_untouched` sees.
 func test_a_double_click_on_settings_from_a_floors_pause_menu_changes_nothing() -> void:
 	await _fast_cases_on_settings(From.FLOOR_PAUSE, "floor pause menu")
 
 
+## By today's geometry (F-016/T4) the pause menu's Quit to title no longer lies over the quit
+## confirm's own Quit to title, only over its Cancel: a late click here cancels the confirm, which
+## `_assert_confirm_quit_and_alive` sees, but it cannot quit. The twin that can do harm is the
+## floor's Return to town over the leave confirm (below); the pin test says when this one changes.
 func test_a_double_click_on_the_top_edge_of_quit_to_title_only_opens_the_confirm() -> void:
 	for flagged: bool in [true, false]:
 		for offset: float in TOP_EDGE_OFFSETS_PX:
@@ -176,25 +193,37 @@ func test_a_double_click_on_the_top_edge_of_quit_to_title_only_opens_the_confirm
 					await _drop_shell()
 
 
+## F-016/T4: aimed at where the floor's Return to town and the leave confirm's own Return to town
+## overlap (measured at run time, asserted), the one place left where a late click would act.
 func test_a_double_click_on_return_to_town_only_opens_the_confirm() -> void:
 	for flagged: bool in [true, false]:
 		for gap: int in FAST_GAPS_MSEC:
 			var where: String = "gap %d ms, flagged %s" % [gap, flagged]
 			var gesture: Callable = _double_click_from.bind(
-				From.FLOOR_PAUSE, ShellMenus.LEAVE, CENTER, gap, flagged, false
+				From.FLOOR_PAUSE, ShellMenus.LEAVE, CENTER, gap, flagged, false, ShellMenus.CONFIRM
 			)
 			if await _produced(gesture, Want.INSIDE, 0, where):
-				assert_eq(
-					flow().get_state(), ShellFlow.State.CONFIRM_LEAVE, "the confirm, %s" % where
-				)
-				await _settle()
-				assert_eq(
-					session().get_place(),
-					TowerSession.Place.FLOOR,
-					"still on the floor, %s" % where
-				)
-				assert_eq(flow().get_state(), ShellFlow.State.CONFIRM_LEAVE, "and still asking")
+				await _assert_confirm_leave_and_still_on_the_floor(where)
 				await _drop_shell()
+
+
+## Why the three Quit to title twins below moved to Return to town: the quit confirm's own entry
+## is no longer under the pause menu's Quit to title, in the town or on a floor. When this test
+## FAILS the quit accident is back (a late click on the pause menu's Quit to title can quit with no
+## question): the three `..._on_return_to_town_...` tests of the slow, triple and consumed cases
+## need twins on Quit to title again (their old names are in F-016 section 8).
+func test_the_pause_menus_quit_to_title_is_not_over_the_quit_confirms_confirm_entry() -> void:
+	for from: From in [From.TOWN_PAUSE, From.FLOOR_PAUSE]:
+		await _spawn_from(from)
+		var rects: Array[Rect2] = await _rects_of_pair(ShellMenus.QUIT_TO_TITLE, ShellMenus.CONFIRM)
+		assert_false(
+			rects[0].intersects(rects[1]),
+			(
+				"%s: Quit to title %s and the confirm's Quit to title %s do not overlap"
+				% ["floor" if from == From.FLOOR_PAUSE else "town", rects[0], rects[1]]
+			)
+		)
+		await _drop_shell()
 
 
 # --- a slow double click (after the guard) ---
@@ -207,9 +236,12 @@ func test_a_slow_flagged_second_click_on_settings_from_the_title_changes_nothing
 
 
 func test_a_slow_flagged_second_click_on_settings_from_the_pause_menu_changes_nothing() -> void:
-	await _slow_cases_on_settings(From.TOWN_PAUSE, "town pause menu", true)
+	await _slow_cases_on_settings(From.TOWN_PAUSE, "town pause menu", true, ShellMenus.FULLSCREEN)
 
 
+## Over the quit confirm's Cancel only, by today's geometry (see the fast case above): the rule
+## (a flagged late press is consumed) is also pinned on Settings and, destructively, on the leave
+## confirm (the stall test below, and the fast case).
 func test_a_slow_flagged_second_click_on_the_top_edge_of_quit_to_title_does_not_quit() -> void:
 	for slow: int in SLOW_GAPS_MSEC:
 		var where: String = "0.5 px below the top, %d ms" % slow
@@ -227,20 +259,23 @@ func test_a_slow_second_click_without_the_flag_on_settings_from_the_title_acts()
 
 
 func test_a_slow_second_click_without_the_flag_on_settings_from_the_pause_menu_acts() -> void:
-	await _slow_cases_that_act_on_fullscreen(From.TOWN_PAUSE, "town pause menu")
+	# F-016/T4: a fourth pause entry moved the menu, and the pause menu's Settings no longer holds
+	# the centre of the settings menu's Fullscreen: the click is aimed where the two overlap.
+	await _slow_cases_that_act_on_fullscreen(
+		From.TOWN_PAUSE, "town pause menu", ShellMenus.FULLSCREEN
+	)
 
 
-func test_a_slow_second_click_without_the_flag_on_quit_to_title_acts_on_the_confirm() -> void:
+## Was `..._on_quit_to_title_acts_on_the_confirm` (F-016/T4: moved to the pair where the overlap
+## exists). The floor is left and the town comes.
+func test_a_slow_second_click_without_the_flag_on_return_to_town_acts_on_the_confirm() -> void:
 	for slow: int in SLOW_GAPS_MSEC:
-		var where: String = "0.5 px below the top, %d ms" % slow
+		var where: String = "floor pause menu, over the leave confirm, %d ms" % slow
 		var gesture: Callable = _double_click_from.bind(
-			From.TOWN_PAUSE, ShellMenus.QUIT_TO_TITLE, 0.5, slow, false, true
+			From.FLOOR_PAUSE, ShellMenus.LEAVE, CENTER, slow, false, true, ShellMenus.CONFIRM
 		)
 		if await _produced(gesture, Want.AFTER, slow, where):
-			assert_eq(
-				flow().get_state(), ShellFlow.State.TITLE, "a deliberate click quit, %s" % where
-			)
-			assert_null(shell().get_game(), "the game is gone, %s" % where)
+			_assert_floor_left(where)
 			await _drop_shell()
 
 
@@ -255,8 +290,9 @@ func test_a_triple_click_on_settings_from_the_title_changes_nothing_and_a_fourth
 	await _triple_cases_on_settings(TRIPLE_TIMINGS_MSEC, Want.INSIDE)
 
 
-func test_a_triple_click_on_quit_to_title_does_not_quit_and_a_fourth_acts() -> void:
-	await _triple_cases_on_quit(TRIPLE_TIMINGS_MSEC, Want.INSIDE)
+## Was `..._on_quit_to_title_does_not_quit_and_a_fourth_acts` (F-016/T4, see above).
+func test_a_triple_click_on_return_to_town_does_not_leave_and_a_fourth_acts() -> void:
+	await _triple_cases_on_return_to_town(TRIPLE_TIMINGS_MSEC, Want.INSIDE)
 
 
 ## The second press comes after the guard had ended (+305 to +320 ms): the panel consumes it (the
@@ -266,8 +302,45 @@ func test_a_consumed_press_just_after_the_guard_still_holds_off_the_next_on_sett
 	await _triple_cases_on_settings(LATE_TRIPLE_TIMINGS_MSEC, Want.SECOND_AFTER_GUARD)
 
 
-func test_a_consumed_press_just_after_the_guard_still_holds_off_the_next_on_quit_to_title() -> void:
-	await _triple_cases_on_quit([Vector2i(310, 400)] as Array[Vector2i], Want.SECOND_AFTER_GUARD)
+## Was `..._holds_off_the_next_on_quit_to_title` (F-016/T4, see above).
+func test_a_consumed_press_just_after_the_guard_still_holds_off_the_next_on_return_to_town(
+) -> void:
+	await _triple_cases_on_return_to_town(
+		[Vector2i(310, 400)] as Array[Vector2i], Want.SECOND_AFTER_GUARD
+	)
+
+
+## A press that is NOT the second click of a double click but comes inside the guard starts it again
+## (CR-24): an unflagged second click at +150 ms, a third at +350 ms, after the original guard's end
+## and inside the restarted one, change nothing; a fourth, 0.35 s later, acts.
+func test_an_unflagged_second_click_inside_the_guard_restarts_it_on_settings_from_the_title(
+) -> void:
+	var at_msec: Vector2i = UNFLAGGED_TRIPLE_TIMING_MSEC
+	var where: String = "title, unflagged, +%d/+%d ms" % [at_msec.x, at_msec.y]
+	var gesture: Callable = _triple_click_from.bind(
+		From.TITLE, ShellMenus.SETTINGS, CENTER, at_msec.x, at_msec.y, ShellMenus.FULLSCREEN, false
+	)
+	if await _produced(gesture, Want.THIRD_AFTER_ORIGINAL_GUARD, 0, where, true):
+		_assert_settings_open_and_untouched(where)
+		await _fourth_click()
+		assert_eq(flow().get_state(), ShellFlow.State.SETTINGS, "still settings, %s" % where)
+		assert_true(UserSettings.settings.fullscreen, "the deliberate fourth acted, %s" % where)
+		assert_eq(window_modes().size(), 2, "the window applier ran for it, %s" % where)
+		await _drop_shell()
+
+
+## The same over the leave confirm's Return to town, from the floor's pause menu.
+func test_an_unflagged_second_click_inside_the_guard_restarts_it_on_return_to_town() -> void:
+	var at_msec: Vector2i = UNFLAGGED_TRIPLE_TIMING_MSEC
+	var where: String = "floor pause menu, unflagged, +%d/+%d ms" % [at_msec.x, at_msec.y]
+	var gesture: Callable = _triple_click_from.bind(
+		From.FLOOR_PAUSE, ShellMenus.LEAVE, CENTER, at_msec.x, at_msec.y, ShellMenus.CONFIRM, false
+	)
+	if await _produced(gesture, Want.THIRD_AFTER_ORIGINAL_GUARD, 0, where, true):
+		await _assert_confirm_leave_and_still_on_the_floor(where)
+		await _fourth_click()
+		_assert_floor_left("the fourth, %s" % where)
+		await _drop_shell()
 
 
 # --- a stalled frame ---
@@ -283,6 +356,8 @@ func test_a_stall_after_the_first_click_on_settings_changes_nothing() -> void:
 		await _drop_shell()
 
 
+## Over the quit confirm's Cancel only, by today's geometry (see the fast case above); the stall
+## rule is pinned on the title's Settings, and on Return to town in the test below.
 func test_a_stall_after_the_first_click_on_quit_to_title_does_not_quit() -> void:
 	var where: String = "town pause menu, 0.5 px below the top, a %d ms stall" % STALL_MSEC
 	var gesture: Callable = _stalled_double_click_from.bind(
@@ -290,6 +365,17 @@ func test_a_stall_after_the_first_click_on_quit_to_title_does_not_quit() -> void
 	)
 	if await _produced(gesture, Want.AFTER, STALL_MSEC, where):
 		await _assert_confirm_quit_and_alive(where)
+		await _drop_shell()
+
+
+## The stall over the leave confirm's Return to town: the second press is consumed, the floor stays.
+func test_a_stall_after_the_first_click_on_return_to_town_does_not_leave() -> void:
+	var where: String = "floor pause menu, over the leave confirm, a %d ms stall" % STALL_MSEC
+	var gesture: Callable = _stalled_double_click_from.bind(
+		From.FLOOR_PAUSE, ShellMenus.LEAVE, CENTER, ShellMenus.CONFIRM
+	)
+	if await _produced(gesture, Want.AFTER, STALL_MSEC, where):
+		await _assert_confirm_leave_and_still_on_the_floor(where)
 		await _drop_shell()
 
 
@@ -470,23 +556,25 @@ func _watch_attacks() -> AttackWatcher:
 # --- case runners ---
 
 
-func _fast_cases_on_settings(from: From, name_of_menu: String) -> void:
+func _fast_cases_on_settings(from: From, name_of_menu: String, next_id: StringName = &"") -> void:
 	for flagged: bool in [true, false]:
 		for gap: int in FAST_GAPS_MSEC:
 			var where: String = "%s, gap %d ms, flagged %s" % [name_of_menu, gap, flagged]
 			var gesture: Callable = _double_click_from.bind(
-				from, ShellMenus.SETTINGS, CENTER, gap, flagged, false
+				from, ShellMenus.SETTINGS, CENTER, gap, flagged, false, next_id
 			)
 			if await _produced(gesture, Want.INSIDE, 0, where):
 				_assert_settings_open_and_untouched(where)
 				await _drop_shell()
 
 
-func _slow_cases_on_settings(from: From, name_of_menu: String, flagged: bool) -> void:
+func _slow_cases_on_settings(
+	from: From, name_of_menu: String, flagged: bool, next_id: StringName = &""
+) -> void:
 	for slow: int in SLOW_GAPS_MSEC:
 		var where: String = "%s, %d ms, flagged %s" % [name_of_menu, slow, flagged]
 		var gesture: Callable = _double_click_from.bind(
-			from, ShellMenus.SETTINGS, CENTER, slow, flagged, true
+			from, ShellMenus.SETTINGS, CENTER, slow, flagged, true, next_id
 		)
 		if await _produced(gesture, Want.AFTER, slow, where):
 			_assert_settings_open_and_untouched(where)
@@ -494,11 +582,15 @@ func _slow_cases_on_settings(from: From, name_of_menu: String, flagged: bool) ->
 
 
 ## The second click, not marked, lands on "Fullscreen" where "Settings" was: a deliberate click.
-func _slow_cases_that_act_on_fullscreen(from: From, name_of_menu: String) -> void:
+## With `next_id` the click is aimed at where the Settings entry and that entry of the settings menu
+## overlap (measured at run time), not at the Settings entry's centre.
+func _slow_cases_that_act_on_fullscreen(
+	from: From, name_of_menu: String, next_id: StringName = &""
+) -> void:
 	for slow: int in SLOW_GAPS_MSEC:
 		var where: String = "%s, %d ms, not flagged" % [name_of_menu, slow]
 		var gesture: Callable = _double_click_from.bind(
-			from, ShellMenus.SETTINGS, CENTER, slow, false, true
+			from, ShellMenus.SETTINGS, CENTER, slow, false, true, next_id
 		)
 		if await _produced(gesture, Want.AFTER, slow, where):
 			assert_eq(flow().get_state(), ShellFlow.State.SETTINGS, "the settings menu, %s" % where)
@@ -524,21 +616,20 @@ func _triple_cases_on_settings(timings: Array[Vector2i], want: Want) -> void:
 			await _drop_shell()
 
 
-## The same on 1 px below the top of the town pause menu's "Quit to title": the confirm opens and
-## the game stays; a fourth click acts on the confirm.
-func _triple_cases_on_quit(timings: Array[Vector2i], want: Want) -> void:
+## The same over the leave confirm's Return to town, from the floor's pause menu (measured overlap):
+## the confirm opens and the floor stays; a fourth click acts on the confirm and the floor is left.
+func _triple_cases_on_return_to_town(timings: Array[Vector2i], want: Want) -> void:
 	for at_msec: Vector2i in timings:
 		var where: String = (
-			"town pause menu, 1 px below the top, +%d/+%d ms" % [at_msec.x, at_msec.y]
+			"floor pause menu, over the leave confirm, +%d/+%d ms" % [at_msec.x, at_msec.y]
 		)
 		var gesture: Callable = _triple_click_from.bind(
-			From.TOWN_PAUSE, ShellMenus.QUIT_TO_TITLE, 1.0, at_msec.x, at_msec.y
+			From.FLOOR_PAUSE, ShellMenus.LEAVE, CENTER, at_msec.x, at_msec.y, ShellMenus.CONFIRM
 		)
 		if await _produced(gesture, want, 0, where):
-			await _assert_confirm_quit_and_alive(where)
+			await _assert_confirm_leave_and_still_on_the_floor(where)
 			await _fourth_click()
-			assert_eq(flow().get_state(), ShellFlow.State.TITLE, "the fourth quit, %s" % where)
-			assert_null(shell().get_game(), "the game is gone, %s" % where)
+			_assert_floor_left("the fourth, %s" % where)
 			await _drop_shell()
 
 
@@ -551,7 +642,9 @@ func _triple_cases_on_quit(timings: Array[Vector2i], want: Want) -> void:
 ## off when it should have been on is a failure. Only when no try produced the milliseconds is the
 ## test marked pending, with every measurement: a machine too busy to produce the timing has not
 ## shown a bug. Events that never arrived are a failure too (nothing slow about that).
-func _produced(gesture: Callable, want: Want, min_gap_msec: int, where: String) -> bool:
+func _produced(
+	gesture: Callable, want: Want, min_gap_msec: int, where: String, strict: bool = false
+) -> bool:
 	var seen: Array[String] = []
 	for _attempt: int in ATTEMPTS:
 		var timing: Timing = await gesture.call()
@@ -560,6 +653,13 @@ func _produced(gesture: Callable, want: Want, min_gap_msec: int, where: String) 
 			await _drop_shell()
 			return false
 		if timing.is_produced(want, min_gap_msec):
+			if strict:
+				gut.p(
+					(
+						"TIMING %s: %s (third %d ms after the choice)"
+						% [where, timing.describe(), timing.third_msec - timing.opened_msec]
+					)
+				)
 			_assert_guard_state_at_the_presses(timing, want, where)
 			return true
 		seen.append(timing.describe())
@@ -571,15 +671,21 @@ func _produced(gesture: Callable, want: Want, min_gap_msec: int, where: String) 
 		else (
 			"after it, >= %d ms" % min_gap_msec
 			if want == Want.AFTER
-			else "just after the guard, with the third press soon after it"
+			else (
+				"inside the guard, with the third after the original guard and inside the new one"
+				if want == Want.THIRD_AFTER_ORIGINAL_GUARD
+				else "just after the guard, with the third press soon after it"
+			)
 		)
 	)
-	pending(
-		(
-			"%s: the second press was not %s in %d tries (measured: %s)"
-			% [where, wanted, ATTEMPTS, "; ".join(seen)]
-		)
+	var report: String = (
+		"%s: the second press was not %s in %d tries (measured: %s)"
+		% [where, wanted, ATTEMPTS, "; ".join(seen)]
 	)
+	if strict:
+		fail_test(report)  # A case that must not depend on the machine's load fails, never pends.
+	else:
+		pending(report)
 	return false
 
 
@@ -588,7 +694,7 @@ func _produced(gesture: Callable, want: Want, min_gap_msec: int, where: String) 
 ## third press is the one that finds it on. After the guard nothing is asserted: a stalled frame
 ## delivers a press with the guard's flag still on and its time long over, on purpose.
 func _assert_guard_state_at_the_presses(timing: Timing, want: Want, where: String) -> void:
-	if want == Want.INSIDE:
+	if want == Want.INSIDE or want == Want.THIRD_AFTER_ORIGINAL_GUARD:
 		assert_true(timing.guarded_at_second, "the guard was on at the second press, %s" % where)
 	if want != Want.AFTER and timing.third_msec >= 0:
 		assert_true(timing.guarded_at_third, "the guard was on at the third press, %s" % where)
@@ -600,12 +706,21 @@ func _assert_guard_state_at_the_presses(timing: Timing, want: Want, where: Strin
 ## Two clicks on entry `id` of the menu `from` gives; `top_offset` is pixels below the entry's top
 ## edge, or CENTER. The second press is `gap_msec` milliseconds of real time after the first release
 ## (and, with `after_guard`, not before the guard is over). `flagged` sets the OS's double-click
-## mark on it.
+## mark on it. With `next_id` the click is at the centre of where entry `id` and entry `next_id` of
+## the menu it opens overlap, not at `top_offset` (see `_overlap_point_of`).
 func _double_click_from(
-	from: From, id: StringName, top_offset: float, gap_msec: int, flagged: bool, after_guard: bool
+	from: From,
+	id: StringName,
+	top_offset: float,
+	gap_msec: int,
+	flagged: bool,
+	after_guard: bool,
+	next_id: StringName = &""
 ) -> Timing:
 	await _spawn_from(from)
 	var at: Vector2 = _point_of(id, top_offset)
+	if next_id != &"":
+		at = await _overlap_point_of(id, next_id)
 	_move_mouse(at)
 	await get_tree().process_frame
 	_send_mouse(at, true, false)
@@ -629,9 +744,13 @@ func _double_click_from(
 ## click is queued (posted, not flushed) in that same frame. The panel's `_process` runs at the end
 ## of the frame, after the guard's time is over, and the click is delivered after that: the order
 ## the reviewers measured.
-func _stalled_double_click_from(from: From, id: StringName, top_offset: float) -> Timing:
+func _stalled_double_click_from(
+	from: From, id: StringName, top_offset: float, next_id: StringName = &""
+) -> Timing:
 	await _spawn_from(from)
 	var at: Vector2 = _point_of(id, top_offset)
+	if next_id != &"":
+		at = await _overlap_point_of(id, next_id)
 	_move_mouse(at)
 	await get_tree().process_frame
 	_send_mouse(at, true, false)
@@ -648,12 +767,21 @@ func _stalled_double_click_from(from: From, id: StringName, top_offset: float) -
 
 ## Three clicks on entry `id` of the menu `from` gives: the second, flagged, `second_msec` after the
 ## first click's release and the third, not flagged, `third_msec` after it (real time). Nothing
-## waits for the guard: the point is that it runs.
+## waits for the guard: the point is that it runs. `flag_second` false sends the second press as a
+## plain press, not as the second click of a double click.
 func _triple_click_from(
-	from: From, id: StringName, top_offset: float, second_msec: int, third_msec: int
+	from: From,
+	id: StringName,
+	top_offset: float,
+	second_msec: int,
+	third_msec: int,
+	next_id: StringName = &"",
+	flag_second: bool = true
 ) -> Timing:
 	await _spawn_from(from)
 	var at: Vector2 = _point_of(id, top_offset)
+	if next_id != &"":
+		at = await _overlap_point_of(id, next_id)
 	_spot = at
 	_move_mouse(at)
 	await get_tree().process_frame
@@ -662,7 +790,7 @@ func _triple_click_from(
 	_send_mouse(at, false, false)
 	var released: int = Time.get_ticks_msec()
 	await _wait_until(released + second_msec)
-	_send_mouse(at, true, true)
+	_send_mouse(at, true, flag_second)
 	await get_tree().process_frame
 	_send_mouse(at, false, false)
 	await _wait_until(released + third_msec)
@@ -868,6 +996,20 @@ func _assert_confirm_quit_and_alive(where: String) -> void:
 	assert_eq(quit_calls(), 0, "the application was not asked to quit, %s" % where)
 
 
+## The leave confirm is up, the session is still on the floor and it stays so.
+func _assert_confirm_leave_and_still_on_the_floor(where: String) -> void:
+	assert_eq(flow().get_state(), ShellFlow.State.CONFIRM_LEAVE, "the confirm, %s" % where)
+	await _settle()
+	assert_eq(session().get_place(), TowerSession.Place.FLOOR, "still on the floor, %s" % where)
+	assert_eq(flow().get_state(), ShellFlow.State.CONFIRM_LEAVE, "and still asking, %s" % where)
+
+
+## The floor was left: the game runs again and the session is in the town.
+func _assert_floor_left(where: String) -> void:
+	assert_eq(flow().get_state(), ShellFlow.State.PLAYING, "left the floor, %s" % where)
+	assert_eq(session().get_place(), TowerSession.Place.TOWN, "in the town, %s" % where)
+
+
 # --- real mouse events ---
 
 
@@ -889,6 +1031,35 @@ func _point_of(id: StringName, top_offset: float) -> Vector2:
 	if top_offset == CENTER:
 		return rect.get_center()
 	return Vector2(rect.get_center().x, rect.position.y + top_offset)
+
+
+## The centre of the rectangle that entry `id` of the open menu shares with entry `next_id` of the
+## menu that choosing `id` opens: the point where a late click lands on `next_id`. Measured, not
+## assumed: the menu is opened by `choose` and closed again (`back`), and the test FAILS when the
+## two entries do not overlap, so a layout change cannot blunt the case unnoticed.
+func _overlap_point_of(id: StringName, next_id: StringName) -> Vector2:
+	var rects: Array[Rect2] = await _rects_of_pair(id, next_id)
+	var overlap: Rect2 = rects[0].intersection(rects[1])
+	assert_true(
+		overlap.has_area(),
+		"the premise: %s %s and %s %s overlap" % [id, rects[0], next_id, rects[1]]
+	)
+	return overlap.get_center()
+
+
+## The rectangles of entry `id` of the open menu and of entry `next_id` of the menu choosing `id`
+## opens, in that order. The menu is opened by `choose` and closed again by `back`, and the guard of
+## the menu that comes back is waited out, so the caller finds the scene as it was.
+func _rects_of_pair(id: StringName, next_id: StringName) -> Array[Rect2]:
+	var first: Rect2 = _rect_of(id)
+	choose(id)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var next: Rect2 = _rect_of(next_id)
+	assert_true(flow().back(), "back to the menu that was open")
+	await _wait_guard()
+	_arrival.forget()
+	return [first, next] as Array[Rect2]
 
 
 ## A canvas point in the window's coordinates, where the OS posts its events: the posted events go
@@ -976,6 +1147,13 @@ class Timing:
 				return gap_msec() >= min_gap_msec
 			Want.SECOND_AFTER_GUARD:
 				return gap_msec() >= GUARD_MSEC + AFTER_GUARD_MARGIN_MSEC and third_soon
+			Want.THIRD_AFTER_ORIGINAL_GUARD:
+				return (
+					gap_msec() < inside
+					and third_msec >= 0
+					and third_msec - opened_msec >= GUARD_MSEC + AFTER_GUARD_MARGIN_MSEC
+					and third_soon
+				)
 		return false
 
 	func describe() -> String:

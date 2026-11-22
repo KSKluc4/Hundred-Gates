@@ -14,6 +14,11 @@ extends Control
 ## What a subclass does: in `_ready`, set `_panel` and `_list` to its nodes and call `super()`;
 ## build its buttons with `_add_button()` after `_clear_buttons()`; call `_show_list()` and then
 ## `_set_focus()`; override `_on_cancel_pressed()`.
+##
+## What the shell's menus added to the gate list's input, three things in all: a disabled entry can
+## hold the focus and is not chosen (F-015/C9), `_may_choose_by_key()` (F-015's choose guard) and,
+## F-016/C19, `_focus_moved(index)`: a hook that is empty here, called wherever the focused entry
+## changes (a key, the pad, a click that takes the focus, and a menu that opens with a focus).
 
 ## Both action families move the focus and choose (F-012/AC23): the UI's and the game's.
 const PREVIOUS_ACTIONS: Array[StringName] = [&"ui_up", &"move_up"]
@@ -217,7 +222,11 @@ func _is_bound_to_axis(action: StringName, axis: JoyAxis) -> bool:
 ## Clamped: the list doesn't wrap. A disabled button is not skipped (F-015/C9): it can hold the
 ## focus, so the player can read it.
 func _move_focus(step: int) -> void:
-	_set_focus(clampi(_focus_index + step, 0, _buttons.size() - 1))
+	var target: int = clampi(_focus_index + step, 0, _buttons.size() - 1)
+	if target == _focus_index and target >= 0 and target < _buttons.size():
+		_buttons[target].grab_focus()  # At the end of the list: the focus did not move (F-016/C19).
+		return
+	_set_focus(target)
 
 
 ## Asked before a key or a pad button chooses the focused button (`ui_accept`, `interact`): a
@@ -225,6 +234,13 @@ func _move_focus(step: int) -> void:
 ## The key is consumed either way. The base always says yes, so the gate list is as it was.
 func _may_choose_by_key() -> bool:
 	return true
+
+
+## F-016/C19: the focus is now on button `index`. A subclass that shows something about the focused
+## entry (the gate's odds) overrides it; the base does nothing. Called after the focus has moved,
+## once per change, and once for the focus a menu opens with.
+func _focus_moved(_index: int) -> void:
+	pass
 
 
 ## The focused button's own press, so a key and a click are the same code path. A disabled button
@@ -242,8 +258,11 @@ func _press_focused() -> void:
 func _set_focus(index: int) -> void:
 	if index < 0 or index >= _buttons.size():
 		return
+	# Set before the grab, so that the button's own focus_entered (below) sees no change and the hook
+	# is called once, here.
 	_focus_index = index
 	_buttons[index].grab_focus()
+	_focus_moved(index)
 
 
 ## One more button at the end of the column; `on_pressed` is what a click, and so a key, calls.
@@ -270,4 +289,7 @@ func _clear_buttons() -> void:
 
 
 func _on_button_focused(index: int) -> void:
+	var moved: bool = index != _focus_index
 	_focus_index = index
+	if moved:
+		_focus_moved(index)

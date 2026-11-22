@@ -9,7 +9,8 @@ extends RefCounted
 ## back (F-015/C2, review PR-5) without the shell remembering anything.
 signal state_changed(state: State, previous: State)
 
-enum State { TITLE, PLAYING, PAUSED, SETTINGS, CONFIRM_LEAVE, CONFIRM_QUIT, DEAD }
+## F-016/C17: EQUIPMENT is added last, so every earlier value keeps its number.
+enum State { TITLE, PLAYING, PAUSED, SETTINGS, CONFIRM_LEAVE, CONFIRM_QUIT, DEAD, EQUIPMENT }
 
 var _state: State = State.TITLE
 # Where open_settings() came from: TITLE or PAUSED. Only meaningful while in SETTINGS.
@@ -20,11 +21,11 @@ func get_state() -> State:
 	return _state
 
 
-## C6: true when the game below the shell must be disabled: the pause menu, its two confirms, and
-## the settings when they were opened from the pause menu.
+## C6: true when the game below the shell must be disabled: the pause menu, its two confirms, the
+## Equipment menu (F-016/C17), and the settings when they were opened from the pause menu.
 func is_game_paused() -> bool:
 	match _state:
-		State.PAUSED, State.CONFIRM_LEAVE, State.CONFIRM_QUIT:
+		State.PAUSED, State.CONFIRM_LEAVE, State.CONFIRM_QUIT, State.EQUIPMENT:
 			return true
 		State.SETTINGS:
 			return _settings_origin == State.PAUSED
@@ -79,6 +80,16 @@ func ask_quit() -> bool:
 	return _go(State.CONFIRM_QUIT, [State.PAUSED])
 
 
+## F-016/C17: PAUSED -> EQUIPMENT.
+func open_equipment() -> bool:
+	return _go(State.EQUIPMENT, [State.PAUSED])
+
+
+## F-016/C17: EQUIPMENT -> PAUSED.
+func close_equipment() -> bool:
+	return _go(State.PAUSED, [State.EQUIPMENT])
+
+
 ## CONFIRM_LEAVE or CONFIRM_QUIT -> PAUSED.
 func cancel_confirm() -> bool:
 	return _go(State.PAUSED, [State.CONFIRM_LEAVE, State.CONFIRM_QUIT])
@@ -105,7 +116,8 @@ func death_confirmed() -> bool:
 
 
 ## One step back: resume() in PAUSED, close_settings() in SETTINGS, cancel_confirm() in the two
-## confirms. False in TITLE, PLAYING and DEAD (F-015/C8: Escape there does nothing).
+## confirms, close_equipment() in EQUIPMENT (F-016/C17). False in TITLE, PLAYING and DEAD
+## (F-015/C8: Escape there does nothing).
 func back() -> bool:
 	match _state:
 		State.PAUSED:
@@ -114,6 +126,8 @@ func back() -> bool:
 			return close_settings()
 		State.CONFIRM_LEAVE, State.CONFIRM_QUIT:
 			return cancel_confirm()
+		State.EQUIPMENT:
+			return close_equipment()
 		_:
 			return false
 

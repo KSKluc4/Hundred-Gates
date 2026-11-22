@@ -1,3 +1,5 @@
+# gdlint:disable=max-public-methods
+# F-016/C8 adds set_sword() and get_loadout() to an API that already had 20 public methods.
 class_name PlayerMotor
 extends Combatant
 ## Movement and dash logic for one player (F-001 §3). Pure: no nodes, no Input (G6).
@@ -44,6 +46,11 @@ const SNAPSHOT_KEYS: Array[String] = [
 
 var _class_data: ClassData
 var _tunables: PlayerCombatTunables
+# F-016/C8: setup data like _class_data, never in the snapshot. The loadout is built from the class
+# data held, so it is built again whenever that changes; null until there is a class to build from.
+var _sword: SwordData = null
+var _item_rules: ItemTunables = null
+var _loadout: PlayerLoadout = null
 
 var _time: float = 0.0
 var _velocity: Vector2 = Vector2.ZERO
@@ -95,8 +102,9 @@ func setup(
 	_team = Team.PLAYER
 	_class_data = class_data
 	_tunables = tunables
+	_rebuild_loadout()  # F-016/C8: the sword is kept through setup().
 	_reset_state()
-	_combat.setup(class_data.max_hp, true)
+	_combat.setup(_loadout.get_max_hp(), true)
 	_position = start_position_tiles
 	if initial_facing != Vector2.ZERO:
 		_facing = initial_facing.normalized()
@@ -109,9 +117,28 @@ func apply_data(class_data: ClassData, tunables: PlayerCombatTunables) -> bool:
 		return false
 	_class_data = class_data
 	_tunables = tunables
+	_rebuild_loadout()  # F-016/C8: the sword is kept, the new class is read at once.
 	_attack_chain.clamp_next_index(class_data.attack_chain.size())
-	_combat.set_max_hp(class_data.max_hp)
+	_combat.set_max_hp(_loadout.get_max_hp())
 	return true
+
+
+## F-016/C8: the sword this motor fights with (null: the class's own values). Before setup() it
+## only stores the sword; after it, max HP follows at once through CombatState.set_max_hp, which
+## never heals and clamps HP down. The sword survives setup() and apply_data(). On a restore it is
+## set before from_dict(): it is not in the snapshot.
+func set_sword(sword: SwordData, rules: ItemTunables) -> void:
+	_sword = sword
+	_item_rules = rules
+	if _class_data == null:
+		return
+	_rebuild_loadout()
+	_combat.set_max_hp(_loadout.get_max_hp())
+
+
+## F-016/C8: null only while the motor holds no class data (set_sword() called before setup()).
+func get_loadout() -> PlayerLoadout:
+	return _loadout
 
 
 ## F-001/C4: the only way player intentions reach the motor. Applies to the next tick().
@@ -303,6 +330,11 @@ func _accepts(class_data: ClassData, tunables: PlayerCombatTunables) -> bool:
 	return true
 
 
+## F-016/C8: class data, sword and rules are all it is made from.
+func _rebuild_loadout() -> void:
+	_loadout = PlayerLoadout.of(_class_data, _sword, _item_rules)
+
+
 func _reset_state() -> void:
 	_time = 0.0
 	_position = Vector2.ZERO
@@ -455,9 +487,12 @@ func _can_fire_buffered_attack() -> bool:
 	return _is_free()
 
 
+## F-016/C8: the hit's damage comes from the loadout, for the hit the chain itself says it starts.
 func _fire_attack() -> void:
 	_has_buffered_attack = false
-	_attack_chain.start(_class_data.attack_chain, _facing)
+	var chain: Array[AttackData] = _class_data.attack_chain
+	var index: int = _attack_chain.get_start_index(chain.size())
+	_attack_chain.start(chain, _facing, _loadout.get_hit_damage(index))
 	_state = State.ATTACKING
 
 
@@ -495,7 +530,7 @@ func _advance_dash(limit: float) -> float:
 ## only with a latched duration above 0. The state is set before dash_ended is emitted.
 func _end_dash(ran_full_length: bool) -> void:
 	_velocity = Vector2.ZERO
-	_cooldown_remaining = _class_data.dash_cooldown  # F-001/C9
+	_cooldown_remaining = _loadout.get_dash_cooldown()  # F-001/C9, F-016/C8: the class's, less a cut
 	if ran_full_length and _dash_recovery_duration > 0.0:
 		_state = State.DASH_RECOVERY
 		_dash_recovery_remaining = _dash_recovery_duration

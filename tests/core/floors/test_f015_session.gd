@@ -393,6 +393,7 @@ func test_ac5_the_snapshot_keeps_its_keys() -> void:
 		TowerSession.KEY_DEATH_TIME_LEFT,
 		TowerSession.KEY_PROGRESS,
 		TowerSession.KEY_CLEARED_IN_RUN,
+		TowerSession.KEY_LOOT,  # F-016/C14: the character's loot is part of the session
 	]
 	_session.enter_floor(1, false)
 	assert_eq(_session.to_dict().keys().size(), keys.size())

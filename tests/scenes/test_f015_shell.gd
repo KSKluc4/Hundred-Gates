@@ -998,7 +998,7 @@ func _dim() -> ColorRect:
 
 
 func _pause_entries(on_floor: bool) -> Array[StringName]:
-	var ids: Array[StringName] = [ShellMenus.RESUME]
+	var ids: Array[StringName] = [ShellMenus.RESUME, ShellMenus.EQUIPMENT_ID]
 	if on_floor:
 		ids.append(ShellMenus.LEAVE)
 	ids.append(ShellMenus.SETTINGS)

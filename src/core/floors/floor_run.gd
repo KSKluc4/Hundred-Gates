@@ -16,6 +16,9 @@ const KEY_FLOOR_CLEARED: String = "floor_cleared"
 var _floor: FloorData
 var _rules: FloorTunables
 var _max_hp: int = 0
+## F-016/C15: what the equipped sword adds to the room-clear heal fraction. Setup data, like the
+## max HP: never in the snapshot.
+var _room_heal_bonus: float = 0.0
 var _room_index: int = 0
 var _entry_hp: int = 0
 var _room_cleared: bool = false
@@ -28,6 +31,7 @@ func setup(floor_data: FloorData, rules: FloorTunables, max_hp: int, start_room:
 	_floor = floor_data
 	_rules = rules
 	_max_hp = max_hp
+	_room_heal_bonus = 0.0  # F-016/C15: a new run, given its sword's values by set_loadout_values().
 	_room_index = clampi(start_room, 0, maxi(0, floor_data.get_room_count() - 1))
 	_entry_hp = max_hp
 	_room_cleared = false
@@ -56,6 +60,23 @@ func is_floor_cleared() -> bool:
 	return _floor_cleared
 
 
+## F-016/C14: the current room is the one before the boss room, and it is cleared. The only room of
+## a floor where a sword may be changed (the town aside). A floor entered at the boss never has it.
+func is_pre_boss_room_cleared() -> bool:
+	if _floor == null:
+		return false
+	return _room_cleared and _room_index == _floor.get_room_count() - 2
+
+
+## F-016/C15: the equipped sword's max HP and room-clear heal bonus. The entry HP is clamped down to
+## the new max and never raised: more max HP does not heal, less lowers what the player enters with
+## (so the snapshot is still accepted back).
+func set_loadout_values(max_hp: int, room_heal_bonus: float) -> void:
+	_max_hp = max_hp
+	_room_heal_bonus = room_heal_bonus
+	_entry_hp = mini(_entry_hp, max_hp)
+
+
 ## C12: the heal to apply, once per room (0 the second time). A boss room clear heals nothing and
 ## finishes the floor. A dead player (0 HP) isn't healed. The amount is capped at max HP, so
 ## the caller can apply it as it is.
@@ -71,7 +92,8 @@ func report_room_cleared(current_hp: int) -> int:
 		return 0
 	if current_hp <= 0:
 		return 0
-	var heal: int = roundi(_max_hp * _rules.room_clear_heal_fraction)
+	# F-016/C15: the sword's bonus is added to the fraction; the heal is never above max HP.
+	var heal: int = roundi(_max_hp * minf(1.0, _rules.room_clear_heal_fraction + _room_heal_bonus))
 	return maxi(0, mini(heal, _max_hp - current_hp))
 
 

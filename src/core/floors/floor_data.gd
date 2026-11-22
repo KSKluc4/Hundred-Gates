@@ -36,3 +36,13 @@ func validate(rules: FloorTunables) -> PackedStringArray:
 		for error: String in room.validate(rules):
 			errors.append("room %s: %s" % [room.id, error])
 	return errors
+
+
+## F-016/C6: the kill targets of every room that is not the boss room, added up. The chance per
+## kill of the floor's regular drops is derived from this, never written in data.
+func get_regular_kill_count() -> int:
+	var count: int = 0
+	for room: RoomData in rooms:
+		if room != null and not room.is_boss_room:
+			count += room.get_kill_target()
+	return count

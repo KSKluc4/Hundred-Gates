@@ -62,6 +62,9 @@ const TOWER_TUNABLES_PATH: String = "res://data/tunables/tower.tres"  # G5
 const CAMERA_TUNABLES_PATH: String = "res://data/tunables/camera.tres"  # G5
 # F-015/C11
 const SHELL_TUNABLES_PATH: String = "res://data/tunables/shell.tres"  # G5
+# F-016/C4, C5
+const ITEM_TUNABLES_PATH: String = "res://data/tunables/items.tres"  # G5
+const LOOT_CATALOG_PATH: String = "res://data/items/loot_catalog.tres"  # G5
 
 var game: GameTunables = preload(GAME_TUNABLES_PATH)
 var player_combat: PlayerCombatTunables = preload(PLAYER_COMBAT_PATH)
@@ -70,6 +73,8 @@ var floors: FloorTunables = preload(FLOORS_PATH)
 var tower: TowerTunables = preload(TOWER_TUNABLES_PATH)
 var camera: CameraTunables = preload(CAMERA_TUNABLES_PATH)
 var shell: ShellTunables = preload(SHELL_TUNABLES_PATH)
+var items: ItemTunables = preload(ITEM_TUNABLES_PATH)
+var loot_catalog: LootCatalog = preload(LOOT_CATALOG_PATH)
 
 
 ## F-001/C17, F-003/C18: reads a data file from disk, never from the cache. Null if it's gone.
