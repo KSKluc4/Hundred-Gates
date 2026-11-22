@@ -11,7 +11,8 @@ HOW TO START
 HOW TO PLAY
   You start in the town. Walk up into the green gate at the top to enter
   the tower. Clear every room of a floor, then beat its boss.
-  To stop: pause, choose "Quit to title", then "Quit". Or close the window.
+  To stop: pause, choose "Quit to title" and confirm, then "Quit". Or close
+  the window.
 
 CONTROLS (keyboard and mouse)
   Move ........ W A S D or the arrow keys

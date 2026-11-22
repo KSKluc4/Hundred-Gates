@@ -21,13 +21,18 @@ CHECK_SCRIPT="$PROJECT_ROOT/tools/export_check.gd"
 CHECK_TIMEOUT_SECONDS=300
 
 work=""
+build_started=0
 zip_written=0
-# A run that ends without the zip leaves no exe behind either: the exe of a failed run is not a
-# build (CR-2). The zip is written last, and the flag set right after it.
+# A run that started to build and ends without the zip leaves no exe behind: the exe of a failed
+# run is not a build (CR-2). A run that stops before it started (no Godot, no Python) touches
+# nothing in builds/ (N2). The exe goes first, and the temporary folder, which may refuse to go
+# (a file in it still open), cannot stop the trap (N1). The zip is written last, then its flag.
 cleanup() {
-	[ -z "$work" ] || rm -rf "$work"
-	if [ "$zip_written" -ne 1 ]; then
-		rm -f "${PROJECT_ROOT:?}/builds/windows/HundredGates.exe"
+	if [ "$build_started" -eq 1 ] && [ "$zip_written" -ne 1 ]; then
+		rm -f "${PROJECT_ROOT:?}/builds/windows/HundredGates.exe" || true
+	fi
+	if [ -n "$work" ]; then
+		rm -rf "$work" || true
 	fi
 }
 trap cleanup EXIT
@@ -92,8 +97,11 @@ version="$(project_version)" || fail "config/version in project.godot is missing
 zip="$PROJECT_ROOT/builds/HundredGates-$version-windows.zip"
 
 # What an earlier run left is removed first, so a run that stops early leaves no old build (CR-4).
+# From here on this run is a build: the trap removes its exe if it does not reach the zip.
+build_started=1
 rm -f "${PROJECT_ROOT:?}/builds/windows/HundredGates.exe"
 rm -f "${PROJECT_ROOT:?}/builds/HundredGates-$version-windows.zip"
+rm -f "${PROJECT_ROOT:?}/builds/HundredGates-$version-windows.zip.part"
 
 godot_import "$godot" || fail "the import failed (Godot exited with a non-zero code)."
 
@@ -150,7 +158,8 @@ check_status=0
 	XDG_CONFIG_HOME="$(native_path "$work/check_home/config")" \
 	EXPORT_CHECK_SOURCE="$(native_path "$PROJECT_ROOT")" \
 	"${check_timeout[@]+"${check_timeout[@]}"}" "$godot" --headless \
-	--main-pack "$(native_path "$pck")" -s "$(native_path "$CHECK_SCRIPT")" 	-- --no-dev-tools) >"$check_log" 2>&1 || check_status=$?
+	--main-pack "$(native_path "$pck")" -s "$(native_path "$CHECK_SCRIPT")" \
+	-- --no-dev-tools) >"$check_log" 2>&1 || check_status=$?
 check_text="$work/check.txt"
 plain "$check_log" >"$check_text"
 if grep -q '^problem: (f)' "$check_text"; then

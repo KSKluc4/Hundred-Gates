@@ -52,6 +52,8 @@ var _game: Node
 var _source_kill_target: int = -1
 var _started_at_tick: int = 0
 var _floor_entered_at_tick: int = -1
+## What the guard saw: `off` only when the switch read exactly false.
+var _dev_tools_text: String = "not off"
 
 
 func _process(_delta: float) -> bool:
@@ -291,10 +293,18 @@ func _start_game() -> void:
 func _check_dev_tools_are_off() -> void:
 	if not root.has_node(DEV_TOOLS_NODE):
 		_problems.append("problem: (g) the autoload %s is not in the game" % DEV_TOOLS_NODE)
-	elif root.get_node(DEV_TOOLS_NODE).get("enabled"):
-		_problems.append(
-			"problem: (g) the developer tools are on in the check (--no-dev-tools is missing)"
-		)
+	else:
+		var enabled: Variant = root.get_node(DEV_TOOLS_NODE).get("enabled")
+		if typeof(enabled) != TYPE_BOOL:
+			_problems.append(
+				"problem: (g) the developer tools' switch could not be read (got %s)" % str(enabled)
+			)
+		elif enabled:
+			_problems.append(
+				"problem: (g) the developer tools are on in the check (--no-dev-tools is missing)"
+			)
+		else:
+			_dev_tools_text = "off"
 
 
 func _follow_floor() -> void:
@@ -345,7 +355,7 @@ func _check_first_room() -> void:
 		(
 			"info: dev tools %s; Start reached %s; floor %d, %s, kill target %d (source %d), %d ticks"
 			% [
-				"on" if root.get_node(DEV_TOOLS_NODE).get("enabled") else "off",
+				_dev_tools_text,
 				_state_name(flow),
 				FLOOR_NUMBER,
 				room_path.trim_prefix("res://"),

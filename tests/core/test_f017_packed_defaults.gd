@@ -7,8 +7,9 @@ extends GutTest
 ## annotation on its own line, `@export_custom`...), so this test asks the engine, not the text:
 ## `get_property_default_value()` is an Array for those and Nil for a packed constructor, which the
 ## export keeps (CR-3, measured in 4.7.2: the dropped set and this set are the same twelve shapes).
-## Not seen: an inner class (the engine reports no default for its properties), which cannot be a
-## `.tres`'s script anyway.
+## A `@tool` script with an Array default fails this test although the export keeps it (measured in
+## review); the test errs on the safe side. Not seen: an inner class (the engine reports no default
+## for its properties), which cannot be a `.tres`'s script anyway.
 
 const SOURCE_ROOT: String = "res://src"
 const FIRST_PACKED_TYPE: int = TYPE_PACKED_BYTE_ARRAY
