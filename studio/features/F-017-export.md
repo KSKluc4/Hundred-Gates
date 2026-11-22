@@ -1,8 +1,8 @@
 ---
 id: F-017
 title: Export builds — a Windows build for other people, developer tools off (slice 3, third part)
-status: PLAN_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-21
 updated: 2026-11-21
 depends_on: [F-000, F-012, F-015, F-016, D-003, D-014, D-016]
@@ -169,7 +169,7 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 | C3 | **With the switch off, no `debug_*` input action does anything** in the game the shell runs. A test reads every action whose name starts with `debug_` from the InputMap (seven today), so a new one is covered. | No back door |
 | C4 | **With the switch on, everything is as on `main`.** Every existing test passes unedited (the test binary is a debug build). What §2 lists as not developer tools is shown in both states. | No regression |
 | C5 | **`export_presets.cfg`** (committed), exactly: one preset `[preset.0]` with `name="Windows Desktop"`, `platform="Windows Desktop"`, `runnable=true`, `export_filter="all_resources"`, `include_filter=""`, `exclude_filter="tests/*, addons/gut/*, scenes/debug/*"`, `export_path="builds/windows/HundredGates.exe"`, and `[preset.0.options]` with `binary_format/embed_pck=true` and `binary_format/architecture="x86_64"`. No other key: no signing, no custom template, no company name, no absolute path, no personal data. | The file plan review exported with; one file to send |
-| C6 | **`tools/export`** (bash, in the style of `tools/test`; sources `tools/_godot.sh`; imports through `godot_import`): makes `builds/windows/`, runs `--headless --export-release "Windows Desktop"`, and then **checks**, failing with a non-zero exit and one line saying why, unless: (a) Godot exited 0 and its stdout and stderr together hold no line with `ERROR` (a missing template is reported with Godot's own line); (b) the exe ends with an embedded pack (the `GDPC` trailer) whose file table is not empty; (c) **the table is complete:** every `.gd`, `.tres` and `.tscn` file the project has under `src/` and `data/`, and `scenes/main.tscn`, has an entry (`<path>` or `<path>.remap`); (d) **the table holds nothing else:** its top-level names are exactly `.godot`, `data`, `scenes`, `src` and `project.binary`, and under `scenes` only `main.tscn`; (e) on Windows, the exe run with `--headless --quit-after 300`, with `APPDATA` pointing at a fresh temporary folder, exits 0 and prints no line with `ERROR` on stdout or stderr (elsewhere this check is skipped with a printed line saying so). Then it writes `builds/HundredGates-<version>-windows.zip` (deflated) holding exactly `HundredGates.exe` and `README.txt`, `<version>` read from `project.godot`'s `config/version`, and prints the zip's path and size. It uses no network and publishes nothing. | Lucas: a zip on this machine; a check that cannot be passed by a build that cannot play (plan review PR-5) |
+| C6 | **`tools/export`** (bash, in the style of `tools/test`; sources `tools/_godot.sh`; imports through `godot_import`): makes `builds/windows/`, runs `--headless --export-release "Windows Desktop"`, and then **checks**, failing with a non-zero exit and one line saying why, unless: (a) Godot exited 0 and its stdout and stderr together hold no line with `ERROR` (a missing template is reported with Godot's own line); (b) the exe ends with an embedded pack (the `GDPC` trailer) whose file table is not empty; (c) **the table is complete:** every `.gd`, `.tres` and `.tscn` file the project has under `src/` and `data/`, and `scenes/main.tscn`, has an entry (`<path>` or `<path>.remap`); (d) **the table holds nothing else:** its top-level names are exactly `.godot`, `data`, `scenes`, `src` and `project.binary`, and under `scenes` only `main.tscn` (listed as `main.tscn` or `main.tscn.remap`); (e) on Windows, the exe run with `--headless --quit-after 300`, with `APPDATA` pointing at a fresh temporary folder, exits 0 and prints no line with `ERROR` on stdout or stderr (elsewhere this check is skipped with a printed line saying so). Then it writes `builds/HundredGates-<version>-windows.zip` (deflated) holding exactly `HundredGates.exe` and `README.txt`, `<version>` read from `project.godot`'s `config/version`, and prints the zip's path and size. It uses no network and publishes nothing. | Lucas: a zip on this machine; a check that cannot be passed by a build that cannot play (plan review PR-5) |
 | C7 | **`README.txt`** for the player, kept at `tools/export_readme.txt` and copied into the zip: how to start (extract the whole zip first, then run `HundredGates.exe`; Windows may say it protected the PC because the file is unsigned: "More info", then "Run anyway"; on a managed PC that choice may be missing), the controls for keyboard and mouse and for a gamepad **as `project.godot`'s input map has them** (move, aim, attack, dodge, interact, pause), that progress is not saved yet, that the look is placeholder, and where the settings file is. No name, e-mail or other personal detail. Plain ASCII, lines of at most 78 characters. | A stranger starts it without Lucas beside them |
 | C8 | **`builds/` is ignored by git** (`.gitignore`). No built file is ever committed. | A build is not source |
 | C9 | **Portable bash.** The script runs on this Windows machine in Git Bash and is written to run on macOS. The Python it uses for the pack table and the zip is a small file of its own, `tools/export_pack.py` (standard library only); the interpreter is the first of `.venv/Scripts/python.exe`, `.venv/bin/python`, `python3`, `python` **that runs `-c ""` successfully**. No `zip` command, no PowerShell. Paths with spaces work. | The project's tools are bash (F-000); PR-9 |
@@ -189,8 +189,10 @@ running the game from the project behaves exactly as today; `gdlint`, `gdformat 
 - [ ] AC2: with the switch off, in the real `main.tscn`: the overlay is hidden at start though
   `debug_overlay_visible_on_start` is true, and `debug_toggle` leaves it hidden; on a floor R
   does not restart the room and N does not skip it, in town N clears no floor, **also in a
-  `Game` built with `debug_keys_enabled` true**; every enemy's debug text is hidden (after a
-  frame and after a hit) while its body, bar, telegraph and damage numbers are as before.
+  `Game` built with `debug_keys_enabled` true**; every enemy's debug text is hidden, after a
+  frame and **at once after a kill, before the next frame, in a room without reinforcements**
+  (the second place that shows it runs on a death, and the body stays drawn there), while its
+  body, bar, telegraph and damage numbers are as before.
 - [ ] AC3: with the switch off, for **every** action in the InputMap whose name starts with
   `debug_` (read from the InputMap in the test; at least seven), pressed **two ways** (each
   event bound to it sent pressed and then released between two ticks, and an
@@ -204,15 +206,17 @@ running the game from the project behaves exactly as today; `gdlint`, `gdformat 
 - [ ] AC4: with the switch on, each thing AC2 lists works as on `main` (overlay shown and
   toggled, R and N act, the text shown), and the whole suite passes with no existing test file
   edited.
-- [ ] AC5 (the lead's run, in §8): the game started from the project with a script that
-  prints `DevTools.enabled`, once as `godot --path . -s <script>` (true) and once as
+- [ ] AC5 (the lead's run, in §8): the game started from the project with a script kept
+  outside the repository that prints `root.get_node("DevTools").enabled` (a `-s` script
+  cannot name an autoload), once as `godot --path . -s <script>` (true) and once as
   `godot --path . -s <script> -- --no-dev-tools` (false).
 - [ ] AC6: `tools/export` on this machine ends with exit code 0 and a zip that holds exactly
   `HundredGates.exe` and `README.txt`. **Each check of C6 is seen failing once**, in a scratch
   copy, with the script's line in §8: (a) a preset for an architecture whose template is not
-  installed; (b) an exe with its trailer cut off; (c) a preset that also excludes
-  `data/floors/*`; (d) a preset with an empty exclude filter; (e) a build whose `main.tscn`
-  names a script that is not there.
+  installed (arm64); (b) a preset with `binary_format/embed_pck=false` (the exe then has no
+  trailer); (c) a preset that also excludes `data/floors/*`; (d) a preset whose filter lacks
+  `tests/*`; (e) a script whose `_ready()` loads a path that does not exist (the export is
+  clean and the table complete; the exe prints `ERROR` and exits 0).
 - [ ] AC7: the exported `HundredGates.exe`, started in a window on this machine, shows the
   title without the FPS text; after Start, the town without it; a game can be started and a
   floor entered; pressing F3, R and N changes nothing; an enemy on floor 1 has no text under
@@ -338,11 +342,58 @@ the version is read from `project.godot`; a path with a space works.
 the exe (AC7); SmartScreen and antivirus on another PC (on this one Defender is on and the exe
 ran about fifteen times); whether a release export needs the debug template.
 
+<!-- review-round: 2 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** 23c8a72 · **Date:** 2026-11-21 · **Verdict:** APPROVE_WITH_NOTES ·
+**By:** Auditor (lead, D-014)
+
+The same two reviewers on the amended spec. Both: APPROVE_WITH_NOTES.
+
+**Round 1 findings:** PR-1, PR-3 to PR-9 ✔ resolved; PR-2 partly (PR-10).
+
+**Measured again on the export side:** with C5's exact text the export exits 0 with no `ERROR`
+line and the same table of 405 files; the exe's run prints no `ERROR` on stdout or stderr.
+Check (c) holds for all 201 files (a `.gd` is listed as `x.gd.remap` and `x.gdc`, a `.tres` or
+`.tscn` as `<path>.remap`; `.uid` files are not in the table and are not asked for; nothing
+under `src/` or `data/` is legitimately left out). Check (d) holds: the top level is exactly
+`.godot`, `data`, `project.binary`, `scenes`, `src`.
+
+### PR-10 🟡 AC5's script cannot name the autoload  ·  AC5
+A `-s` script holding `DevTools.enabled` does not compile (`Identifier not found`); reading
+`root.get_node("DevTools").enabled` works (true, and false with `-- --no-dev-tools`).
+> **Planner reply (lead):** accepted (AC5).
+
+### PR-11 🟡 AC2's "after a hit" does not reach the second place  ·  AC2, `src/entities/enemies/enemy.gd:283`
+That line runs on a death, an arrival and a restore, not on a hit, and the every-frame line
+overwrites it: a check after a frame passes with it ungated.
+> **Planner reply (lead):** accepted: at once after a kill, before the next frame, in a room
+> without reinforcements (AC2).
+
+### PR-12 🟡 Two of AC6's five failures cannot be produced as written  ·  AC6
+An empty exclude filter fails at check (a), not (d): with GUT included the export itself
+prints `ERROR: Cannot set object script`. A `main.tscn` that names a missing script also
+fails at (a), and the exe built from it prints nothing (the reference is dropped at export).
+What works: a filter that lacks only `tests/*` (clean export, `tests` at the top level), and a
+script whose `_ready()` loads a path that does not exist (clean export, complete table, the exe
+prints two `ERROR` lines and exits 0).
+> **Planner reply (lead):** accepted (AC6 d, e).
+
+### PR-13 🔵 How to cut the trailer; the main scene's entry  ·  AC6 (b), C6 (d)
+`binary_format/embed_pck=false` goes through the whole script and gives an exe without the
+trailer. The entry under `scenes` is `main.tscn.remap`.
+> **Planner reply (lead):** accepted (AC6 b, C6 d).
+
+**Checked and found sound:** AC3 can be built with the helpers that exist (only "every bound
+event" needs a new helper in the new test file); reading `DevTools.enabled` in scenes built
+outside `main.tscn` works under GUT (the autoload is there and true); a static call through
+the autoload compiles with the project's strict settings; AC6 (a) and (c) are producible as
+written (exit 1 with Godot's own line; 20 files missing).
+
 ---
 
 ## 8. Implementation Log  ·  _Builder_
 
-**Started:** —  ·  **Branch:** `feature/F-017-export`
+**Started:** 2026-11-21  ·  **Branch:** `feature/F-017-export`
 
 ### Progress
 - [ ] T1
