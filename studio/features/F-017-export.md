@@ -2,7 +2,7 @@
 id: F-017
 title: Export builds — a Windows build for other people, developer tools off (slice 3, third part)
 status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-21
 updated: 2026-11-21
 depends_on: [F-000, F-012, F-015, F-016, D-003, D-014, D-016]
@@ -232,7 +232,7 @@ running the game from the project behaves exactly as today; `gdlint`, `gdformat 
 - [ ] AC9: `git status` is clean after `tools/export` (nothing under `builds/` is seen by git);
   `export_presets.cfg` is exactly C5's; the exe's run leaves nothing in the real user folder.
 - [ ] AC11: the test of C12 fails when `rows` or `reinforcements` is declared with `= []`
-  again, and names the file and line; on the fixed code every `.tres` under `data/` is equal
+  again, and names the file and the property; on the fixed code every `.tres` under `data/` is equal
   in the pack and on disk (the count is in §8) and the exe starts a game.
 - [ ] AC10: `gdlint src tests`, `gdformat --check src tests`, `tools/check_core_purity` and
   the headless boot are clean; the full suite passes.
@@ -421,13 +421,17 @@ written (exit 1 with Godot's own line; 20 files missing).
   implementer showed the new failures, each in a scratch copy, exit 1: `rows` declared `= []`
   again (16 differences: the 12 rooms, the 3 boss rooms and the town); `reinforcements` alone
   (12 differences); a floor that names no rooms (the data equals its source, Start does not
-  reach `PLAYING`). `test_f017_packed_defaults.gd` names both lines of `room_data.gd` when
-  `= []` is put back.
+  reach `PLAYING`). `test_f017_packed_defaults.gd` names both properties of `room_data.gd`
+  when `= []` is put back (file and line at first; file and property since the test asks the
+  engine, code review CR-9).
 - [x] Code review round 1 — CR-1 to CR-6 cd4b958; CR-7 answered. Lead's run of `tools/export`
   on it: exit 0, `dev tools off; Start reached PLAYING … kill target 6 (source 6)`, 90 data
   files equal, a zip of 38149330 bytes. Full suite on cd4b958: 185 scripts, 3155 tests, all passing
   (1183 s); `gdlint`, `gdformat --check`, core purity and the headless boot clean; `git status`
   clean.
+- [x] Code review round 2 — APPROVE_WITH_NOTES from both; CR-8, CR-10, CR-11, CR-12 c1dca94; CR-9
+  reworded. The exe of that build was started in a window once more with real key presses
+  (ten screenshots, its log without an `ERROR` line): the same as under T3.
 - [x] T3 — the lead's runs. **AC5:** `DevTools.enabled = true  user args = []` and
   `DevTools.enabled = false  user args = ["--no-dev-tools"]`, from `godot --headless --path .
   -s <script>` without and with `-- --no-dev-tools`. **AC7, the rebuilt exe in a window**
@@ -505,6 +509,9 @@ written (exit 1 with Godot's own line; 20 files missing).
   difference.
 
 ### Things the Auditor should look at closely
+- A fourth developer text is in main's tree, `FloorDebugLabel` (`src/world/floors/
+  floor_scene.tscn`): `Game` hides it in both states (`src/world/game.gd:323`, held by
+  F-012's test), so the switch does not need to.
 - **What the build's checks do not prove (code review CR-7):** (e) is "the exe exits 0 and
   prints no ERROR", nothing more; (g) starts a game and runs floor 1's first room for 120
   ticks with the editor binary on the pack, so an error on a later tick, another floor or
@@ -663,6 +670,79 @@ and its controls match the input map.
 **Not checked by either:** macOS; the exe on another PC; a gamepad; Python 3.9; a real
 symlink to the script; a machine slow enough for the 300 s limit; why the engine drops the
 property (only that it does).
+
+<!-- review-round: 2 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** cd4b958 (the fixes: the diff `e4623ef..cd4b958` under `tests` and `tools`)
+
+**Date:** 2026-11-22 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+The same two reviewers on new private copies of `cd4b958`. Both: APPROVE_WITH_NOTES, no 🔴.
+
+**Round 1 findings:** CR-1, CR-3, CR-4, CR-5, CR-6 ✔ resolved; CR-2 partly (CR-8); CR-7 noted.
+- CR-1: with the line that fails only when the switch is off, `tools/export` exits 1 (1,632
+  `ERROR` lines), no zip, no exe; with the argument dropped from the script the check itself
+  says the developer tools are on, exit 1; with the autoload renamed, exit 1.
+- CR-3: 26 real scripts under `src/`, each with a `.tres` or a scene holding a value, exported
+  and read back: the export dropped 16 and the test names all 16 (among them `@export_storage`,
+  a property with a setter, `[] as Array[String]`, `[] + []`, a `Node` script in a scene, a
+  base script); it kept 9 and the test passes 8 of them. The ninth is a false alarm on the
+  safe side: a `@tool` script with `= []` is kept by the export and fails the test. Nothing is
+  left under `user://`; the file takes 1.8 s.
+- CR-4: a fake Godot exiting 3 on `--import` gives one `error:` line, exit 1, the old exe and
+  zip gone; all 22 crafted packs end in one line and exit 1; without `cygpath` the last line
+  prints the path as before.
+- CR-6: the scratch held polled reader is killed, only by the held way; the diff to the test
+  only adds; a leaked `false` still shows (11 tests fail without the restore).
+- A clean run: exit 0, seven lines, the new one `dev tools off; Start reached PLAYING; …`, 407
+  entries, 90 data files equal, the zip holding the two names.
+
+### CR-8 🟡 The trap skips the exe when the temp folder cannot be removed  ·  `tools/export:28-30`
+With another process holding the temp folder, `set -e` ended the trap at the failed `rm -rf`
+and the failed exe stayed (CR-2's own case, by another road).
+> **Builder reply (lead):** fixed in c1dca94: the exe is removed first and the temp folder's
+> removal cannot stop the trap. Shown with the folder made busy: exit 1, `builds/windows`
+> empty (the old script left the exe).
+
+### CR-9 🟡 AC11 and §8 still say the test names the line  ·  §5, §8
+The rewritten test prints the file and the property, not a line number.
+> **Builder reply (lead):** reworded in AC11 and in §8's T4 entry with this round.
+
+### CR-10 🔵 A run that stops before it builds deletes the previous good exe and keeps its zip  ·  `tools/export`
+`GODOT_BIN` unset or wrong: the `error:` line, exit 1, the good exe gone, its zip kept.
+> **Builder reply (lead):** fixed in c1dca94: the trap removes the exe only once this run has
+> started to build. Shown: both files still there and byte-identical.
+
+### CR-11 🔵 The guard reads a renamed property as "off"  ·  `tools/export_check.gd`
+With `enabled` renamed in the game and the argument dropped, the check printed `dev tools
+off` and passed with the tools on (`get()` gave null).
+> **Builder reply (lead):** fixed in c1dca94: anything but an exact `false` is a problem
+> ("the developer tools' switch could not be read"). Shown: exit 1.
+
+### CR-12 🔵 Smaller points
+The README's "choose Quit to title, then Quit" skips the question in between, whose focus is
+on Cancel. A stop during the zip leaves a 19.8 MB `.part` until the next good run. A stray tab
+in the script. The test's `cannot be loaded` branch may be dead (a script that does not parse
+still loads; GUT's error tracking fails the test). `FloorDebugLabel` is noted in §9 only.
+> **Builder reply (lead):** the README says "and confirm" (c1dca94); the `.part` file is
+> removed with the old exe and zip; the tab is gone; the test's header says a `@tool` script
+> is a false alarm on the safe side. The dead branch stays: harmless. `FloorDebugLabel` is in
+> §8 now.
+
+**Tried, held (attacker):** a failing zip step removes the exe by design; four overlapping
+pairs of runs: one fails each time and the zip left passes the checks; a stop during the
+start check leaves nothing; only `dev_tools.gd` reads user arguments, so the argument changes
+nothing else; every `rm` of the trap uses a guarded root and a fixed name; the real user
+folders are unchanged.
+
+**Not checked:** a real Ctrl-C in a terminal; the gate's colour on screen (the lead's
+screenshots: a dim green band); macOS; the exe on another PC; packed types beyond String and
+Int32 in an export.
+
+**After round 2** (c1dca94): the lead's run of `tools/export`: exit 0, every check's line as
+above, a zip of 38149334 bytes holding `HundredGates.exe` and `README.txt`; the feature's three
+test files, 30 tests, all passing. Only `tools/` files, the README and a comment in one test
+changed since the full suite ran on cd4b958.
 
 ---
 
