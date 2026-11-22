@@ -1,8 +1,8 @@
 ---
 id: F-017
 title: Export builds — a Windows build for other people, developer tools off (slice 3, third part)
-status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-21
 updated: 2026-11-21
 depends_on: [F-000, F-012, F-015, F-016, D-003, D-014, D-016]
@@ -174,7 +174,7 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 | C8 | **`builds/` is ignored by git** (`.gitignore`). No built file is ever committed. | A build is not source |
 | C9 | **Portable bash.** The script runs on this Windows machine in Git Bash and is written to run on macOS. The Python it uses for the pack table and the zip is a small file of its own, `tools/export_pack.py` (standard library only); the interpreter is the first of `.venv/Scripts/python.exe`, `.venv/bin/python`, `python3`, `python` **that runs `-c ""` successfully**. No `zip` command, no PowerShell. Paths with spaces work. | The project's tools are bash (F-000); PR-9 |
 | C11 | **The exported data is checked against its source, and a game is started from it** (added after the lead's first run of the exe, DEV-1). `tools/export` cuts the embedded pack out of the exe into a temporary `.pck` and runs the **editor binary** on it (`--headless --main-pack <pck> -s tools/export_check.gd`), which: **(f)** loads every `.tres` under `data/` from the pack and from the file on disk and compares them property by property (every stored property; a resource kept in a file of its own by its path; a resource written inline, recursively); **(g)** instances `scenes/main.tscn` from the pack, chooses Start, and requires the flow to reach `PLAYING` with no setup error, then enters floor 1 and runs 120 physics ticks with the room's kill target equal to the source room's. It prints one line per problem and the script fails on any, or on any `ERROR` line. The release exe cannot do this itself: it takes no script, and that is not changed. | A build that shows the title is not a build that plays; Godot's export can change data silently |
-| C12 | **No `@export` property of a packed-array type is declared with the default `[]`.** Godot 4.7.2's export (which converts `.tres` to binary in the editor) drops such a property, though the game run from the project reads it: `RoomData.rows` and `RoomData.reinforcements` were declared so and came out empty in the exe. Both are declared with their packed constructor (`PackedStringArray()`, `PackedInt32Array()`), and a test reads every `.gd` under `src/` and fails on the pattern. | The cause of DEV-1 |
+| C12 | **No stored property of a packed-array type has an Array as its default** (`= []`, `= Array()`, `= ["#"]`, however the line is written). Godot 4.7.2's export (which converts `.tres` to binary in the editor) drops such a property, though the game run from the project reads it: `RoomData.rows` and `RoomData.reinforcements` were declared so and came out empty in the exe. Both are declared with their packed constructor (`PackedStringArray()`, `PackedInt32Array()`), and a test asks the engine for the default of every such property of every script under `src/` (reworded after code review CR-3; the first wording said only `= []`). | The cause of DEV-1 |
 | C10 | **Tests** (GUT, the debug binary): a test sets `DevTools.enabled` false and restores it in `after_each` (the pattern used for `Tunables`). No existing test file is edited. | C4 |
 
 **Must not break:** every F-001 to F-016 behaviour; the whole suite (3,125 tests on `main`);
@@ -423,6 +423,11 @@ written (exit 1 with Godot's own line; 20 files missing).
   (12 differences); a floor that names no rooms (the data equals its source, Start does not
   reach `PLAYING`). `test_f017_packed_defaults.gd` names both lines of `room_data.gd` when
   `= []` is put back.
+- [x] Code review round 1 — CR-1 to CR-6 cd4b958; CR-7 answered. Lead's run of `tools/export`
+  on it: exit 0, `dev tools off; Start reached PLAYING … kill target 6 (source 6)`, 90 data
+  files equal, a zip of 38149330 bytes. Full suite on cd4b958: 185 scripts, 3155 tests, all passing
+  (1183 s); `gdlint`, `gdformat --check`, core purity and the headless boot clean; `git status`
+  clean.
 - [x] T3 — the lead's runs. **AC5:** `DevTools.enabled = true  user args = []` and
   `DevTools.enabled = false  user args = ["--no-dev-tools"]`, from `godot --headless --path .
   -s <script>` without and with `-- --no-dev-tools`. **AC7, the rebuilt exe in a window**
@@ -474,7 +479,9 @@ written (exit 1 with Godot's own line; 20 files missing).
   — **What changes:** C11, C12, AC11, two more failures in AC6, task T4, `tools/*` in the
   preset's filter. `src/core/floors/room_data.gd` (F-011's file) changes in two default
   values. — **Impact:** none on the game run from the project (an empty packed array
-  either way). Every build made before this would have been unplayable.
+  either way). Every build made before this would have been unplayable. **Wider than first
+  written (code review CR-3):** the export drops a packed property whose default is any
+  Array expression, not only `[]`.
 
 ### Assumptions made (small, reversible)
 - ASSUMPTION-1 (T1): the fight twins of AC3 compare the session's snapshot without the loot
@@ -498,6 +505,16 @@ written (exit 1 with Godot's own line; 20 files missing).
   difference.
 
 ### Things the Auditor should look at closely
+- **What the build's checks do not prove (code review CR-7):** (e) is "the exe exits 0 and
+  prints no ERROR", nothing more; (g) starts a game and runs floor 1's first room for 120
+  ticks with the editor binary on the pack, so an error on a later tick, another floor or
+  only in the release exe is not seen (the lead's window run of the exe is what covers the
+  exe itself); (f) compares `.tres` under `data/`, not scenes, and would miss a typed against
+  an untyped array, a `String` against a `StringName` dictionary key and metadata that is
+  only in the pack. No GUT test holds `DevTools._init()` to the process: AC5's two runs do.
+  Builds are not byte-identical (the conversion cache is rebuilt every run; the zip was
+  38,149,220 to 38,149,330 bytes over the good runs). Two runs at once: one fails with a
+  line; there is no lock.
 - **Not done by anyone:** the zip on another PC (SmartScreen, antivirus, a machine without
   this one's graphics driver); a gamepad on the exe; macOS for the script (written to be
   portable, never run there); Python 3.9 (3.12 ran).
@@ -552,10 +569,16 @@ line that fails only when the switch is off (a missing node under `if not DevToo
 in `enemy.gd`), `tools/export` exits 0 and writes the zip; the same pack with `--
 --no-dev-tools` gives 168 `ERROR` lines. On the good pack with that argument the check still
 passes (`enabled=false`, 90 equal, a game started).
+> **Builder reply (lead):** fixed in cd4b958: the editor run gets `-- --no-dev-tools`, and the
+> check script reads the switch itself and reports a problem when it is on, so the argument
+> cannot be dropped unseen; its line now starts `dev tools off;`. With the reviewer's failing
+> line in a scratch copy `tools/export` exits 1 (1,578 `ERROR` lines).
 
 ### CR-2 🟡 A failed run leaves the failed exe where the good one goes  ·  `tools/export:93`
 After check (f) fails there is no zip, but `builds/windows/HundredGates.exe` with its empty
 rooms stays, at the path §8 names as "the exe".
+> **Builder reply (lead):** fixed in cd4b958: the exit trap removes the exe unless the zip was
+> written. Shown with two failing scratch runs: `builds/windows` empty, no zip.
 
 ### CR-3 🟡 The cause of DEV-1 is wider than `= []`, and the test sees only `= []`  ·  `tests/core/test_f017_packed_defaults.gd:8-9`, C12, §8 DEV-1
 The export drops a packed `@export` whose default is **any Array expression**: measured with
@@ -567,6 +590,15 @@ class) and missed 6 (the annotation on its own line, `@export_custom`, a literal
 lines, `Array()`, a non-empty literal, a `\` continuation). The engine can be asked instead:
 `script.get_property_default_value(name)` is an Array for the dropped shapes and Nil for a
 packed constructor.
+> **Builder reply (lead):** fixed in cd4b958, and the cause is reworded in C12 and under DEV-1.
+> The test now asks the engine: for every script under `src`, a stored property of a packed
+> array type whose `get_property_default_value` is an Array fails it. Measured on 22 shapes,
+> each also exported: the 12 that the export drops are exactly the 12 whose default is an
+> Array (`[]`, `Array()`, a non-empty literal, a continued line, the annotation on its own
+> line, `@export_custom`, a literal over two lines, and five other packed types); a packed
+> constructor, no default at all and `[] as Packed…` are kept and pass. The reviewer's six
+> missed shapes all fail it in a scratch file. The text scan is gone: the one thing it saw
+> and the engine does not is an inner class, which cannot be a `.tres`' script.
 
 ### CR-4 🔵 The script's edges  ·  `tools/export:85-94, 192`, `tools/export_pack.py:102-117`
 A run that stops before the two `rm -f` keeps the previous zip, and a failed import gives no
@@ -574,15 +606,28 @@ A run that stops before the two `rm -f` keeps the previous zip, and a failed imp
 crafted packs give a traceback instead of one line (a directory offset of 2^64 − 1; a name
 that is not UTF-8). The zip's path is printed in Git Bash form (`/c/Users/...`), which
 Explorer cannot open.
+> **Builder reply (lead):** fixed in cd4b958: the old exe and zip are removed before the import;
+> a failed import is `error: the import failed`, exit 1 (it was exit 3 with no line and the
+> old zip kept); the pack reader checks the table's start and count against the pack and
+> turns the two tracebacks into its one line; the zip's path is printed through `cygpath -w`
+> where that exists.
 
 ### CR-5 🔵 The README  ·  `tools/export_readme.txt:16, 25`
 `interact` is read only by the menus, so "Interact .... E" does nothing in play. Nothing
 says how to enter the tower or how to quit.
+> **Builder reply (lead):** fixed in cd4b958: the two `Interact` lines are gone and a HOW TO PLAY
+> block says where the gate is and how to stop. Each sentence was checked against
+> `town.tres` and `shell_menus.gd`. Two things it leaves out: the gate's green is faint, and
+> "Quit to title" asks once more before it goes. Still Lucas's to reword (§10 Q1).
 
 ### CR-6 🔵 "A new one is covered" is only partly true  ·  `tests/scenes/test_f017_dev_tools.gd:75-88`
 A scratch action with an ungated reader is caught when read by event or by a polled
 just-pressed; a polled, **held** `Input.is_action_pressed` survives, because the tap is
 released before any tick. The list of actions is sorted by StringName pointer, not by name.
+> **Builder reply (lead):** fixed in cd4b958: a third way holds every bound event across two
+> physics frames, in all four places; the list is ordered by name. With a polled, held reader
+> added to the overlay in a scratch copy the old test passes (14 of 14) and the new one
+> fails (5 of 14).
 
 ### CR-7 🔵 For the record
 (a) No GUT test holds `_init()`'s wiring to the process: `enabled = true` passes both test
@@ -598,6 +643,8 @@ run leaves one empty folder in the temp directory. (h) The comparison of check (
 typed against an untyped array, a `String` against a `StringName` dictionary key and metadata
 that is only in the pack, and would raise a false alarm on a NaN inside a `Vector2` (the data
 has none).
+> **Builder reply (lead):** noted in §8, "look at closely". (b) stays as it is: the label is
+> hidden by the game in both states and F-012's test holds that line.
 
 **Checked and found sound:** C1 to C4 as written, quoted line by line; `project.godot`'s one
 line is its only change; no feature tag, hidden key, pass-down or stripped scene (§3); no key
