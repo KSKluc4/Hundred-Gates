@@ -9,7 +9,8 @@ const GAME_VERSION_SETTING: String = "application/config/version"
 
 
 func _ready() -> void:
-	visible = Tunables.game.debug_overlay_visible_on_start
+	# F-017/C2: with the developer tools off it starts hidden, whatever the tunable says.
+	visible = DevTools.enabled and Tunables.game.debug_overlay_visible_on_start
 
 
 func _process(_delta: float) -> void:
@@ -18,7 +19,8 @@ func _process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed(TOGGLE_ACTION):
+	# F-017/C2: with the developer tools off it is deaf to the toggle.
+	if DevTools.enabled and event.is_action_pressed(TOGGLE_ACTION):
 		visible = not visible
 
 

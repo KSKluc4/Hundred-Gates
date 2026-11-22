@@ -99,7 +99,8 @@ func _physics_process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not debug_keys_enabled or _death_reported:
+	# F-017/C2: the switch wins over `debug_keys_enabled`.
+	if not (DevTools.enabled and debug_keys_enabled) or _death_reported:
 		return  # F-012/C11; C5 (CR-4): after the death N and R do nothing either.
 	if event.is_action_pressed(RESET_ACTION):
 		restart_room()

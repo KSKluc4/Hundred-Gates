@@ -158,9 +158,16 @@ func get_data_path() -> String:
 
 
 func refresh_view() -> void:
-	_debug_label.visible = is_body_drawn()  # F-014/C11. Not the node's: it holds the numbers.
+	# F-014/C11. Not the node's: it holds the numbers.
+	_debug_label.visible = _is_debug_text_shown()
 	_debug_label.text = get_debug_text()
 	queue_redraw()
+
+
+## F-017/C2: the text under the enemy is a developer tool: shown only with the switch on, and then
+## whenever the body is drawn. Both places that show it ask this.
+func _is_debug_text_shown() -> bool:
+	return DevTools.enabled and is_body_drawn()
 
 
 func get_debug_text() -> String:
@@ -280,7 +287,7 @@ func _sync_body() -> void:
 	var is_absent: bool = state == EnemyLogic.State.DEAD or state == EnemyLogic.State.WAITING
 	collision_layer = 0 if is_absent else _live_layer
 	collision_mask = 0 if is_absent else _live_mask
-	_debug_label.visible = is_body_drawn()
+	_debug_label.visible = _is_debug_text_shown()
 	var current: EnemyData = logic.get_data()
 	if current != null:
 		var shape: CircleShape2D = _collision_shape.shape
