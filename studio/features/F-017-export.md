@@ -168,11 +168,13 @@ Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
 | C2 | **The switch is read where the tool is.** `DebugOverlay`: hidden at start and deaf to `debug_toggle` when the switch is off, whatever `debug_overlay_visible_on_start` says. `FloorScene` and `TownScene`: a debug key acts only when `DevTools.enabled and debug_keys_enabled` (**the switch wins**: a `Game` built with its keys on still has none when the switch is off). `Enemy`: its debug text is shown only when the switch is on, in both places that show it. `Shell` and `Game` are not changed. | Lucas: all off in a build; plan review PR-1 |
 | C3 | **With the switch off, no `debug_*` input action does anything** in the game the shell runs. A test reads every action whose name starts with `debug_` from the InputMap (seven today), so a new one is covered. | No back door |
 | C4 | **With the switch on, everything is as on `main`.** Every existing test passes unedited (the test binary is a debug build). What §2 lists as not developer tools is shown in both states. | No regression |
-| C5 | **`export_presets.cfg`** (committed), exactly: one preset `[preset.0]` with `name="Windows Desktop"`, `platform="Windows Desktop"`, `runnable=true`, `export_filter="all_resources"`, `include_filter=""`, `exclude_filter="tests/*, addons/gut/*, scenes/debug/*"`, `export_path="builds/windows/HundredGates.exe"`, and `[preset.0.options]` with `binary_format/embed_pck=true` and `binary_format/architecture="x86_64"`. No other key: no signing, no custom template, no company name, no absolute path, no personal data. | The file plan review exported with; one file to send |
-| C6 | **`tools/export`** (bash, in the style of `tools/test`; sources `tools/_godot.sh`; imports through `godot_import`): makes `builds/windows/`, runs `--headless --export-release "Windows Desktop"`, and then **checks**, failing with a non-zero exit and one line saying why, unless: (a) Godot exited 0 and its stdout and stderr together hold no line with `ERROR` (a missing template is reported with Godot's own line); (b) the exe ends with an embedded pack (the `GDPC` trailer) whose file table is not empty; (c) **the table is complete:** every `.gd`, `.tres` and `.tscn` file the project has under `src/` and `data/`, and `scenes/main.tscn`, has an entry (`<path>` or `<path>.remap`); (d) **the table holds nothing else:** its top-level names are exactly `.godot`, `data`, `scenes`, `src` and `project.binary`, and under `scenes` only `main.tscn` (listed as `main.tscn` or `main.tscn.remap`); (e) on Windows, the exe run with `--headless --quit-after 300`, with `APPDATA` pointing at a fresh temporary folder, exits 0 and prints no line with `ERROR` on stdout or stderr (elsewhere this check is skipped with a printed line saying so). Then it writes `builds/HundredGates-<version>-windows.zip` (deflated) holding exactly `HundredGates.exe` and `README.txt`, `<version>` read from `project.godot`'s `config/version`, and prints the zip's path and size. It uses no network and publishes nothing. | Lucas: a zip on this machine; a check that cannot be passed by a build that cannot play (plan review PR-5) |
+| C5 | **`export_presets.cfg`** (committed), exactly: one preset `[preset.0]` with `name="Windows Desktop"`, `platform="Windows Desktop"`, `runnable=true`, `export_filter="all_resources"`, `include_filter=""`, `exclude_filter="tests/*, addons/gut/*, scenes/debug/*, tools/*"` (`tools/*` since the lead's first exe run, DEV-1: a script lives there now), `export_path="builds/windows/HundredGates.exe"`, and `[preset.0.options]` with `binary_format/embed_pck=true` and `binary_format/architecture="x86_64"`. No other key: no signing, no custom template, no company name, no absolute path, no personal data. | The file plan review exported with; one file to send |
+| C6 | **`tools/export`** (bash, in the style of `tools/test`; sources `tools/_godot.sh`; imports through `godot_import`): makes `builds/windows/`, runs `--headless --export-release "Windows Desktop"`, and then **checks**, failing with a non-zero exit and one line saying why, unless: (a) Godot exited 0 and its stdout and stderr together hold no line with `ERROR` (a missing template is reported with Godot's own line); (b) the exe ends with an embedded pack (the `GDPC` trailer) whose file table is not empty; (c) **the table is complete:** every `.gd`, `.tres` and `.tscn` file the project has under `src/` and `data/`, and `scenes/main.tscn`, has an entry (`<path>` or `<path>.remap`); (d) **the table holds nothing else:** its top-level names are exactly `.godot`, `data`, `scenes`, `src` and `project.binary`, and under `scenes` only `main.tscn` (listed as `main.tscn` or `main.tscn.remap`); (e) on Windows, the exe run with `--headless --quit-after 300`, with `APPDATA` pointing at a fresh temporary folder, exits 0 and prints no line with `ERROR` on stdout or stderr (elsewhere this check is skipped with a printed line saying so). **(f) the pack's data is the source's** and **(g) a game starts from the pack** (C11). Then it writes `builds/HundredGates-<version>-windows.zip` (deflated) holding exactly `HundredGates.exe` and `README.txt`, `<version>` read from `project.godot`'s `config/version`, and prints the zip's path and size. It uses no network and publishes nothing. | Lucas: a zip on this machine; a check that cannot be passed by a build that cannot play (plan review PR-5) |
 | C7 | **`README.txt`** for the player, kept at `tools/export_readme.txt` and copied into the zip: how to start (extract the whole zip first, then run `HundredGates.exe`; Windows may say it protected the PC because the file is unsigned: "More info", then "Run anyway"; on a managed PC that choice may be missing), the controls for keyboard and mouse and for a gamepad **as `project.godot`'s input map has them** (move, aim, attack, dodge, interact, pause), that progress is not saved yet, that the look is placeholder, and where the settings file is. No name, e-mail or other personal detail. Plain ASCII, lines of at most 78 characters. | A stranger starts it without Lucas beside them |
 | C8 | **`builds/` is ignored by git** (`.gitignore`). No built file is ever committed. | A build is not source |
 | C9 | **Portable bash.** The script runs on this Windows machine in Git Bash and is written to run on macOS. The Python it uses for the pack table and the zip is a small file of its own, `tools/export_pack.py` (standard library only); the interpreter is the first of `.venv/Scripts/python.exe`, `.venv/bin/python`, `python3`, `python` **that runs `-c ""` successfully**. No `zip` command, no PowerShell. Paths with spaces work. | The project's tools are bash (F-000); PR-9 |
+| C11 | **The exported data is checked against its source, and a game is started from it** (added after the lead's first run of the exe, DEV-1). `tools/export` cuts the embedded pack out of the exe into a temporary `.pck` and runs the **editor binary** on it (`--headless --main-pack <pck> -s tools/export_check.gd`), which: **(f)** loads every `.tres` under `data/` from the pack and from the file on disk and compares them property by property (every stored property; a resource kept in a file of its own by its path; a resource written inline, recursively); **(g)** instances `scenes/main.tscn` from the pack, chooses Start, and requires the flow to reach `PLAYING` with no setup error, then enters floor 1 and runs 120 physics ticks with the room's kill target equal to the source room's. It prints one line per problem and the script fails on any, or on any `ERROR` line. The release exe cannot do this itself: it takes no script, and that is not changed. | A build that shows the title is not a build that plays; Godot's export can change data silently |
+| C12 | **No `@export` property of a packed-array type is declared with the default `[]`.** Godot 4.7.2's export (which converts `.tres` to binary in the editor) drops such a property, though the game run from the project reads it: `RoomData.rows` and `RoomData.reinforcements` were declared so and came out empty in the exe. Both are declared with their packed constructor (`PackedStringArray()`, `PackedInt32Array()`), and a test reads every `.gd` under `src/` and fails on the pattern. | The cause of DEV-1 |
 | C10 | **Tests** (GUT, the debug binary): a test sets `DevTools.enabled` false and restores it in `after_each` (the pattern used for `Tunables`). No existing test file is edited. | C4 |
 
 **Must not break:** every F-001 to F-016 behaviour; the whole suite (3,125 tests on `main`);
@@ -216,7 +218,10 @@ running the game from the project behaves exactly as today; `gdlint`, `gdformat 
   installed (arm64); (b) a preset with `binary_format/embed_pck=false` (the exe then has no
   trailer); (c) a preset that also excludes `data/floors/*`; (d) a preset whose filter lacks
   `tests/*`; (e) a script whose `_ready()` loads a path that does not exist (the export is
-  clean and the table complete; the exe prints `ERROR` and exits 0).
+  clean and the table complete; the exe prints `ERROR` and exits 0); **(f)** `RoomData.rows`
+  declared with `= []` again (the pack's rooms have no rows: one line per room); **(g)** a
+  tower file whose first floor names no rooms, or anything else that makes Start fail while
+  the data still equals its source.
 - [ ] AC7: the exported `HundredGates.exe`, started in a window on this machine, shows the
   title without the FPS text; after Start, the town without it; a game can be started and a
   floor entered; pressing F3, R and N changes nothing; an enemy on floor 1 has no text under
@@ -226,6 +231,9 @@ running the game from the project behaves exactly as today; `gdlint`, `gdformat 
   characters (checked by `tools/export`).
 - [ ] AC9: `git status` is clean after `tools/export` (nothing under `builds/` is seen by git);
   `export_presets.cfg` is exactly C5's; the exe's run leaves nothing in the real user folder.
+- [ ] AC11: the test of C12 fails when `rows` or `reinforcements` is declared with `= []`
+  again, and names the file and line; on the fixed code every `.tres` under `data/` is equal
+  in the pack and on disk (the count is in §8) and the exe starts a game.
 - [ ] AC10: `gdlint src tests`, `gdformat --check src tests`, `tools/check_core_purity` and
   the headless boot are clean; the full suite passes.
 
@@ -244,6 +252,7 @@ One commit per task, one implementer, in order.
 |---|---|---|---|
 | T1 | The switch and what obeys it | `src/autoload/dev_tools.gd`, `project.godot` (one autoload line), `src/ui/debug_overlay.gd`, `src/world/floors/floor_scene.gd`, `src/world/town/town_scene.gd`, `src/entities/enemies/enemy.gd`, `tests/autoload/test_dev_tools.gd`, `tests/scenes/test_f017_dev_tools.gd` | AC1–AC4. `Shell` and `Game` are not touched. A leaked `false` would fail `tests/ui/test_debug_overlay.gd`, `test_f012_main.gd`, `test_f015_main.gd`, `test_f016_gate.gd`, `test_f014_room.gd`, `test_f004_debug.gd`: run them after |
 | T2 | The preset, the script, its Python file, the README, the ignore line | `export_presets.cfg`, `tools/export`, `tools/export_pack.py`, `tools/export_readme.txt`, `.gitignore` | AC6, AC8, AC9. The export templates are installed on this machine. The five failures of AC6 are shown in a scratch copy, never in the checkout |
+| T4 | (added, DEV-1) The two packed-array defaults and their test; `tools/export_check.gd` and checks (f) and (g) in `tools/export`; `tools/*` in the preset's filter | `src/core/floors/room_data.gd`, `tests/core/test_f017_packed_defaults.gd`, `tools/export`, `tools/export_pack.py`, `tools/export_check.gd`, `export_presets.cfg` | AC6 (f, g), AC11. After T1 and T2 |
 | T3 | Lead: AC5's two runs, the build, the exe started in a window with screenshots, the README checked against the input map, the final gate | §8 | AC5, AC7, AC10; no code |
 
 ---
@@ -396,11 +405,41 @@ written (exit 1 with Godot's own line; 20 files missing).
 **Started:** 2026-11-21  ·  **Branch:** `feature/F-017-export`
 
 ### Progress
-- [ ] T1
-- [ ] T2
-- [ ] T3
+- [x] T1 — 7a796ed. Lead's run: `test_f017_dev_tools.gd`, `test_dev_tools.gd` and four files
+  a leaked switch would break, 78 tests, all passing. The implementer removed each of the
+  six gates in turn (the overlay's start and its toggle, the floor's keys, the town's key,
+  the enemy's two places) and each failed tests; the second enemy place fails only the
+  "at once after the kill" check, as plan review PR-11 wanted.
+- [x] T2 — bfd3f3f (built in a private copy). Lead's run of `tools/export` in the checkout:
+  exit 0, 407 entries in the pack, a zip of 38,147,389 bytes holding `HundredGates.exe` and
+  `README.txt`, `git status` clean afterwards. The implementer showed the five failures of
+  AC6 (a) to (e), each in its own scratch copy, exit 1 with the check's line.
+- [ ] T4
+- [ ] T3 — AC5 done: `DevTools.enabled = true  user args = []` and `DevTools.enabled = false
+  user args = ["--no-dev-tools"]`, from `godot --headless --path . -s <script>` without and
+  with `-- --no-dev-tools`. The exe's first run in a window: DEV-1.
 
 ### Deviations from plan
+- DEV-1 (T3, the lead's first run of the exported exe in a window): **the build that passed
+  every check of C6 could not start a game.** The title appeared with no FPS text (and F3 did
+  nothing); Start answered "Could not start: the game data has 35 error(s)". The exe's log:
+  every room and the town are 0 × 0, and every floor has no kill before the boss. **Cause,
+  established by experiment:** `RoomData.rows` is declared `@export var rows:
+  PackedStringArray = []`. Loaded from the project the 36 rows are there, and saved to binary
+  at run time they are kept (3,012 bytes); in the export, where Godot converts the `.tres` in
+  the editor, the property is dropped (504 bytes, no row). With the default written
+  `PackedStringArray()` the rows survive the export (3,000 bytes). `reinforcements`, declared
+  the same way, is dropped too: a prototype that ran the editor binary on the pack and
+  compared all 90 data files with their sources found exactly those 12 rooms. With only the
+  rows fixed the game would have started and every room would have had no waves, with no
+  error anywhere. `weights`, `boss_percents` and `volley_angles_deg`, declared with their
+  constructors, are intact; typed arrays with `= []` are intact. — **Why the checks missed
+  it:** they look at which files are in the pack and at the title screen; the data is read
+  on Start (plan review PR-5 said so, and the lead's table check answered only half of it).
+  — **What changes:** C11, C12, AC11, two more failures in AC6, task T4, `tools/*` in the
+  preset's filter. `src/core/floors/room_data.gd` (F-011's file) changes in two default
+  values. — **Impact:** none on the game run from the project (an empty packed array
+  either way). Every build made before this would have been unplayable.
 
 ### Assumptions made (small, reversible)
 
