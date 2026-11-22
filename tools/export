@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# F-017: builds the Windows export, checks it and zips it for a player. Nothing is published.
+#   tools/export
+# Writes builds/HundredGates-<version>-windows.zip (exactly HundredGates.exe and README.txt).
+# Every failed check is one line starting `error:` and a non-zero exit. Bash 3.2 is enough.
+set -euo pipefail
+
+# shellcheck source=tools/_godot.sh
+source "$(dirname "${BASH_SOURCE[0]}")/_godot.sh"
+
+PRESET="Windows Desktop"
+EXPORT_PACK="$PROJECT_ROOT/tools/export_pack.py"
+README_SOURCE="$PROJECT_ROOT/tools/export_readme.txt"
+EXE="$PROJECT_ROOT/builds/windows/HundredGates.exe"
+RUN_FRAMES=300 # C6 (e): the exe is run for this many frames, headless.
+RUN_TIMEOUT_SECONDS=120
+
+work=""
+trap '[ -z "$work" ] || rm -rf "$work"' EXIT
+
+fail() {
+	echo "error: $*" >&2
+	exit 1
+}
+
+# The log text without Godot's colour codes (they make a line hard to read in a report).
+plain() {
+	sed "s/$(printf '\033')\[[0-9;]*m//g" "$1" | tr -d '\r'
+}
+
+# First of the project's Python, python3, python that runs `-c ""` (C9). The Microsoft Store
+# stub on Windows is on PATH as python3 and exits with an error, so a name found is not enough.
+find_python() {
+	local candidate
+	for candidate in "$PROJECT_ROOT/.venv/Scripts/python.exe" "$PROJECT_ROOT/.venv/bin/python" \
+		python3 python; do
+		case "$candidate" in
+		/*) [ -f "$candidate" ] || continue ;;
+		*) command -v "$candidate" >/dev/null 2>&1 || continue ;;
+		esac
+		if "$candidate" -c "" >/dev/null 2>&1; then
+			echo "$candidate"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# The config/version of project.godot, kept to what a file name can hold.
+project_version() {
+	local version
+	version="$(sed -nE 's/^config\/version="([^"]*)".*/\1/p' "$PROJECT_ROOT/project.godot" | head -n 1)"
+	case "$version" in
+	"" | *[!0-9A-Za-z._-]*) return 1 ;;
+	esac
+	echo "$version"
+}
+
+on_windows() {
+	case "$(uname -s)" in
+	MINGW* | MSYS* | CYGWIN*) return 0 ;;
+	esac
+	return 1
+}
+
+godot="$(resolve_godot)"
+python="$(find_python)" || fail "no working Python found (tried .venv, python3, python)."
+version="$(project_version)" || fail "config/version in project.godot is missing or not a plain version."
+zip="$PROJECT_ROOT/builds/HundredGates-$version-windows.zip"
+
+godot_import "$godot"
+
+mkdir -p "$PROJECT_ROOT/builds/windows"
+rm -f "${PROJECT_ROOT:?}/builds/windows/HundredGates.exe"
+rm -f "${PROJECT_ROOT:?}/builds/HundredGates-$version-windows.zip"
+
+work="$(mktemp -d)"
+log="$work/export.log"
+
+echo "Exporting \"$PRESET\" ..."
+status=0
+"$godot" --headless --path "$PROJECT_ROOT" --export-release "$PRESET" >"$log" 2>&1 || status=$?
+
+# (a) Godot exited 0 and printed no line with ERROR. A missing template is Godot's own line.
+if [ "$status" -ne 0 ]; then
+	# Godot's own lines (a missing template names its path), without the progress lines.
+	plain "$log" | grep -v -E '^\[ *[0-9]+% \]|^\[ DONE \]|^Godot Engine|^$' | head -n 12 >&2 || true
+	fail "check (a) failed: Godot exited with code $status (its lines are above)."
+fi
+if grep -q 'ERROR' "$log"; then
+	plain "$log" | grep 'ERROR' | head -n 5 >&2 || true
+	fail "check (a) failed: the export printed $(grep -c 'ERROR' "$log") line(s) with ERROR (first ones above)."
+fi
+[ -f "$EXE" ] || fail "check (a) failed: Godot exited 0 but wrote no builds/windows/HundredGates.exe."
+echo "check (a): the export exited 0 with no ERROR line"
+
+# (b), (c), (d) from the pack's file table; the Python file prints its own `error:` lines.
+"$python" "$EXPORT_PACK" check "$EXE" "$PROJECT_ROOT" || exit 1
+
+# (e) the exe runs. Its log and settings go to a fresh APPDATA, never the real user folder.
+if on_windows; then
+	app_data="$work/appdata"
+	mkdir -p "$app_data"
+	if command -v cygpath >/dev/null 2>&1; then
+		app_data="$(cygpath -w "$app_data")"
+	fi
+	run_log="$work/run.log"
+	run_status=0
+	timeout_command=()
+	if command -v timeout >/dev/null 2>&1; then
+		timeout_command=(timeout "$RUN_TIMEOUT_SECONDS")
+	fi
+	# From the temporary folder, so that nothing of the project is next to the exe.
+	(cd "$work" && APPDATA="$app_data" "${timeout_command[@]+"${timeout_command[@]}"}" "$EXE" \
+		--headless --quit-after "$RUN_FRAMES") >"$run_log" 2>&1 || run_status=$?
+	if grep -q 'ERROR' "$run_log"; then
+		plain "$run_log" | grep 'ERROR' | head -n 5 >&2 || true
+		fail "check (e) failed: the exe printed $(grep -c 'ERROR' "$run_log") line(s) with ERROR when run (first ones above)."
+	fi
+	if [ "$run_status" -ne 0 ]; then
+		fail "check (e) failed: the exe exited with code $run_status when run for $RUN_FRAMES frames."
+	fi
+	echo "check (e): the exe ran $RUN_FRAMES frames, exit 0, no ERROR line"
+else
+	echo "check (e) skipped: a Windows exe can only be run on Windows."
+fi
+
+# The player's README, then the zip.
+"$python" "$EXPORT_PACK" readme "$README_SOURCE" || exit 1
+echo "README check: plain ASCII, no line over 78 characters"
+"$python" "$EXPORT_PACK" zip "$zip" "$EXE" "$README_SOURCE" || exit 1
+
+bytes="$(wc -c <"$zip" | tr -d ' ')"
+echo "Zip: $zip ($bytes bytes, $((bytes / 1048576)) MB)"
