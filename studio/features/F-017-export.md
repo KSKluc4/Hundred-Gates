@@ -1,0 +1,760 @@
+---
+id: F-017
+title: Export builds — a Windows build for other people, developer tools off (slice 3, third part)
+status: DONE             # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
+created: 2026-11-21
+updated: 2026-11-22
+depends_on: [F-000, F-012, F-015, F-016, D-003, D-014, D-016]
+pillars: [1]
+department: Direction
+---
+
+# F-017 — Export builds
+
+> **How to use this file.** This is the single source of truth for this feature.
+> Every agent reads the WHOLE file before acting. Write only in the sections you own
+> (see studio/README.md). Never delete another role's text — reply under it.
+
+---
+
+## 1. Goal  ·  _Planner_
+
+**Player-facing outcome (one sentence):**
+Someone who is not Lucas unzips one file on a Windows PC, runs `HundredGates.exe` and plays
+the game as a player sees it: no FPS text, no debug keys, no developer text under the enemies.
+
+**Why now:** slice 3 (D-016) ends with a playtest by someone who is not Lucas, and that needs
+a build. Function before looks (D-016, note of 2026-11-21). It also answers F-016 §10 Q6: the
+debug keys pay out swords.
+
+**Decided by Lucas (2026-11-21, in chat; his answers are Gate A, D-016):** Windows only for
+now; all developer tools off in a build, on as today when the game is run from the project;
+the build is a zip on this machine that he sends himself, nothing is published; the lead may
+download Godot's export templates (done: `Godot_v4.7.2-stable_export_templates.tpz`, 1,281 MB,
+from the official `godotengine/godot-builds` release, SHA-512 checked against the release's
+`SHA512-SUMS.txt`; the four Windows x86_64 files and `version.txt` are installed in Godot's
+templates folder on this machine).
+
+**Out of scope (explicitly):**
+- macOS and Linux builds (later, each its own small step); code signing; an installer; an
+  icon; a splash screen of our own.
+- Publishing anywhere: GitHub Releases, itch.io, Steam. No upload of any kind.
+- A hidden key that turns the developer tools on in a build (Lucas chose "all off").
+- Removing or changing any developer tool: they stay exactly as they are when run from the
+  project.
+- Save/load, a version number on the title screen, crash reporting, telemetry.
+- The debug scenes under `scenes/debug/`: they stay in the project and are not in a build
+  (the build starts `scenes/main.tscn`, and a release exe refuses a scene argument). Running
+  a debug scene from the project with `-- --no-dev-tools` is not supported: its own overlay
+  keeps its keys.
+- Hiding the green rings around the player and the enemies, or rewording the boss bar: they
+  are the game's placeholder look today (§10 Q2).
+
+---
+
+## 2. Context  ·  _Planner_
+
+What exists (from `main` at `67624f1`):
+- **No export setup at all:** no `export_presets.cfg`, no build script, no `builds/` folder.
+  `.gitignore` has `.godot/`, `/android/`, `.venv/`, `__pycache__/`, `.studio/`.
+- **Tools:** `tools/_godot.sh` (`resolve_godot`, `godot_import`, `PROJECT_ROOT`,
+  `REQUIRED_GODOT_VERSION`), `tools/test`, `tools/lint`, `tools/check_core_purity`. They are
+  bash; on this Windows machine they run in Git Bash with `GODOT_BIN` set, and Python is the
+  project's `.venv` (`.venv/Scripts` on Windows, `.venv/bin` elsewhere).
+- **Developer tools in the game the shell runs (`scenes/main.tscn`):**
+  - `DebugOverlay` (`src/ui/debug_overlay.gd`, CanvasLayer 100 in `main.tscn`): FPS, Godot and
+    game version; shown at start when `Tunables.game.debug_overlay_visible_on_start` (true in
+    `data/tunables/game_tunables.tres`); toggled by the `debug_toggle` action.
+  - Debug keys: `debug_reset` (R: restart the room) and `debug_next_room` (N: skip the room) in
+    `FloorScene`, `debug_next_room` in `TownScene` (marks a floor cleared), all behind
+    `debug_keys_enabled`, which `Game` (default true) passes down.
+  - The text under every enemy (`Enemy`'s `DebugLabel`: state, cooldown, target).
+  - **Those three are all the readers of a `debug_*` action in `main.tscn`'s tree**
+    (`src/ui/debug_overlay.gd:20-22`, ungated; `src/world/floors/floor_scene.gd:101-107` and
+    `src/world/town/town_scene.gd:88-92`, behind `debug_keys_enabled`; plan review).
+    `debug_reload_tunables`, `debug_pulse_toggle`, `debug_shake_toggle`, `debug_ai_toggle`
+    (F5, P, K, I) are read only by `MotorDebugOverlay`, which only the debug scenes hold, so
+    they do nothing in `main.tscn` today; `Player` reads no input. Each of the seven actions
+    has exactly one key (`project.godot:95-129`: F3, F5, P, K, R, I, N) and shares none with
+    a game action. In a pause the game is disabled, so only F3 acts there.
+  - The enemy's text is made visible in two places (`src/entities/enemies/enemy.gd:161`,
+    every frame, and `:283`).
+- **Not developer tools** (they stay in a build): what `CombatDebugDraw` draws (the red
+  sectors of live hits, which are the only drawing of the player's swing, and the green
+  rings of the hurtboxes), the enemies' bodies, health bars and telegraphs, the damage
+  numbers, the boss bar with its text (`warden  400 / 400  stage 1`: the only boss HP number),
+  the HUD, the wave and drop markers.
+- `OS.is_debug_build()` is true for the editor binary (also when it runs the game with
+  `--path`, as Lucas and the tests do) and for a debug export; false for a release export.
+- Autoloads today: `Tunables`, `UserSettings` (`project.godot`). Tests that change an autoload's
+  values restore them in `after_each`.
+- The project's `config/version` is `0.1.0`, its name `Hundred Gates`.
+- A release build writes its log to `user://logs/`; `user://settings.cfg` is the only file the
+  game writes. Both are in `%APPDATA%\Godot\app_userdata\Hundred Gates\`, the folder runs
+  from the project use too.
+- **Measured by plan review, with throwaway exports in a private copy (Godot 4.7.2, only the
+  x86_64 Windows templates installed):** a headless release export takes about 8 s, exits 0,
+  prints the banner and `[ DONE ] savepack`, and gives one byte-identical file of 109.6 MB
+  (the template with a 0.45 MB pack embedded); Godot does **not** create the output folder
+  (exit 1, `The given export path doesn't exist`); the pack's table holds paths without
+  `res://` (405 files under `.godot`, `data`, `scenes`, `src` and `project.binary`); a
+  resource is listed as `<path>.remap` or `<path>`; `.txt` and `.md` files and the `studio`
+  and `tools` folders are never exported; a release exe exits 0 whatever is missing (84
+  error lines on stderr with `data/*` excluded, exit 0) and refuses a scene or `--path`
+  argument; `OS.is_debug_build()` is false in it and true in a debug export; `--
+  --no-dev-tools` reaches `OS.get_cmdline_user_args()` in both; on this machine `python3`
+  on PATH is the Microsoft Store stub (exit 49); a missing template gives exit 1 and `No
+  export template found at the expected path:` with the path.
+
+Relevant decisions: D-003 (headless tests), D-014 (reviews), D-016 (slice 3).
+Relevant features: F-012 (the debug keys, C17), F-015 (the shell, settings), F-016 (Q6).
+
+---
+
+## 3. Options Considered  ·  _Planner_
+
+### ✅ Chosen: one switch, read where the tools live; a preset and a script
+- **How it works:** an autoload `DevTools` holds one boolean, `enabled`: true in a debug
+  binary, false in a release export, and false when the game is started with the user argument
+  `--no-dev-tools` (so the off state can be run and tested from the project). The four places
+  that show or obey a developer tool ask it, each where it reads the key or shows the text. `export_presets.cfg` has one preset, a release
+  build for Windows x86_64 with the game's data embedded in the exe and the tests, GUT, the
+  studio documents and the tools left out. `tools/export` builds it, checks it, and zips it
+  with a short README for the player.
+- **Why chosen:** nothing a developer uses changes; the off state is the same code path in a
+  build and in a test; a build is one command and checks itself.
+- **Costs we're accepting:** a third autoload; a debug export (`--export-debug`) has the tools
+  on, which is what a debug export is for; the checks of the built exe are a script's, not
+  GUT's (GUT cannot export).
+- **Would revisit if:** a second platform arrives (the script takes the preset's name then),
+  or a playtester's problem needs the tools on their machine (the hidden key Lucas declined).
+
+### ❌ Rejected: strip the developer tools from the scenes of a build
+- **Why rejected:** two sets of scenes, or an export plugin, to remove what one boolean hides.
+- **Tempting because:** "not in the build" sounds safer than "off in the build".
+
+### ❌ Rejected: a custom feature tag in the preset (`OS.has_feature("playtest")`)
+- **Why rejected:** it cannot be switched on when running from the project, so the off state
+  could only be seen by exporting; tests could not reach it.
+- **Tempting because:** feature tags are Godot's own way.
+
+### ❌ Rejected: pass the switch down from `Shell` through `Game`, the scenes, the room, the enemy
+- **Why rejected:** five levels of plumbing for one constant of the process; `DebugOverlay`
+  is not under the shell at all; and a `Game` built without the shell would keep its keys.
+- **Tempting because:** `debug_keys_enabled` already travels that way.
+
+### ❌ Rejected: checking the exe by its size, by byte needles, or by its exit code
+- **How it would work:** the first draft of C6: the exe is larger than the template, holds
+  the bytes of two paths and not those of `res://tests/`, and exits 0 when run.
+- **Why rejected:** measured in plan review. A build without the floors' data passes all of
+  it (the title appears; the data is loaded on Start) and so the check lies; a release exe
+  exits 0 with 84 error lines; `res://studio/` can never be found; export shrinks the
+  template, so a good exe is only 0.3 MB larger and a bad one can be smaller.
+- **Tempting because:** each is one line of shell.
+
+### ❌ Rejected: a hidden key to turn the tools on in a build; publishing the build; other platforms
+Lucas decided against each (§1). Not even partially.
+
+---
+
+## 4. Constraints  ·  _Planner_
+
+Hard rules for this feature. Violating any of these = automatic `CODE_CHANGES`.
+
+| ID | Constraint | Reason |
+|---|---|---|
+| C1 | **`DevTools`** (`src/autoload/dev_tools.gd`, a Node, autoload `DevTools`, after `Tunables` and `UserSettings`): `const NO_DEV_TOOLS_ARGUMENT: String = "--no-dev-tools"`; one pure static function `is_enabled_for(is_debug_build: bool, user_arguments: PackedStringArray) -> bool` (true for a debug build whose arguments do not hold the constant); `var enabled: bool`, set once in `_init()` from `OS.is_debug_build()` and `OS.get_cmdline_user_args()`. Nothing else in it. Nothing in `src/core` reads it. | One switch; G6 |
+| C2 | **The switch is read where the tool is.** `DebugOverlay`: hidden at start and deaf to `debug_toggle` when the switch is off, whatever `debug_overlay_visible_on_start` says. `FloorScene` and `TownScene`: a debug key acts only when `DevTools.enabled and debug_keys_enabled` (**the switch wins**: a `Game` built with its keys on still has none when the switch is off). `Enemy`: its debug text is shown only when the switch is on, in both places that show it. `Shell` and `Game` are not changed. | Lucas: all off in a build; plan review PR-1 |
+| C3 | **With the switch off, no `debug_*` input action does anything** in the game the shell runs. A test reads every action whose name starts with `debug_` from the InputMap (seven today), so a new one is covered. | No back door |
+| C4 | **With the switch on, everything is as on `main`.** Every existing test passes unedited (the test binary is a debug build). What §2 lists as not developer tools is shown in both states. | No regression |
+| C5 | **`export_presets.cfg`** (committed), exactly: one preset `[preset.0]` with `name="Windows Desktop"`, `platform="Windows Desktop"`, `runnable=true`, `export_filter="all_resources"`, `include_filter=""`, `exclude_filter="tests/*, addons/gut/*, scenes/debug/*, tools/*"` (`tools/*` since the lead's first exe run, DEV-1: a script lives there now), `export_path="builds/windows/HundredGates.exe"`, and `[preset.0.options]` with `binary_format/embed_pck=true` and `binary_format/architecture="x86_64"`. No other key: no signing, no custom template, no company name, no absolute path, no personal data. | The file plan review exported with; one file to send |
+| C6 | **`tools/export`** (bash, in the style of `tools/test`; sources `tools/_godot.sh`; imports through `godot_import`): makes `builds/windows/`, runs `--headless --export-release "Windows Desktop"`, and then **checks**, failing with a non-zero exit and one line saying why, unless: (a) Godot exited 0 and its stdout and stderr together hold no line with `ERROR` (a missing template is reported with Godot's own line); (b) the exe ends with an embedded pack (the `GDPC` trailer) whose file table is not empty; (c) **the table is complete:** every `.gd`, `.tres` and `.tscn` file the project has under `src/` and `data/`, and `scenes/main.tscn`, has an entry (`<path>` or `<path>.remap`); (d) **the table holds nothing else:** its top-level names are exactly `.godot`, `data`, `scenes`, `src` and `project.binary`, and under `scenes` only `main.tscn` (listed as `main.tscn` or `main.tscn.remap`); (e) on Windows, the exe run with `--headless --quit-after 300`, with `APPDATA` pointing at a fresh temporary folder, exits 0 and prints no line with `ERROR` on stdout or stderr (elsewhere this check is skipped with a printed line saying so). **(f) the pack's data is the source's** and **(g) a game starts from the pack** (C11). Then it writes `builds/HundredGates-<version>-windows.zip` (deflated) holding exactly `HundredGates.exe` and `README.txt`, `<version>` read from `project.godot`'s `config/version`, and prints the zip's path and size. It uses no network and publishes nothing. | Lucas: a zip on this machine; a check that cannot be passed by a build that cannot play (plan review PR-5) |
+| C7 | **`README.txt`** for the player, kept at `tools/export_readme.txt` and copied into the zip: how to start (extract the whole zip first, then run `HundredGates.exe`; Windows may say it protected the PC because the file is unsigned: "More info", then "Run anyway"; on a managed PC that choice may be missing), the controls for keyboard and mouse and for a gamepad **as `project.godot`'s input map has them** (move, aim, attack, dodge, interact, pause), that progress is not saved yet, that the look is placeholder, and where the settings file is. No name, e-mail or other personal detail. Plain ASCII, lines of at most 78 characters. | A stranger starts it without Lucas beside them |
+| C8 | **`builds/` is ignored by git** (`.gitignore`). No built file is ever committed. | A build is not source |
+| C9 | **Portable bash.** The script runs on this Windows machine in Git Bash and is written to run on macOS. The Python it uses for the pack table and the zip is a small file of its own, `tools/export_pack.py` (standard library only); the interpreter is the first of `.venv/Scripts/python.exe`, `.venv/bin/python`, `python3`, `python` **that runs `-c ""` successfully**. No `zip` command, no PowerShell. Paths with spaces work. | The project's tools are bash (F-000); PR-9 |
+| C11 | **The exported data is checked against its source, and a game is started from it** (added after the lead's first run of the exe, DEV-1). `tools/export` cuts the embedded pack out of the exe into a temporary `.pck` and runs the **editor binary** on it (`--headless --main-pack <pck> -s tools/export_check.gd`), which: **(f)** loads every `.tres` under `data/` from the pack and from the file on disk and compares them property by property (every stored property; a resource kept in a file of its own by its path; a resource written inline, recursively); **(g)** instances `scenes/main.tscn` from the pack, chooses Start, and requires the flow to reach `PLAYING` with no setup error, then enters floor 1 and runs 120 physics ticks with the room's kill target equal to the source room's. It prints one line per problem and the script fails on any, or on any `ERROR` line. The release exe cannot do this itself: it takes no script, and that is not changed. | A build that shows the title is not a build that plays; Godot's export can change data silently |
+| C12 | **No stored property of a packed-array type has an Array as its default** (`= []`, `= Array()`, `= ["#"]`, however the line is written). Godot 4.7.2's export (which converts `.tres` to binary in the editor) drops such a property, though the game run from the project reads it: `RoomData.rows` and `RoomData.reinforcements` were declared so and came out empty in the exe. Both are declared with their packed constructor (`PackedStringArray()`, `PackedInt32Array()`), and a test asks the engine for the default of every such property of every script under `src/` (reworded after code review CR-3; the first wording said only `= []`). | The cause of DEV-1 |
+| C10 | **Tests** (GUT, the debug binary): a test sets `DevTools.enabled` false and restores it in `after_each` (the pattern used for `Tunables`). No existing test file is edited. | C4 |
+
+**Must not break:** every F-001 to F-016 behaviour; the whole suite (3,125 tests on `main`);
+running the game from the project behaves exactly as today; `gdlint`, `gdformat --check`,
+`tools/check_core_purity`, the headless boot.
+
+---
+
+## 5. Acceptance Criteria  ·  _Planner_
+
+- [ ] AC1: `DevTools.enabled` is true in the test binary; `DevTools.is_enabled_for` is tested
+  for the four combinations of (debug build, the argument present) and for an argument list
+  that holds only other arguments.
+- [ ] AC2: with the switch off, in the real `main.tscn`: the overlay is hidden at start though
+  `debug_overlay_visible_on_start` is true, and `debug_toggle` leaves it hidden; on a floor R
+  does not restart the room and N does not skip it, in town N clears no floor, **also in a
+  `Game` built with `debug_keys_enabled` true**; every enemy's debug text is hidden, after a
+  frame and **at once after a kill, before the next frame, in a room without reinforcements**
+  (the second place that shows it runs on a death, and the body stays drawn there), while its
+  body, bar, telegraph and damage numbers are as before.
+- [ ] AC3: with the switch off, for **every** action in the InputMap whose name starts with
+  `debug_` (read from the InputMap in the test; at least seven), pressed **two ways** (each
+  event bound to it sent pressed and then released between two ticks, and an
+  `InputEventAction`), in four places, nothing changes: **title** (the flow state, the menu's
+  entries and focus, no game exists); **town** (the flow state, the session's `to_dict()`, the
+  overlay hidden); **a floor in a fight** (the flow state, the session's `to_dict()`, the room
+  index, the identity of `Tunables`' resources, and the room's sim snapshot equal to that of a
+  twin game that pressed nothing, at the same sim time; twins run one after the other on a
+  fixture tower without loot); **the pause menu** (the flow state stays `PAUSED`, the entries
+  and the focus are the same, the game is still stopped).
+- [ ] AC4: with the switch on, each thing AC2 lists works as on `main` (overlay shown and
+  toggled, R and N act, the text shown), and the whole suite passes with no existing test file
+  edited.
+- [ ] AC5 (the lead's run, in §8): the game started from the project with a script kept
+  outside the repository that prints `root.get_node("DevTools").enabled` (a `-s` script
+  cannot name an autoload), once as `godot --path . -s <script>` (true) and once as
+  `godot --path . -s <script> -- --no-dev-tools` (false).
+- [ ] AC6: `tools/export` on this machine ends with exit code 0 and a zip that holds exactly
+  `HundredGates.exe` and `README.txt`. **Each check of C6 is seen failing once**, in a scratch
+  copy, with the script's line in §8: (a) a preset for an architecture whose template is not
+  installed (arm64); (b) a preset with `binary_format/embed_pck=false` (the exe then has no
+  trailer); (c) a preset that also excludes `data/floors/*`; (d) a preset whose filter lacks
+  `tests/*`; (e) a script whose `_ready()` loads a path that does not exist (the export is
+  clean and the table complete; the exe prints `ERROR` and exits 0); **(f)** `RoomData.rows`
+  declared with `= []` again (the pack's rooms have no rows: one line per room); **(g)** a
+  tower file whose first floor names no rooms, or anything else that makes Start fail while
+  the data still equals its source.
+- [ ] AC7: the exported `HundredGates.exe`, started in a window on this machine, shows the
+  title without the FPS text; after Start, the town without it; a game can be started and a
+  floor entered; pressing F3, R and N changes nothing; an enemy on floor 1 has no text under
+  it. Seen in screenshots (the lead's run, §8).
+- [ ] AC8: `README.txt`'s controls match `project.godot`'s input map, action by action
+  (checked by the lead against the file; listed in §8); it is plain ASCII with no line over 78
+  characters (checked by `tools/export`).
+- [ ] AC9: `git status` is clean after `tools/export` (nothing under `builds/` is seen by git);
+  `export_presets.cfg` is exactly C5's; the exe's run leaves nothing in the real user folder.
+- [ ] AC11: the test of C12 fails when `rows` or `reinforcements` is declared with `= []`
+  again, and names the file and the property; on the fixed code every `.tres` under `data/` is equal
+  in the pack and on disk (the count is in §8) and the exe starts a game.
+- [ ] AC10: `gdlint src tests`, `gdformat --check src tests`, `tools/check_core_purity` and
+  the headless boot are clean; the full suite passes.
+
+**How to verify manually (Lucas, Gate B):** extract `builds/HundredGates-0.1.0-windows.zip`
+somewhere else, run `HundredGates.exe`, play a floor. No FPS text; F3, R and N do nothing;
+nothing is written under the enemies. Then run the game from the project as before:
+everything a developer had is still there.
+
+---
+
+## 6. Task Breakdown  ·  _Planner_
+
+One commit per task, one implementer, in order.
+
+| # | Task | Files likely touched | Notes |
+|---|---|---|---|
+| T1 | The switch and what obeys it | `src/autoload/dev_tools.gd`, `project.godot` (one autoload line), `src/ui/debug_overlay.gd`, `src/world/floors/floor_scene.gd`, `src/world/town/town_scene.gd`, `src/entities/enemies/enemy.gd`, `tests/autoload/test_dev_tools.gd`, `tests/scenes/test_f017_dev_tools.gd` | AC1–AC4. `Shell` and `Game` are not touched. A leaked `false` would fail `tests/ui/test_debug_overlay.gd`, `test_f012_main.gd`, `test_f015_main.gd`, `test_f016_gate.gd`, `test_f014_room.gd`, `test_f004_debug.gd`: run them after |
+| T2 | The preset, the script, its Python file, the README, the ignore line | `export_presets.cfg`, `tools/export`, `tools/export_pack.py`, `tools/export_readme.txt`, `.gitignore` | AC6, AC8, AC9. The export templates are installed on this machine. The five failures of AC6 are shown in a scratch copy, never in the checkout |
+| T4 | (added, DEV-1) The two packed-array defaults and their test; `tools/export_check.gd` and checks (f) and (g) in `tools/export`; `tools/*` in the preset's filter | `src/core/floors/room_data.gd`, `tests/core/test_f017_packed_defaults.gd`, `tools/export`, `tools/export_pack.py`, `tools/export_check.gd`, `export_presets.cfg` | AC6 (f, g), AC11. After T1 and T2 |
+| T3 | Lead: AC5's two runs, the build, the exe started in a window with screenshots, the README checked against the input map, the final gate | §8 | AC5, AC7, AC10; no code |
+
+---
+
+## 7. Plan Review  ·  _Auditor_
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 9b44bae · **Date:** 2026-11-21 · **Verdict:** CHANGES_REQUESTED ·
+**By:** Auditor (lead, D-014)
+
+Two fresh reviewers. One read the switch (C1 to C4) against the code and probed the engine in
+a scratch project: APPROVE_WITH_NOTES. The other took the export side and **tried it**: about
+fifteen throwaway exports in a private copy with the installed templates: CHANGES_REQUESTED.
+Findings merged and renumbered.
+
+### PR-1 🟡 Two mechanisms for R and N, and "which wins" unsaid  ·  C2, C3
+C3 switches readers "at the place it is read" (`src/world/floors/floor_scene.gd:101-107`,
+`src/world/town/town_scene.gd:88-92`); C2, AC2 and T1 switched them in `Shell` instead and T1
+listed neither file. `Game` defaults to keys on, so a `Game` built without the shell would
+keep them with the switch off.
+> **Planner reply (lead):** accepted: the readers ask `DevTools.enabled and
+> debug_keys_enabled`; the switch wins; `Shell` and `Game` are not touched (C2, AC2, T1).
+
+### PR-2 🟡 AC1 and AC5 against C1  ·  C1
+"Nothing else in it" forbade the static function AC1 tests. AC5 cannot be a GUT test: GUT
+merges user arguments into its own and quits on an unknown one. `--no-dev-tools` without the
+`--` before it is not a user argument and leaves the tools on.
+> **Planner reply (lead):** accepted: C1 names `is_enabled_for`; AC5 is two runs of the lead
+> with the full commands written out.
+
+### PR-3 🟡 AC3 cannot be judged as written  ·  AC3
+On the title there is no game; the town has no room index; nothing checked the flow state or
+the focus (R in a pause must not resume); "pressed" was undefined.
+> **Planner reply (lead):** accepted: AC3 lists what is compared in each of the four places
+> and what "pressed" is (every bound event, and an `InputEventAction`).
+
+### PR-4 🟡 The hurtbox rings and the boss bar's text: developer tools or the look?  ·  §2
+`CombatDebugDraw` is in every room; it draws a green ring on the player and every enemy and
+fills live hits (the only drawing of the player's swing). The boss bar shows the data id and
+`stage 1`. The spec called all of it the look without naming them.
+> **Planner reply (lead):** both stay and §2 says so. Lucas's answer named the FPS overlay,
+> the debug keys and the text under enemies. Put to him as §10 Q2.
+
+### PR-5 🔴 The checks pass on a build that shows the title and cannot start a game  ·  C6
+Measured: with `data/floors/*` also excluded the export exits 0, the exe run headless exits 0
+and prints no `ERROR`, and both path needles are present; the floors are loaded only on Start.
+A release exe exits 0 whatever is missing (84 error lines on stderr with `data/*` excluded).
+`res://studio/` and `res://tools/` can never be found (never exported); `res://tests/` only
+through a cache. The size check is brittle: export shrinks the template by 0.14 MB, the good
+exe is 0.31 MB over it, and a wrong one can be under it.
+> **Planner reply (lead):** accepted, and C6's checks are replaced: the script reads the
+> embedded pack's file table and requires it complete (every `.gd`, `.tres`, `.tscn` of `src`
+> and `data`, and the main scene) and free of anything else; the run check reads stdout and
+> stderr. The reviewer's prototype gave 0 missing on the good build, 21 on the one without
+> floors, and showed `addons` and `tests` with no exclude filter. §3 rejects the first draft's
+> checks by name. AC6 shows each check failing once; AC7 starts a real game in the exe.
+
+### PR-6 🟡 Godot does not create `builds/windows/`  ·  C6
+Exit 1, `The given export path doesn't exist`.
+> **Planner reply (lead):** accepted (C6).
+
+### PR-7 🟡 The run check writes into Lucas's real user folder  ·  C6
+The exe's log goes to the folder his settings file is in.
+> **Planner reply (lead):** accepted: `APPDATA` is a fresh temporary folder for that run
+> (C6, AC9).
+
+### PR-8 🟡 macOS and the run check; `python3` on this machine  ·  C9
+A Windows exe cannot run on macOS. Here `python3` on PATH is the Microsoft Store stub.
+> **Planner reply (lead):** accepted: the run check is skipped off Windows with a printed
+> line; a Python counts only if it runs (C6, C9).
+
+### PR-9 🔵 Smaller points
+The preset's minimum (without the two filter keys Godot prints an `ERROR`; without the
+options the pack is a separate file); `*.md`, `studio/*` and `tools/*` in the filter exclude
+nothing; the zip must be deflated (38 MB, over a mail attachment's usual 25 MB); the README
+should say to extract first and that a managed PC may have no "Run anyway"; the enemy's text
+is shown from two lines; §2 was wrong about `Player`; the debug scenes with the argument are
+half off; `const … :=` against the code style.
+> **Planner reply (lead):** accepted, all: C5 is the file the reviewer exported with; C6
+> (deflated); C7; §2; §1; C1.
+
+**Checked and found sound:** the three readers of a debug action in `main.tscn`'s tree are all
+there are; F5, P, K and I do nothing in `main.tscn`; `OS.is_debug_build()` is true for the
+editor binary and the debug template and false for the release template; every autoload's
+`_init()` runs before any `_ready()`, and a third autoload changes nothing for the first two;
+no test lists autoloads or counts the root's children; C10 is achievable; the overlay must be
+hidden, not removed (a test pins Main's two children); debug keys share no key with a game
+action. Export: works with only the x86_64 templates, byte-identical across runs; the filter
+removes only GUT, the tests and the eleven debug scenes; nothing leaks through
+`project.binary` or the class and UID caches; excluding GUT breaks nothing; "selected scenes"
+mode drops everything reached by `preload`; a headless export does not rewrite the preset;
+the version is read from `project.godot`; a path with a space works.
+
+**Not checked:** macOS; the preset as the editor's dialog would rewrite it; a windowed run of
+the exe (AC7); SmartScreen and antivirus on another PC (on this one Defender is on and the exe
+ran about fifteen times); whether a release export needs the debug template.
+
+<!-- review-round: 2 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** 23c8a72 · **Date:** 2026-11-21 · **Verdict:** APPROVE_WITH_NOTES ·
+**By:** Auditor (lead, D-014)
+
+The same two reviewers on the amended spec. Both: APPROVE_WITH_NOTES.
+
+**Round 1 findings:** PR-1, PR-3 to PR-9 ✔ resolved; PR-2 partly (PR-10).
+
+**Measured again on the export side:** with C5's exact text the export exits 0 with no `ERROR`
+line and the same table of 405 files; the exe's run prints no `ERROR` on stdout or stderr.
+Check (c) holds for all 201 files (a `.gd` is listed as `x.gd.remap` and `x.gdc`, a `.tres` or
+`.tscn` as `<path>.remap`; `.uid` files are not in the table and are not asked for; nothing
+under `src/` or `data/` is legitimately left out). Check (d) holds: the top level is exactly
+`.godot`, `data`, `project.binary`, `scenes`, `src`.
+
+### PR-10 🟡 AC5's script cannot name the autoload  ·  AC5
+A `-s` script holding `DevTools.enabled` does not compile (`Identifier not found`); reading
+`root.get_node("DevTools").enabled` works (true, and false with `-- --no-dev-tools`).
+> **Planner reply (lead):** accepted (AC5).
+
+### PR-11 🟡 AC2's "after a hit" does not reach the second place  ·  AC2, `src/entities/enemies/enemy.gd:283`
+That line runs on a death, an arrival and a restore, not on a hit, and the every-frame line
+overwrites it: a check after a frame passes with it ungated.
+> **Planner reply (lead):** accepted: at once after a kill, before the next frame, in a room
+> without reinforcements (AC2).
+
+### PR-12 🟡 Two of AC6's five failures cannot be produced as written  ·  AC6
+An empty exclude filter fails at check (a), not (d): with GUT included the export itself
+prints `ERROR: Cannot set object script`. A `main.tscn` that names a missing script also
+fails at (a), and the exe built from it prints nothing (the reference is dropped at export).
+What works: a filter that lacks only `tests/*` (clean export, `tests` at the top level), and a
+script whose `_ready()` loads a path that does not exist (clean export, complete table, the exe
+prints two `ERROR` lines and exits 0).
+> **Planner reply (lead):** accepted (AC6 d, e).
+
+### PR-13 🔵 How to cut the trailer; the main scene's entry  ·  AC6 (b), C6 (d)
+`binary_format/embed_pck=false` goes through the whole script and gives an exe without the
+trailer. The entry under `scenes` is `main.tscn.remap`.
+> **Planner reply (lead):** accepted (AC6 b, C6 d).
+
+**Checked and found sound:** AC3 can be built with the helpers that exist (only "every bound
+event" needs a new helper in the new test file); reading `DevTools.enabled` in scenes built
+outside `main.tscn` works under GUT (the autoload is there and true); a static call through
+the autoload compiles with the project's strict settings; AC6 (a) and (c) are producible as
+written (exit 1 with Godot's own line; 20 files missing).
+
+---
+
+## 8. Implementation Log  ·  _Builder_
+
+**Started:** 2026-11-21  ·  **Branch:** `feature/F-017-export`
+
+### Progress
+- [x] T1 — 7a796ed. Lead's run: `test_f017_dev_tools.gd`, `test_dev_tools.gd` and four files
+  a leaked switch would break, 78 tests, all passing. The implementer removed each of the
+  six gates in turn (the overlay's start and its toggle, the floor's keys, the town's key,
+  the enemy's two places) and each failed tests; the second enemy place fails only the
+  "at once after the kill" check, as plan review PR-11 wanted.
+- [x] T2 — bfd3f3f (built in a private copy). Lead's run of `tools/export` in the checkout:
+  exit 0, 407 entries in the pack, a zip of 38,147,389 bytes holding `HundredGates.exe` and
+  `README.txt`, `git status` clean afterwards. The implementer showed the five failures of
+  AC6 (a) to (e), each in its own scratch copy, exit 1 with the check's line.
+- [x] T4 — e4623ef. Lead's run of `tools/export` in the checkout: exit 0; `pack: 407 entries,
+  complete and nothing else`; `Start reached PLAYING; floor 1, data/floors/floor_1/room_1.tres,
+  kill target 6 (source 6), after 120 ticks`; `90 data files equal, a game started`; the exe
+  ran 300 frames with no `ERROR`; a zip of 38149231 bytes; `git status` clean afterwards. The
+  implementer showed the new failures, each in a scratch copy, exit 1: `rows` declared `= []`
+  again (16 differences: the 12 rooms, the 3 boss rooms and the town); `reinforcements` alone
+  (12 differences); a floor that names no rooms (the data equals its source, Start does not
+  reach `PLAYING`). `test_f017_packed_defaults.gd` names both properties of `room_data.gd`
+  when `= []` is put back (file and line at first; file and property since the test asks the
+  engine, code review CR-9).
+- [x] Code review round 1 — CR-1 to CR-6 cd4b958; CR-7 answered. Lead's run of `tools/export`
+  on it: exit 0, `dev tools off; Start reached PLAYING … kill target 6 (source 6)`, 90 data
+  files equal, a zip of 38149330 bytes. Full suite on cd4b958: 185 scripts, 3155 tests, all passing
+  (1183 s); `gdlint`, `gdformat --check`, core purity and the headless boot clean; `git status`
+  clean.
+- [x] Code review round 2 — APPROVE_WITH_NOTES from both; CR-8, CR-10, CR-11, CR-12 c1dca94; CR-9
+  reworded. The exe of that build was started in a window once more with real key presses
+  (ten screenshots, its log without an `ERROR` line): the same as under T3.
+- [x] T3 — the lead's runs. **AC5:** `DevTools.enabled = true  user args = []` and
+  `DevTools.enabled = false  user args = ["--no-dev-tools"]`, from `godot --headless --path .
+  -s <script>` without and with `-- --no-dev-tools`. **AC7, the rebuilt exe in a window**
+  (1280 × 720, its user files in a scratch folder, real key presses sent through the OS, ten
+  screenshots of its own window): the title with no FPS text, and none after F3; Start gives
+  the town; N, R and F3 in town change nothing; walking up opens the gate with the Warden's
+  odds; Enter enters floor 1; three chasers attack (HP 40 / 100), each with its bar and no
+  text under it; after R and N the HUD still reads `Floor 1 · Room 1 / 3`, `Kills 0 / 6`;
+  Escape pauses. **AC8:** the README's controls against the input map, decoded by the lead
+  from `project.godot`: move W A S D and the arrows, pad stick axes 0 and 1 and buttons 11 to
+  14; attack J, mouse button 1, pad 2 (X); dodge Space, pad 0 (A); interact E, pad 3 (Y);
+  pause Escape, pad 6 (Start); menus choose by `ui_accept` (Enter, Space, pad A) and
+  `interact`, go back by `ui_cancel` (Escape, pad B): all as the README says. **AC10, on
+  e4623ef:** the full suite is 185 scripts, 3154 tests, all passing (1169 s); `gdlint src tests` no
+  problems; `gdformat --check` 344 files unchanged; core purity ok; the headless boot prints
+  no error or warning line; `git status` clean.
+
+### Deviations from plan
+- DEV-2 (T4): **`tools/export` deletes `.godot/exported` before every export.** Godot keeps
+  the converted data there and reuses it while the `.tres` is unchanged, also after the script
+  that defines its properties changed: the first export after the fix of DEV-1 still had
+  empty rooms. Not in C6. — **Impact:** an export converts everything again (about 25 s in
+  all); nothing else is deleted.
+- DEV-3 (T4): two things the spec's addition for DEV-1 said that are not so. **`tools/*` in
+  the preset's filter is not what keeps `tools/export_check.gd` out of the pack:**
+  `tools/.gdignore` (tracked) already hides the folder from Godot; without the filter entry
+  check (d) still passes, and it fails only when `.gdignore` goes too. The entry stays, as a
+  second lock. **And with only `rows` fixed the game would not have started with empty
+  waves:** rooms that have arrival points and no reinforcements fail the tower's own
+  validation (215 error lines), so Start fails there as well; the comparison of check (f) is
+  still what names the cause. AC6's wording "(g) alone would have passed" in the lead's
+  brief was wrong.
+- DEV-1 (T3, the lead's first run of the exported exe in a window): **the build that passed
+  every check of C6 could not start a game.** The title appeared with no FPS text (and F3 did
+  nothing); Start answered "Could not start: the game data has 35 error(s)". The exe's log:
+  every room and the town are 0 × 0, and every floor has no kill before the boss. **Cause,
+  established by experiment:** `RoomData.rows` is declared `@export var rows:
+  PackedStringArray = []`. Loaded from the project the 36 rows are there, and saved to binary
+  at run time they are kept (3,012 bytes); in the export, where Godot converts the `.tres` in
+  the editor, the property is dropped (504 bytes, no row). With the default written
+  `PackedStringArray()` the rows survive the export (3,000 bytes). `reinforcements`, declared
+  the same way, is dropped too: a prototype that ran the editor binary on the pack and
+  compared all 90 data files with their sources found exactly those 12 rooms. With only the
+  rows fixed the game would have started and every room would have had no waves, with no
+  error anywhere. `weights`, `boss_percents` and `volley_angles_deg`, declared with their
+  constructors, are intact; typed arrays with `= []` are intact. — **Why the checks missed
+  it:** they look at which files are in the pack and at the title screen; the data is read
+  on Start (plan review PR-5 said so, and the lead's table check answered only half of it).
+  — **What changes:** C11, C12, AC11, two more failures in AC6, task T4, `tools/*` in the
+  preset's filter. `src/core/floors/room_data.gd` (F-011's file) changes in two default
+  values. — **Impact:** none on the game run from the project (an empty packed array
+  either way). Every build made before this would have been unplayable. **Wider than first
+  written (code review CR-3):** the export drops a packed property whose default is any
+  Array expression, not only `[]`.
+
+### Assumptions made (small, reversible)
+- ASSUMPTION-1 (T1): the fight twins of AC3 compare the session's snapshot without the loot
+  roller's seed, which `Game` draws anew for every game (no catalog there, so nothing rolls);
+  town and pause compare one game with itself and use the whole snapshot. The floor test also
+  checks that the `Room` node and the sim object are the same after a press, because a
+  restarted room looks the same at an equal sim time. "Pressed and released between two
+  ticks" is a tap sent in one process frame, with the action's own events duplicated; the
+  positive tests of AC4 press the same way, so the tap is known to reach the game.
+- ASSUMPTION-2 (T2): `tools/export` runs the exe from its temporary folder, under `timeout
+  120` where that command exists; the temporary folder goes in an exit trap; `APPDATA` for the
+  run is converted with `cygpath -w` where it exists; `tools/export_pack.py` reads pack
+  format 4 only and refuses an encrypted pack; the version must match `[0-9A-Za-z._-]+`; the
+  zip is written to a `.part` file and renamed; a failed check (a) shows up to 12 of Godot's
+  own lines (a missing template's path is on the line after its message).
+- ASSUMPTION-3 (T4): the check script's problem lines are tagged `(f)` or `(g)` so the shell
+  can say which check failed; the editor run is under `timeout 300`; `HOME` and the XDG
+  folders are redirected with `APPDATA`; the source root travels in `EXPORT_CHECK_SOURCE`;
+  (f) and (g) run before (e); the start check requires the first room to be
+  `data/floors/floor_1/room_1.tres`; floats are compared exactly and a type difference is a
+  difference.
+
+### Things the Auditor should look at closely
+- A fourth developer text is in main's tree, `FloorDebugLabel` (`src/world/floors/
+  floor_scene.tscn`): `Game` hides it in both states (`src/world/game.gd:323`, held by
+  F-012's test), so the switch does not need to.
+- **What the build's checks do not prove (code review CR-7):** (e) is "the exe exits 0 and
+  prints no ERROR", nothing more; (g) starts a game and runs floor 1's first room for 120
+  ticks with the editor binary on the pack, so an error on a later tick, another floor or
+  only in the release exe is not seen (the lead's window run of the exe is what covers the
+  exe itself); (f) compares `.tres` under `data/`, not scenes, and would miss a typed against
+  an untyped array, a `String` against a `StringName` dictionary key and metadata that is
+  only in the pack. No GUT test holds `DevTools._init()` to the process: AC5's two runs do.
+  Builds are not byte-identical (the conversion cache is rebuilt every run; the zip was
+  38,149,220 to 38,149,330 bytes over the good runs). Two runs at once: one fails with a
+  line; there is no lock.
+- **Not done by anyone:** the zip on another PC (SmartScreen, antivirus, a machine without
+  this one's graphics driver); a gamepad on the exe; macOS for the script (written to be
+  portable, never run there); Python 3.9 (3.12 ran).
+- `tools/export_check.gd` is run by the editor binary on the pack; it reaches the game through
+  node names, signals and `call()`, so a rename in `Shell`, `MenuPanel` or `TownScene` breaks
+  the check, not the game. It is outside `src tests`, so `gdlint` and the suite do not see it.
+- The export depends on `tools/.gdignore` staying where it is (DEV-3).
+- C12's test reads `.gd` files under `src/`; a packed array declared in a scene or a data file
+  is not its business, and check (f) is what would see a lost value there.
+
+### How to test
+- The switch: `tests/autoload/test_dev_tools.gd`, `tests/scenes/test_f017_dev_tools.gd`,
+  `tests/core/test_f017_packed_defaults.gd`; from the project, `godot --path . --
+  --no-dev-tools` runs the game as a build shows it.
+- A build: `tools/export` (with `GODOT_BIN` set on Windows; the export templates of 4.7.2
+  installed). It prints each check and the zip's path. The exe is `builds/windows/
+  HundredGates.exe`.
+
+---
+
+## 9. Code Review  ·  _Auditor_
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 3ec73d2 (code at e4623ef: the diff `main..e4623ef` under `src`, `tests`,
+`tools`, `project.godot`, `export_presets.cfg`, `.gitignore`)
+
+**Date:** 2026-11-22 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+Two fresh reviewers on private copies. Both returned APPROVE_WITH_NOTES and neither found a
+developer tool a player can reach or a zip written for a build that cannot play; the lead asks
+for the changes because CR-1 is a hole in the very check DEV-1 added, and CR-3 is the cause
+of DEV-1 stated too narrowly.
+
+**The reader (the switch and the two defaults):** every changed source line against C1 to C4,
+C10 and C12, with the line that implements each; every reader of input in `src/` swept (in
+main's tree: the player's input, the menus, the shell's pause, and the three gated readers);
+22 mutations (15 killed, 6 survived, 1 partial). **The attacker (the export):** about 25 runs
+of `tools/export` in copies, each check attacked, 35 crafted pairs for the comparison, 22
+crafted files for the pack reader, listings of every folder the script could write to.
+
+**AC evidence:** AC1 proven for `is_enabled_for` (not for the wiring: CR-7); AC2 proven (each
+of the six gates removed fails it); AC3 proven for today's seven actions (CR-6 for a future
+one); AC4 proven (only new test files against `main`, none edited); AC5, AC7, AC8, AC10: the
+lead's runs (§8), AC5 reproduced by the reader; AC6 and AC9 reproduced by the attacker (a
+clean run twice, exit 0, the zip holding exactly the two names; each failure of §8 seen
+again; nothing written to the real user folder in about 25 runs); AC11: CR-3.
+
+### CR-1 🟡 The start check runs with the developer tools on; the build runs with them off  ·  `tools/export:139-140`
+Check (g) starts the game with the editor binary, where `DevTools.enabled` is true. With a
+line that fails only when the switch is off (a missing node under `if not DevTools.enabled`
+in `enemy.gd`), `tools/export` exits 0 and writes the zip; the same pack with `--
+--no-dev-tools` gives 168 `ERROR` lines. On the good pack with that argument the check still
+passes (`enabled=false`, 90 equal, a game started).
+> **Builder reply (lead):** fixed in cd4b958: the editor run gets `-- --no-dev-tools`, and the
+> check script reads the switch itself and reports a problem when it is on, so the argument
+> cannot be dropped unseen; its line now starts `dev tools off;`. With the reviewer's failing
+> line in a scratch copy `tools/export` exits 1 (1,578 `ERROR` lines).
+
+### CR-2 🟡 A failed run leaves the failed exe where the good one goes  ·  `tools/export:93`
+After check (f) fails there is no zip, but `builds/windows/HundredGates.exe` with its empty
+rooms stays, at the path §8 names as "the exe".
+> **Builder reply (lead):** fixed in cd4b958: the exit trap removes the exe unless the zip was
+> written. Shown with two failing scratch runs: `builds/windows` empty, no zip.
+
+### CR-3 🟡 The cause of DEV-1 is wider than `= []`, and the test sees only `= []`  ·  `tests/core/test_f017_packed_defaults.gd:8-9`, C12, §8 DEV-1
+The export drops a packed `@export` whose default is **any Array expression**: measured with
+`rows` declared `= Array()`, `= ["#"]`, and with `@export` on a line of its own above `var
+rows: PackedStringArray = []` (the same 512 and 614 bytes as `= []`; 3,008 and 2,110 when
+fixed). Of 12 offending shapes in a scratch file the test caught 6 (odd spacing,
+`@export_storage`, `[ ]`, a trailing comment, `[] as Packed…`, `@export_range`, an inner
+class) and missed 6 (the annotation on its own line, `@export_custom`, a literal over two
+lines, `Array()`, a non-empty literal, a `\` continuation). The engine can be asked instead:
+`script.get_property_default_value(name)` is an Array for the dropped shapes and Nil for a
+packed constructor.
+> **Builder reply (lead):** fixed in cd4b958, and the cause is reworded in C12 and under DEV-1.
+> The test now asks the engine: for every script under `src`, a stored property of a packed
+> array type whose `get_property_default_value` is an Array fails it. Measured on 22 shapes,
+> each also exported: the 12 that the export drops are exactly the 12 whose default is an
+> Array (`[]`, `Array()`, a non-empty literal, a continued line, the annotation on its own
+> line, `@export_custom`, a literal over two lines, and five other packed types); a packed
+> constructor, no default at all and `[] as Packed…` are kept and pass. The reviewer's six
+> missed shapes all fail it in a scratch file. The text scan is gone: the one thing it saw
+> and the engine does not is an inner class, which cannot be a `.tres`' script.
+
+### CR-4 🔵 The script's edges  ·  `tools/export:85-94, 192`, `tools/export_pack.py:102-117`
+A run that stops before the two `rm -f` keeps the previous zip, and a failed import gives no
+`error:` line (a fake Godot exiting 3 on `--import`: exit 3, the old zip still there). Two
+crafted packs give a traceback instead of one line (a directory offset of 2^64 − 1; a name
+that is not UTF-8). The zip's path is printed in Git Bash form (`/c/Users/...`), which
+Explorer cannot open.
+> **Builder reply (lead):** fixed in cd4b958: the old exe and zip are removed before the import;
+> a failed import is `error: the import failed`, exit 1 (it was exit 3 with no line and the
+> old zip kept); the pack reader checks the table's start and count against the pack and
+> turns the two tracebacks into its one line; the zip's path is printed through `cygpath -w`
+> where that exists.
+
+### CR-5 🔵 The README  ·  `tools/export_readme.txt:16, 25`
+`interact` is read only by the menus, so "Interact .... E" does nothing in play. Nothing
+says how to enter the tower or how to quit.
+> **Builder reply (lead):** fixed in cd4b958: the two `Interact` lines are gone and a HOW TO PLAY
+> block says where the gate is and how to stop. Each sentence was checked against
+> `town.tres` and `shell_menus.gd`. Two things it leaves out: the gate's green is faint, and
+> "Quit to title" asks once more before it goes. Still Lucas's to reword (§10 Q1).
+
+### CR-6 🔵 "A new one is covered" is only partly true  ·  `tests/scenes/test_f017_dev_tools.gd:75-88`
+A scratch action with an ungated reader is caught when read by event or by a polled
+just-pressed; a polled, **held** `Input.is_action_pressed` survives, because the tap is
+released before any tick. The list of actions is sorted by StringName pointer, not by name.
+> **Builder reply (lead):** fixed in cd4b958: a third way holds every bound event across two
+> physics frames, in all four places; the list is ordered by name. With a polled, held reader
+> added to the overlay in a scratch copy the old test passes (14 of 14) and the new one
+> fails (5 of 14).
+
+### CR-7 🔵 For the record
+(a) No GUT test holds `_init()`'s wiring to the process: `enabled = true` passes both test
+files; AC5's two runs are what hold it. (b) A fourth developer text sits in main's tree,
+`FloorDebugLabel` (`src/world/floors/floor_scene.tscn`), hidden in both states by
+`src/world/game.gd:323` and by F-012's own test; §2 does not list it. (c) Builds are not
+byte-identical any more: with the cache rebuilt every run, 347 bytes differ in 11 `.scn`
+files, and the zip was 38,149,220 to 38,149,254 bytes over the good runs. (d) Check (e) proves
+"exit 0, no ERROR" and nothing more: a good exe prints only its banner. (e) Check (g) runs
+only floor 1's first room for 120 ticks; Start validates the whole tower, the catalog and the
+tunables. (f) Two runs at once: one fails with a line; there is no lock. (g) An interrupted
+run leaves one empty folder in the temp directory. (h) The comparison of check (f) misses a
+typed against an untyped array, a `String` against a `StringName` dictionary key and metadata
+that is only in the pack, and would raise a false alarm on a NaN inside a `Vector2` (the data
+has none).
+> **Builder reply (lead):** noted in §8, "look at closely". (b) stays as it is: the label is
+> hidden by the game in both states and F-012's test holds that line.
+
+**Checked and found sound:** C1 to C4 as written, quoted line by line; `project.godot`'s one
+line is its only change; no feature tag, hidden key, pass-down or stripped scene (§3); no key
+triggers a print; a leaked `false` shows (with the restore removed 11 tests fail across three
+files); nothing in the game compares the two changed defaults with `[]`. The export: clean
+twice; DEV-2's stale cache reproduced and the comparison catches stale broken data even
+without the `rm`; (f) reads the file list from the source tree; every wrong node, method,
+signal or enum name in `export_check.gd` gives an `ERROR` line or a problem, none passes
+silently; no false alarm from a path with a space or `ação`, another working directory,
+`builds/` holding other files, a read-only exe, a stale `.part`, `TMPDIR` with a space, no
+`timeout`; every `rm` is guarded and every `grep` pipeline is in an `if` or `|| true`; the
+pack reader never hangs or grows on 22 crafted files; the pack holds no user name, path,
+test, tool or GUT string; the preset is key for key C5's; the README is ASCII, 78 columns,
+and its controls match the input map.
+
+**Not checked by either:** macOS; the exe on another PC; a gamepad; Python 3.9; a real
+symlink to the script; a machine slow enough for the 300 s limit; why the engine drops the
+property (only that it does).
+
+<!-- review-round: 2 verdict: APPROVE_WITH_NOTES -->
+
+**Reviewed commit:** cd4b958 (the fixes: the diff `e4623ef..cd4b958` under `tests` and `tools`)
+
+**Date:** 2026-11-22 · **Verdict:** APPROVE_WITH_NOTES · **By:** Auditor (lead, D-014)
+
+The same two reviewers on new private copies of `cd4b958`. Both: APPROVE_WITH_NOTES, no 🔴.
+
+**Round 1 findings:** CR-1, CR-3, CR-4, CR-5, CR-6 ✔ resolved; CR-2 partly (CR-8); CR-7 noted.
+- CR-1: with the line that fails only when the switch is off, `tools/export` exits 1 (1,632
+  `ERROR` lines), no zip, no exe; with the argument dropped from the script the check itself
+  says the developer tools are on, exit 1; with the autoload renamed, exit 1.
+- CR-3: 26 real scripts under `src/`, each with a `.tres` or a scene holding a value, exported
+  and read back: the export dropped 16 and the test names all 16 (among them `@export_storage`,
+  a property with a setter, `[] as Array[String]`, `[] + []`, a `Node` script in a scene, a
+  base script); it kept 9 and the test passes 8 of them. The ninth is a false alarm on the
+  safe side: a `@tool` script with `= []` is kept by the export and fails the test. Nothing is
+  left under `user://`; the file takes 1.8 s.
+- CR-4: a fake Godot exiting 3 on `--import` gives one `error:` line, exit 1, the old exe and
+  zip gone; all 22 crafted packs end in one line and exit 1; without `cygpath` the last line
+  prints the path as before.
+- CR-6: the scratch held polled reader is killed, only by the held way; the diff to the test
+  only adds; a leaked `false` still shows (11 tests fail without the restore).
+- A clean run: exit 0, seven lines, the new one `dev tools off; Start reached PLAYING; …`, 407
+  entries, 90 data files equal, the zip holding the two names.
+
+### CR-8 🟡 The trap skips the exe when the temp folder cannot be removed  ·  `tools/export:28-30`
+With another process holding the temp folder, `set -e` ended the trap at the failed `rm -rf`
+and the failed exe stayed (CR-2's own case, by another road).
+> **Builder reply (lead):** fixed in c1dca94: the exe is removed first and the temp folder's
+> removal cannot stop the trap. Shown with the folder made busy: exit 1, `builds/windows`
+> empty (the old script left the exe).
+
+### CR-9 🟡 AC11 and §8 still say the test names the line  ·  §5, §8
+The rewritten test prints the file and the property, not a line number.
+> **Builder reply (lead):** reworded in AC11 and in §8's T4 entry with this round.
+
+### CR-10 🔵 A run that stops before it builds deletes the previous good exe and keeps its zip  ·  `tools/export`
+`GODOT_BIN` unset or wrong: the `error:` line, exit 1, the good exe gone, its zip kept.
+> **Builder reply (lead):** fixed in c1dca94: the trap removes the exe only once this run has
+> started to build. Shown: both files still there and byte-identical.
+
+### CR-11 🔵 The guard reads a renamed property as "off"  ·  `tools/export_check.gd`
+With `enabled` renamed in the game and the argument dropped, the check printed `dev tools
+off` and passed with the tools on (`get()` gave null).
+> **Builder reply (lead):** fixed in c1dca94: anything but an exact `false` is a problem
+> ("the developer tools' switch could not be read"). Shown: exit 1.
+
+### CR-12 🔵 Smaller points
+The README's "choose Quit to title, then Quit" skips the question in between, whose focus is
+on Cancel. A stop during the zip leaves a 19.8 MB `.part` until the next good run. A stray tab
+in the script. The test's `cannot be loaded` branch may be dead (a script that does not parse
+still loads; GUT's error tracking fails the test). `FloorDebugLabel` is noted in §9 only.
+> **Builder reply (lead):** the README says "and confirm" (c1dca94); the `.part` file is
+> removed with the old exe and zip; the tab is gone; the test's header says a `@tool` script
+> is a false alarm on the safe side. The dead branch stays: harmless. `FloorDebugLabel` is in
+> §8 now.
+
+**Tried, held (attacker):** a failing zip step removes the exe by design; four overlapping
+pairs of runs: one fails each time and the zip left passes the checks; a stop during the
+start check leaves nothing; only `dev_tools.gd` reads user arguments, so the argument changes
+nothing else; every `rm` of the trap uses a guarded root and a fixed name; the real user
+folders are unchanged.
+
+**Not checked:** a real Ctrl-C in a terminal; the gate's colour on screen (the lead's
+screenshots: a dim green band); macOS; the exe on another PC; packed types beyond String and
+Int32 in an export.
+
+**After round 2** (c1dca94): the lead's run of `tools/export`: exit 0, every check's line as
+above, a zip of 38149334 bytes holding `HundredGates.exe` and `README.txt`; the feature's three
+test files, 30 tests, all passing. Only `tools/` files, the README and a comment in one test
+changed since the full suite ran on cd4b958.
+
+---
+
+## 10. Open Questions  ·  _Anyone (append)_
+
+| # | Raised by | Question | Blocking? | Answer (Lucas/Planner) |
+|---|---|---|---|---|
+| Q1 | Lead | → Lucas, at Gate B: the README for the player (`tools/export_readme.txt`) is the first thing a stranger reads. Its words are the lead's; change what you like. | no | |
+| Q2 | Lead | → Lucas, at Gate B: two things stay in a build because they are the game's look today, not developer tools: the green ring around the player and every enemy (where a hit lands), and the boss bar's text ("warden  400 / 400  stage 1"). Hide either for other people? | no | |
+| Q3 | Lead | → Lucas: the zip is about 38 MB, over the 25 MB many mail services allow. A drive link or a chat app will carry it. | no | |
+
+---
+
+## 11. Director Notes  ·  _Lucas_
+

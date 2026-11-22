@@ -7,3 +7,4 @@
 __pycache__/
 # Autopilot logs, lock and blocked markers (F-002/C19)
 .studio/
+builds/

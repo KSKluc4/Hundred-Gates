@@ -19,6 +19,7 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 Tunables="*res://src/autoload/tunables.gd"
 UserSettings="*res://src/autoload/user_settings.gd"
+DevTools="*res://src/autoload/dev_tools.gd"
 
 [debug]
 

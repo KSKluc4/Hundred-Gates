@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# F-017: builds the Windows export, checks it and zips it for a player. Nothing is published.
+#   tools/export
+# Writes builds/HundredGates-<version>-windows.zip (exactly HundredGates.exe and README.txt).
+# The checks: (a) the export; (b) to (d) the pack's table; (f) the pack's data against the source
+# and (g) a game started from the pack, both by the editor binary running tools/export_check.gd;
+# (e) the exe's own run (Windows only); then the README.
+# Every failed check is one line starting `error:` and a non-zero exit. Bash 3.2 is enough.
+set -euo pipefail
+
+# shellcheck source=tools/_godot.sh
+source "$(dirname "${BASH_SOURCE[0]}")/_godot.sh"
+
+PRESET="Windows Desktop"
+EXPORT_PACK="$PROJECT_ROOT/tools/export_pack.py"
+README_SOURCE="$PROJECT_ROOT/tools/export_readme.txt"
+EXE="$PROJECT_ROOT/builds/windows/HundredGates.exe"
+RUN_FRAMES=300 # C6 (e): the exe is run for this many frames, headless.
+RUN_TIMEOUT_SECONDS=120
+CHECK_SCRIPT="$PROJECT_ROOT/tools/export_check.gd"
+CHECK_TIMEOUT_SECONDS=300
+
+work=""
+build_started=0
+zip_written=0
+# A run that started to build and ends without the zip leaves no exe behind: the exe of a failed
+# run is not a build (CR-2). A run that stops before it started (no Godot, no Python) touches
+# nothing in builds/ (N2). The exe goes first, and the temporary folder, which may refuse to go
+# (a file in it still open), cannot stop the trap (N1). The zip is written last, then its flag.
+cleanup() {
+	if [ "$build_started" -eq 1 ] && [ "$zip_written" -ne 1 ]; then
+		rm -f "${PROJECT_ROOT:?}/builds/windows/HundredGates.exe" || true
+	fi
+	if [ -n "$work" ]; then
+		rm -rf "$work" || true
+	fi
+}
+trap cleanup EXIT
+
+fail() {
+	echo "error: $*" >&2
+	exit 1
+}
+
+# The log text without Godot's colour codes (they make a line hard to read in a report).
+plain() {
+	sed "s/$(printf '\033')\[[0-9;]*m//g" "$1" | tr -d '\r'
+}
+
+# First of the project's Python, python3, python that runs `-c ""` (C9). The Microsoft Store
+# stub on Windows is on PATH as python3 and exits with an error, so a name found is not enough.
+find_python() {
+	local candidate
+	for candidate in "$PROJECT_ROOT/.venv/Scripts/python.exe" "$PROJECT_ROOT/.venv/bin/python" \
+		python3 python; do
+		case "$candidate" in
+		/*) [ -f "$candidate" ] || continue ;;
+		*) command -v "$candidate" >/dev/null 2>&1 || continue ;;
+		esac
+		if "$candidate" -c "" >/dev/null 2>&1; then
+			echo "$candidate"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# The config/version of project.godot, kept to what a file name can hold.
+project_version() {
+	local version
+	version="$(sed -nE 's/^config\/version="([^"]*)".*/\1/p' "$PROJECT_ROOT/project.godot" | head -n 1)"
+	case "$version" in
+	"" | *[!0-9A-Za-z._-]*) return 1 ;;
+	esac
+	echo "$version"
+}
+
+# A path as the native Godot binary wants it (C:/... on Windows); elsewhere as it is.
+native_path() {
+	if command -v cygpath >/dev/null 2>&1; then
+		cygpath -m "$1"
+	else
+		echo "$1"
+	fi
+}
+
+on_windows() {
+	case "$(uname -s)" in
+	MINGW* | MSYS* | CYGWIN*) return 0 ;;
+	esac
+	return 1
+}
+
+godot="$(resolve_godot)"
+python="$(find_python)" || fail "no working Python found (tried .venv, python3, python)."
+version="$(project_version)" || fail "config/version in project.godot is missing or not a plain version."
+zip="$PROJECT_ROOT/builds/HundredGates-$version-windows.zip"
+
+# What an earlier run left is removed first, so a run that stops early leaves no old build (CR-4).
+# From here on this run is a build: the trap removes its exe if it does not reach the zip.
+build_started=1
+rm -f "${PROJECT_ROOT:?}/builds/windows/HundredGates.exe"
+rm -f "${PROJECT_ROOT:?}/builds/HundredGates-$version-windows.zip"
+rm -f "${PROJECT_ROOT:?}/builds/HundredGates-$version-windows.zip.part"
+
+godot_import "$godot" || fail "the import failed (Godot exited with a non-zero code)."
+
+# Godot keeps each converted data file in .godot/exported and reuses it while the .tres is
+# unchanged, though the script that defines its properties has changed (measured in F-017 T4: a
+# fix of RoomData did not reach the build). Only this cache is removed; the import cache stays.
+rm -rf "${PROJECT_ROOT:?}/.godot/exported"
+
+mkdir -p "$PROJECT_ROOT/builds/windows"
+
+work="$(mktemp -d)"
+log="$work/export.log"
+run_timeout=()
+check_timeout=()
+if command -v timeout >/dev/null 2>&1; then
+	run_timeout=(timeout "$RUN_TIMEOUT_SECONDS")
+	check_timeout=(timeout "$CHECK_TIMEOUT_SECONDS")
+fi
+
+echo "Exporting \"$PRESET\" ..."
+status=0
+"$godot" --headless --path "$PROJECT_ROOT" --export-release "$PRESET" >"$log" 2>&1 || status=$?
+
+# (a) Godot exited 0 and printed no line with ERROR. A missing template is Godot's own line.
+if [ "$status" -ne 0 ]; then
+	# Godot's own lines (a missing template names its path), without the progress lines.
+	plain "$log" | grep -v -E '^\[ *[0-9]+% \]|^\[ DONE \]|^Godot Engine|^$' | head -n 12 >&2 || true
+	fail "check (a) failed: Godot exited with code $status (its lines are above)."
+fi
+if grep -q 'ERROR' "$log"; then
+	plain "$log" | grep 'ERROR' | head -n 5 >&2 || true
+	fail "check (a) failed: the export printed $(grep -c 'ERROR' "$log") line(s) with ERROR (first ones above)."
+fi
+[ -f "$EXE" ] || fail "check (a) failed: Godot exited 0 but wrote no builds/windows/HundredGates.exe."
+echo "check (a): the export exited 0 with no ERROR line"
+
+# (b), (c), (d) from the pack's file table; the Python file prints its own `error:` lines.
+"$python" "$EXPORT_PACK" check "$EXE" "$PROJECT_ROOT" || exit 1
+
+# (f) the pack's data is the source's and (g) a game starts from the pack (C11). The pack is cut
+# out of the exe into a .pck and the EDITOR binary runs tools/export_check.gd on it (the exe takes
+# no script). This comes before (e): it names what is wrong with the data, and it runs on every
+# system. The folders Godot writes to are all inside the temporary folder, never the real ones.
+# `-- --no-dev-tools` makes the game it starts run with the developer tools off, as the build does
+# (CR-1); the check script reports it if they are on.
+pck="$work/pack.pck"
+"$python" "$EXPORT_PACK" extract "$EXE" "$pck" >/dev/null || exit 1
+mkdir -p "$work/check_home/appdata" "$work/check_home/data" "$work/check_home/config"
+check_log="$work/check.log"
+check_status=0
+(cd "$work" && HOME="$(native_path "$work/check_home")" \
+	APPDATA="$(native_path "$work/check_home/appdata")" \
+	XDG_DATA_HOME="$(native_path "$work/check_home/data")" \
+	XDG_CONFIG_HOME="$(native_path "$work/check_home/config")" \
+	EXPORT_CHECK_SOURCE="$(native_path "$PROJECT_ROOT")" \
+	"${check_timeout[@]+"${check_timeout[@]}"}" "$godot" --headless \
+	--main-pack "$(native_path "$pck")" -s "$(native_path "$CHECK_SCRIPT")" \
+	-- --no-dev-tools) >"$check_log" 2>&1 || check_status=$?
+check_text="$work/check.txt"
+plain "$check_log" >"$check_text"
+if grep -q '^problem: (f)' "$check_text"; then
+	grep '^problem: (f)' "$check_text" | head -n 5 >&2 || true
+	fail "check (f) failed: $(grep -c '^problem: (f)' "$check_text") difference(s) between the pack's data and the source (first ones above)."
+fi
+if grep -q '^problem: (g)' "$check_text"; then
+	grep -E '^problem: \(g\)|ERROR' "$check_text" | head -n 5 >&2 || true
+	fail "check (g) failed: a game did not start from the pack (first lines above)."
+fi
+if grep -q 'ERROR' "$check_text"; then
+	grep 'ERROR' "$check_text" | head -n 5 >&2 || true
+	fail "check (f)/(g) failed: the check printed $(grep -c 'ERROR' "$check_text") line(s) with ERROR (first ones above)."
+fi
+if [ "$check_status" -ne 0 ] || ! grep -q '^export check: .* a game started$' "$check_text"; then
+	tail -n 5 "$check_text" >&2
+	fail "check (f)/(g) failed: the check exited with code $check_status without its success line (last lines above)."
+fi
+sed -n 's/^info: /check (f), (g): /p' "$check_text"
+echo "check (f), (g): $(sed -n 's/^export check: //p' "$check_text")"
+
+# (e) the exe runs. Its log and settings go to a fresh APPDATA, never the real user folder.
+if on_windows; then
+	app_data="$work/appdata"
+	mkdir -p "$app_data"
+	if command -v cygpath >/dev/null 2>&1; then
+		app_data="$(cygpath -w "$app_data")"
+	fi
+	run_log="$work/run.log"
+	run_status=0
+	# From the temporary folder, so that nothing of the project is next to the exe.
+	(cd "$work" && APPDATA="$app_data" "${run_timeout[@]+"${run_timeout[@]}"}" "$EXE" \
+		--headless --quit-after "$RUN_FRAMES") >"$run_log" 2>&1 || run_status=$?
+	if grep -q 'ERROR' "$run_log"; then
+		plain "$run_log" | grep 'ERROR' | head -n 5 >&2 || true
+		fail "check (e) failed: the exe printed $(grep -c 'ERROR' "$run_log") line(s) with ERROR when run (first ones above)."
+	fi
+	if [ "$run_status" -ne 0 ]; then
+		fail "check (e) failed: the exe exited with code $run_status when run for $RUN_FRAMES frames."
+	fi
+	echo "check (e): the exe ran $RUN_FRAMES frames, exit 0, no ERROR line"
+else
+	echo "check (e) skipped: a Windows exe can only be run on Windows."
+fi
+
+# The player's README, then the zip.
+"$python" "$EXPORT_PACK" readme "$README_SOURCE" || exit 1
+echo "README check: plain ASCII, no line over 78 characters"
+"$python" "$EXPORT_PACK" zip "$zip" "$EXE" "$README_SOURCE" || exit 1
+
+zip_written=1
+bytes="$(wc -c <"$zip" | tr -d ' ')"
+zip_shown="$zip"
+if command -v cygpath >/dev/null 2>&1; then
+	zip_shown="$(cygpath -w "$zip")" # Explorer does not open /c/Users/...
+fi
+echo "Zip: $zip_shown ($bytes bytes, $((bytes / 1048576)) MB)"

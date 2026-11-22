@@ -86,7 +86,8 @@ func _physics_process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not debug_keys_enabled:
+	# F-017/C2: the switch wins over `debug_keys_enabled`.
+	if not (DevTools.enabled and debug_keys_enabled):
 		return  # F-012/C17
 	if event.is_action_pressed(NEXT_ROOM_ACTION):
 		_clear_highest_unlocked_floor()

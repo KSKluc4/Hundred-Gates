@@ -18,7 +18,8 @@ const BLOCK_ORIGINS: Array[Vector2i] = [
 ]
 
 @export var id: StringName = &""
-@export var rows: PackedStringArray = []
+## F-017/C12: a packed array is declared with its constructor, not `[]`: the export drops `= []`.
+@export var rows: PackedStringArray = PackedStringArray()
 @export var enemies: Array[EnemyData] = []
 @export var is_boss_room: bool = false
 ## F-012/C8: a room with no enemies and no spawns, never a boss room (the town). Only a tower's
@@ -26,7 +27,7 @@ const BLOCK_ORIGINS: Array[Vector2i] = [
 @export var is_safe_room: bool = false
 ## F-014/C1: the enemies that arrive during the fight, in arrival order. Each value is 1-based,
 ## like a spawn digit: `enemies[value - 1]`. Empty: the room has no waves.
-@export var reinforcements: PackedInt32Array = []
+@export var reinforcements: PackedInt32Array = PackedInt32Array()
 ## F-014/C1: how many enemies may be engaged at once before arrivals pause. 0 means
 ## `FloorTunables.wave_max_engaged`.
 @export var max_engaged: int = 0
