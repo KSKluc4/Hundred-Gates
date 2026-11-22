@@ -1,8 +1,8 @@
 ---
 id: F-017
 title: Export builds — a Windows build for other people, developer tools off (slice 3, third part)
-status: IN_PROGRESS      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-21
 updated: 2026-11-21
 depends_on: [F-000, F-012, F-015, F-016, D-003, D-014, D-016]
@@ -414,12 +414,47 @@ written (exit 1 with Godot's own line; 20 files missing).
   exit 0, 407 entries in the pack, a zip of 38,147,389 bytes holding `HundredGates.exe` and
   `README.txt`, `git status` clean afterwards. The implementer showed the five failures of
   AC6 (a) to (e), each in its own scratch copy, exit 1 with the check's line.
-- [ ] T4
-- [ ] T3 — AC5 done: `DevTools.enabled = true  user args = []` and `DevTools.enabled = false
-  user args = ["--no-dev-tools"]`, from `godot --headless --path . -s <script>` without and
-  with `-- --no-dev-tools`. The exe's first run in a window: DEV-1.
+- [x] T4 — e4623ef. Lead's run of `tools/export` in the checkout: exit 0; `pack: 407 entries,
+  complete and nothing else`; `Start reached PLAYING; floor 1, data/floors/floor_1/room_1.tres,
+  kill target 6 (source 6), after 120 ticks`; `90 data files equal, a game started`; the exe
+  ran 300 frames with no `ERROR`; a zip of 38149231 bytes; `git status` clean afterwards. The
+  implementer showed the new failures, each in a scratch copy, exit 1: `rows` declared `= []`
+  again (16 differences: the 12 rooms, the 3 boss rooms and the town); `reinforcements` alone
+  (12 differences); a floor that names no rooms (the data equals its source, Start does not
+  reach `PLAYING`). `test_f017_packed_defaults.gd` names both lines of `room_data.gd` when
+  `= []` is put back.
+- [x] T3 — the lead's runs. **AC5:** `DevTools.enabled = true  user args = []` and
+  `DevTools.enabled = false  user args = ["--no-dev-tools"]`, from `godot --headless --path .
+  -s <script>` without and with `-- --no-dev-tools`. **AC7, the rebuilt exe in a window**
+  (1280 × 720, its user files in a scratch folder, real key presses sent through the OS, ten
+  screenshots of its own window): the title with no FPS text, and none after F3; Start gives
+  the town; N, R and F3 in town change nothing; walking up opens the gate with the Warden's
+  odds; Enter enters floor 1; three chasers attack (HP 40 / 100), each with its bar and no
+  text under it; after R and N the HUD still reads `Floor 1 · Room 1 / 3`, `Kills 0 / 6`;
+  Escape pauses. **AC8:** the README's controls against the input map, decoded by the lead
+  from `project.godot`: move W A S D and the arrows, pad stick axes 0 and 1 and buttons 11 to
+  14; attack J, mouse button 1, pad 2 (X); dodge Space, pad 0 (A); interact E, pad 3 (Y);
+  pause Escape, pad 6 (Start); menus choose by `ui_accept` (Enter, Space, pad A) and
+  `interact`, go back by `ui_cancel` (Escape, pad B): all as the README says. **AC10, on
+  e4623ef:** the full suite is 185 scripts, 3154 tests, all passing (1169 s); `gdlint src tests` no
+  problems; `gdformat --check` 344 files unchanged; core purity ok; the headless boot prints
+  no error or warning line; `git status` clean.
 
 ### Deviations from plan
+- DEV-2 (T4): **`tools/export` deletes `.godot/exported` before every export.** Godot keeps
+  the converted data there and reuses it while the `.tres` is unchanged, also after the script
+  that defines its properties changed: the first export after the fix of DEV-1 still had
+  empty rooms. Not in C6. — **Impact:** an export converts everything again (about 25 s in
+  all); nothing else is deleted.
+- DEV-3 (T4): two things the spec's addition for DEV-1 said that are not so. **`tools/*` in
+  the preset's filter is not what keeps `tools/export_check.gd` out of the pack:**
+  `tools/.gdignore` (tracked) already hides the folder from Godot; without the filter entry
+  check (d) still passes, and it fails only when `.gdignore` goes too. The entry stays, as a
+  second lock. **And with only `rows` fixed the game would not have started with empty
+  waves:** rooms that have arrival points and no reinforcements fail the tower's own
+  validation (215 error lines), so Start fails there as well; the comparison of check (f) is
+  still what names the cause. AC6's wording "(g) alone would have passed" in the lead's
+  brief was wrong.
 - DEV-1 (T3, the lead's first run of the exported exe in a window): **the build that passed
   every check of C6 could not start a game.** The title appeared with no FPS text (and F3 did
   nothing); Start answered "Could not start: the game data has 35 error(s)". The exe's log:
@@ -442,10 +477,44 @@ written (exit 1 with Godot's own line; 20 files missing).
   either way). Every build made before this would have been unplayable.
 
 ### Assumptions made (small, reversible)
+- ASSUMPTION-1 (T1): the fight twins of AC3 compare the session's snapshot without the loot
+  roller's seed, which `Game` draws anew for every game (no catalog there, so nothing rolls);
+  town and pause compare one game with itself and use the whole snapshot. The floor test also
+  checks that the `Room` node and the sim object are the same after a press, because a
+  restarted room looks the same at an equal sim time. "Pressed and released between two
+  ticks" is a tap sent in one process frame, with the action's own events duplicated; the
+  positive tests of AC4 press the same way, so the tap is known to reach the game.
+- ASSUMPTION-2 (T2): `tools/export` runs the exe from its temporary folder, under `timeout
+  120` where that command exists; the temporary folder goes in an exit trap; `APPDATA` for the
+  run is converted with `cygpath -w` where it exists; `tools/export_pack.py` reads pack
+  format 4 only and refuses an encrypted pack; the version must match `[0-9A-Za-z._-]+`; the
+  zip is written to a `.part` file and renamed; a failed check (a) shows up to 12 of Godot's
+  own lines (a missing template's path is on the line after its message).
+- ASSUMPTION-3 (T4): the check script's problem lines are tagged `(f)` or `(g)` so the shell
+  can say which check failed; the editor run is under `timeout 300`; `HOME` and the XDG
+  folders are redirected with `APPDATA`; the source root travels in `EXPORT_CHECK_SOURCE`;
+  (f) and (g) run before (e); the start check requires the first room to be
+  `data/floors/floor_1/room_1.tres`; floats are compared exactly and a type difference is a
+  difference.
 
 ### Things the Auditor should look at closely
+- **Not done by anyone:** the zip on another PC (SmartScreen, antivirus, a machine without
+  this one's graphics driver); a gamepad on the exe; macOS for the script (written to be
+  portable, never run there); Python 3.9 (3.12 ran).
+- `tools/export_check.gd` is run by the editor binary on the pack; it reaches the game through
+  node names, signals and `call()`, so a rename in `Shell`, `MenuPanel` or `TownScene` breaks
+  the check, not the game. It is outside `src tests`, so `gdlint` and the suite do not see it.
+- The export depends on `tools/.gdignore` staying where it is (DEV-3).
+- C12's test reads `.gd` files under `src/`; a packed array declared in a scene or a data file
+  is not its business, and check (f) is what would see a lost value there.
 
 ### How to test
+- The switch: `tests/autoload/test_dev_tools.gd`, `tests/scenes/test_f017_dev_tools.gd`,
+  `tests/core/test_f017_packed_defaults.gd`; from the project, `godot --path . --
+  --no-dev-tools` runs the game as a build shows it.
+- A build: `tools/export` (with `GODOT_BIN` set on Windows; the export templates of 4.7.2
+  installed). It prints each check and the zip's path. The exe is `builds/windows/
+  HundredGates.exe`.
 
 ---
 
