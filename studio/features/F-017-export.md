@@ -1,8 +1,8 @@
 ---
 id: F-017
 title: Export builds — a Windows build for other people, developer tools off (slice 3, third part)
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
-owner_now: Auditor       # who must act next: Planner | Auditor | Builder | Lucas
+status: CODE_CHANGES     # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+owner_now: Builder       # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-21
 updated: 2026-11-21
 depends_on: [F-000, F-012, F-015, F-016, D-003, D-014, D-016]
@@ -519,6 +519,103 @@ written (exit 1 with Godot's own line; 20 files missing).
 ---
 
 ## 9. Code Review  ·  _Auditor_
+
+<!-- review-round: 1 verdict: CHANGES_REQUESTED -->
+
+**Reviewed commit:** 3ec73d2 (code at e4623ef: the diff `main..e4623ef` under `src`, `tests`,
+`tools`, `project.godot`, `export_presets.cfg`, `.gitignore`)
+
+**Date:** 2026-11-22 · **Verdict:** CHANGES_REQUESTED · **By:** Auditor (lead, D-014)
+
+Two fresh reviewers on private copies. Both returned APPROVE_WITH_NOTES and neither found a
+developer tool a player can reach or a zip written for a build that cannot play; the lead asks
+for the changes because CR-1 is a hole in the very check DEV-1 added, and CR-3 is the cause
+of DEV-1 stated too narrowly.
+
+**The reader (the switch and the two defaults):** every changed source line against C1 to C4,
+C10 and C12, with the line that implements each; every reader of input in `src/` swept (in
+main's tree: the player's input, the menus, the shell's pause, and the three gated readers);
+22 mutations (15 killed, 6 survived, 1 partial). **The attacker (the export):** about 25 runs
+of `tools/export` in copies, each check attacked, 35 crafted pairs for the comparison, 22
+crafted files for the pack reader, listings of every folder the script could write to.
+
+**AC evidence:** AC1 proven for `is_enabled_for` (not for the wiring: CR-7); AC2 proven (each
+of the six gates removed fails it); AC3 proven for today's seven actions (CR-6 for a future
+one); AC4 proven (only new test files against `main`, none edited); AC5, AC7, AC8, AC10: the
+lead's runs (§8), AC5 reproduced by the reader; AC6 and AC9 reproduced by the attacker (a
+clean run twice, exit 0, the zip holding exactly the two names; each failure of §8 seen
+again; nothing written to the real user folder in about 25 runs); AC11: CR-3.
+
+### CR-1 🟡 The start check runs with the developer tools on; the build runs with them off  ·  `tools/export:139-140`
+Check (g) starts the game with the editor binary, where `DevTools.enabled` is true. With a
+line that fails only when the switch is off (a missing node under `if not DevTools.enabled`
+in `enemy.gd`), `tools/export` exits 0 and writes the zip; the same pack with `--
+--no-dev-tools` gives 168 `ERROR` lines. On the good pack with that argument the check still
+passes (`enabled=false`, 90 equal, a game started).
+
+### CR-2 🟡 A failed run leaves the failed exe where the good one goes  ·  `tools/export:93`
+After check (f) fails there is no zip, but `builds/windows/HundredGates.exe` with its empty
+rooms stays, at the path §8 names as "the exe".
+
+### CR-3 🟡 The cause of DEV-1 is wider than `= []`, and the test sees only `= []`  ·  `tests/core/test_f017_packed_defaults.gd:8-9`, C12, §8 DEV-1
+The export drops a packed `@export` whose default is **any Array expression**: measured with
+`rows` declared `= Array()`, `= ["#"]`, and with `@export` on a line of its own above `var
+rows: PackedStringArray = []` (the same 512 and 614 bytes as `= []`; 3,008 and 2,110 when
+fixed). Of 12 offending shapes in a scratch file the test caught 6 (odd spacing,
+`@export_storage`, `[ ]`, a trailing comment, `[] as Packed…`, `@export_range`, an inner
+class) and missed 6 (the annotation on its own line, `@export_custom`, a literal over two
+lines, `Array()`, a non-empty literal, a `\` continuation). The engine can be asked instead:
+`script.get_property_default_value(name)` is an Array for the dropped shapes and Nil for a
+packed constructor.
+
+### CR-4 🔵 The script's edges  ·  `tools/export:85-94, 192`, `tools/export_pack.py:102-117`
+A run that stops before the two `rm -f` keeps the previous zip, and a failed import gives no
+`error:` line (a fake Godot exiting 3 on `--import`: exit 3, the old zip still there). Two
+crafted packs give a traceback instead of one line (a directory offset of 2^64 − 1; a name
+that is not UTF-8). The zip's path is printed in Git Bash form (`/c/Users/...`), which
+Explorer cannot open.
+
+### CR-5 🔵 The README  ·  `tools/export_readme.txt:16, 25`
+`interact` is read only by the menus, so "Interact .... E" does nothing in play. Nothing
+says how to enter the tower or how to quit.
+
+### CR-6 🔵 "A new one is covered" is only partly true  ·  `tests/scenes/test_f017_dev_tools.gd:75-88`
+A scratch action with an ungated reader is caught when read by event or by a polled
+just-pressed; a polled, **held** `Input.is_action_pressed` survives, because the tap is
+released before any tick. The list of actions is sorted by StringName pointer, not by name.
+
+### CR-7 🔵 For the record
+(a) No GUT test holds `_init()`'s wiring to the process: `enabled = true` passes both test
+files; AC5's two runs are what hold it. (b) A fourth developer text sits in main's tree,
+`FloorDebugLabel` (`src/world/floors/floor_scene.tscn`), hidden in both states by
+`src/world/game.gd:323` and by F-012's own test; §2 does not list it. (c) Builds are not
+byte-identical any more: with the cache rebuilt every run, 347 bytes differ in 11 `.scn`
+files, and the zip was 38,149,220 to 38,149,254 bytes over the good runs. (d) Check (e) proves
+"exit 0, no ERROR" and nothing more: a good exe prints only its banner. (e) Check (g) runs
+only floor 1's first room for 120 ticks; Start validates the whole tower, the catalog and the
+tunables. (f) Two runs at once: one fails with a line; there is no lock. (g) An interrupted
+run leaves one empty folder in the temp directory. (h) The comparison of check (f) misses a
+typed against an untyped array, a `String` against a `StringName` dictionary key and metadata
+that is only in the pack, and would raise a false alarm on a NaN inside a `Vector2` (the data
+has none).
+
+**Checked and found sound:** C1 to C4 as written, quoted line by line; `project.godot`'s one
+line is its only change; no feature tag, hidden key, pass-down or stripped scene (§3); no key
+triggers a print; a leaked `false` shows (with the restore removed 11 tests fail across three
+files); nothing in the game compares the two changed defaults with `[]`. The export: clean
+twice; DEV-2's stale cache reproduced and the comparison catches stale broken data even
+without the `rm`; (f) reads the file list from the source tree; every wrong node, method,
+signal or enum name in `export_check.gd` gives an `ERROR` line or a problem, none passes
+silently; no false alarm from a path with a space or `ação`, another working directory,
+`builds/` holding other files, a read-only exe, a stale `.part`, `TMPDIR` with a space, no
+`timeout`; every `rm` is guarded and every `grep` pipeline is in an `if` or `|| true`; the
+pack reader never hangs or grows on 22 crafted files; the pack holds no user name, path,
+test, tool or GUT string; the preset is key for key C5's; the README is ASCII, 78 columns,
+and its controls match the input map.
+
+**Not checked by either:** macOS; the exe on another PC; a gamepad; Python 3.9; a real
+symlink to the script; a machine slow enough for the 300 s limit; why the engine drops the
+property (only that it does).
 
 ---
 

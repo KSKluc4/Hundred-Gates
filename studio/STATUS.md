@@ -23,7 +23,7 @@
 | F-014 | Waves — reinforcements arrive in a room until its kill target is reached (Gate B playtest, third fix) | DONE | — | — |
 | F-015 | Menus — title screen, pause menu, death screen, settings (slice 3, first part) | DONE | — | — |
 | F-016 | Basic loot — swords with one trait, drops, the Equipment list (slice 3, second part) | DONE | — | — |
-| F-017 | Export builds — a Windows build for other people, developer tools off (slice 3, third part) | CODE_REVIEW | Auditor | — |
+| F-017 | Export builds — a Windows build for other people, developer tools off (slice 3, third part) | CODE_CHANGES | Builder | — |
 
 ## Open questions waiting on Lucas
 - **Gate B for F-011 to F-014: passed on 2026-11-19.** Lucas answered the F-013 and F-014 questions ("I liked how the map is and the room, dash everything"; everything stays as shipped) and said "Yes, merge". The four features are DONE and merged into `main`, in order, and pushed to GitHub on the same day (`f6302eb`); the four feature branches are kept locally. The questions below were not blocking and are still open.
