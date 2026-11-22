@@ -6,6 +6,8 @@ Standard library only, Python 3.9 or later. Sub-commands:
   list <exe>                    print every path in the pack embedded in the exe
   check <exe> <project_root>    checks (b), (c) and (d) of C6; one `error:` line (on
                                 stderr) per failing check, exit 1 if any
+  extract <exe> <out.pck>       write the embedded pack out as a standalone .pck, which
+                                the editor binary takes with --main-pack (C11)
   readme <file>                 plain ASCII, no line over 78 characters
   zip <out.zip> <exe> <readme>  a deflated zip holding HundredGates.exe and README.txt
 
@@ -54,8 +56,8 @@ def report(text):
     print(text, file=sys.stderr)
 
 
-def read_table(exe_path):
-    """Returns the list of paths in the exe's embedded pack, in table order."""
+def read_pack(exe_path):
+    """Returns the bytes of the exe's embedded pack, from its `GDPC` header to its end."""
     with open(exe_path, "rb") as exe:
         exe.seek(0, os.SEEK_END)
         length = exe.tell()
@@ -68,10 +70,22 @@ def read_table(exe_path):
         pack_size = struct.unpack("<Q", trailer[:8])[0]
         if pack_size < HEADER_SIZE or pack_size > length - TRAILER_SIZE:
             raise PackError("the size in the trailer (%d) does not fit the exe" % pack_size)
-        start = length - TRAILER_SIZE - pack_size
-        exe.seek(start)
-        pack = exe.read(pack_size)
-    return _paths_in(pack)
+        exe.seek(length - TRAILER_SIZE - pack_size)
+        return exe.read(pack_size)
+
+
+def read_table(exe_path):
+    """Returns the list of paths in the exe's embedded pack, in table order."""
+    return _paths_in(read_pack(exe_path))
+
+
+def write_pck(exe_path, pck_path):
+    """Writes the embedded pack out as a standalone .pck. Returns its size."""
+    pack = read_pack(exe_path)
+    _paths_in(pack)  # A header and a table that read, or no file.
+    with open(pck_path, "wb") as pck:
+        pck.write(pack)
+    return len(pack)
 
 
 def _paths_in(pack):
@@ -217,6 +231,14 @@ def main(argv):
         return 0
     if command == "check" and len(arguments) == 2:
         return check(arguments[0], arguments[1])
+    if command == "extract" and len(arguments) == 2:
+        try:
+            size = write_pck(arguments[0], arguments[1])
+        except (PackError, OSError) as problem:
+            report("error: could not cut the pack out of the exe: %s" % problem)
+            return 1
+        print("pack: %d bytes written to %s" % (size, arguments[1]))
+        return 0
     if command == "readme" and len(arguments) == 1:
         return check_readme(arguments[0])
     if command == "zip" and len(arguments) == 3:
@@ -227,7 +249,7 @@ def main(argv):
             return 1
         return 0
     print("usage: export_pack.py list <exe> | check <exe> <project_root> |")
-    print("       readme <file> | zip <out.zip> <exe> <readme>")
+    print("       extract <exe> <out.pck> | readme <file> | zip <out.zip> <exe> <readme>")
     return 2
 
 

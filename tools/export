@@ -2,6 +2,9 @@
 # F-017: builds the Windows export, checks it and zips it for a player. Nothing is published.
 #   tools/export
 # Writes builds/HundredGates-<version>-windows.zip (exactly HundredGates.exe and README.txt).
+# The checks: (a) the export; (b) to (d) the pack's table; (f) the pack's data against the source
+# and (g) a game started from the pack, both by the editor binary running tools/export_check.gd;
+# (e) the exe's own run (Windows only); then the README.
 # Every failed check is one line starting `error:` and a non-zero exit. Bash 3.2 is enough.
 set -euo pipefail
 
@@ -14,6 +17,8 @@ README_SOURCE="$PROJECT_ROOT/tools/export_readme.txt"
 EXE="$PROJECT_ROOT/builds/windows/HundredGates.exe"
 RUN_FRAMES=300 # C6 (e): the exe is run for this many frames, headless.
 RUN_TIMEOUT_SECONDS=120
+CHECK_SCRIPT="$PROJECT_ROOT/tools/export_check.gd"
+CHECK_TIMEOUT_SECONDS=300
 
 work=""
 trap '[ -z "$work" ] || rm -rf "$work"' EXIT
@@ -56,6 +61,15 @@ project_version() {
 	echo "$version"
 }
 
+# A path as the native Godot binary wants it (C:/... on Windows); elsewhere as it is.
+native_path() {
+	if command -v cygpath >/dev/null 2>&1; then
+		cygpath -m "$1"
+	else
+		echo "$1"
+	fi
+}
+
 on_windows() {
 	case "$(uname -s)" in
 	MINGW* | MSYS* | CYGWIN*) return 0 ;;
@@ -70,12 +84,23 @@ zip="$PROJECT_ROOT/builds/HundredGates-$version-windows.zip"
 
 godot_import "$godot"
 
+# Godot keeps each converted data file in .godot/exported and reuses it while the .tres is
+# unchanged, though the script that defines its properties has changed (measured in F-017 T4: a
+# fix of RoomData did not reach the build). Only this cache is removed; the import cache stays.
+rm -rf "${PROJECT_ROOT:?}/.godot/exported"
+
 mkdir -p "$PROJECT_ROOT/builds/windows"
 rm -f "${PROJECT_ROOT:?}/builds/windows/HundredGates.exe"
 rm -f "${PROJECT_ROOT:?}/builds/HundredGates-$version-windows.zip"
 
 work="$(mktemp -d)"
 log="$work/export.log"
+run_timeout=()
+check_timeout=()
+if command -v timeout >/dev/null 2>&1; then
+	run_timeout=(timeout "$RUN_TIMEOUT_SECONDS")
+	check_timeout=(timeout "$CHECK_TIMEOUT_SECONDS")
+fi
 
 echo "Exporting \"$PRESET\" ..."
 status=0
@@ -97,6 +122,43 @@ echo "check (a): the export exited 0 with no ERROR line"
 # (b), (c), (d) from the pack's file table; the Python file prints its own `error:` lines.
 "$python" "$EXPORT_PACK" check "$EXE" "$PROJECT_ROOT" || exit 1
 
+# (f) the pack's data is the source's and (g) a game starts from the pack (C11). The pack is cut
+# out of the exe into a .pck and the EDITOR binary runs tools/export_check.gd on it (the exe takes
+# no script). This comes before (e): it names what is wrong with the data, and it runs on every
+# system. The folders Godot writes to are all inside the temporary folder, never the real ones.
+pck="$work/pack.pck"
+"$python" "$EXPORT_PACK" extract "$EXE" "$pck" >/dev/null || exit 1
+mkdir -p "$work/check_home/appdata" "$work/check_home/data" "$work/check_home/config"
+check_log="$work/check.log"
+check_status=0
+(cd "$work" && HOME="$(native_path "$work/check_home")" \
+	APPDATA="$(native_path "$work/check_home/appdata")" \
+	XDG_DATA_HOME="$(native_path "$work/check_home/data")" \
+	XDG_CONFIG_HOME="$(native_path "$work/check_home/config")" \
+	EXPORT_CHECK_SOURCE="$(native_path "$PROJECT_ROOT")" \
+	"${check_timeout[@]+"${check_timeout[@]}"}" "$godot" --headless \
+	--main-pack "$(native_path "$pck")" -s "$(native_path "$CHECK_SCRIPT")") >"$check_log" 2>&1 || check_status=$?
+check_text="$work/check.txt"
+plain "$check_log" >"$check_text"
+if grep -q '^problem: (f)' "$check_text"; then
+	grep '^problem: (f)' "$check_text" | head -n 5 >&2 || true
+	fail "check (f) failed: $(grep -c '^problem: (f)' "$check_text") difference(s) between the pack's data and the source (first ones above)."
+fi
+if grep -q '^problem: (g)' "$check_text"; then
+	grep -E '^problem: \(g\)|ERROR' "$check_text" | head -n 5 >&2 || true
+	fail "check (g) failed: a game did not start from the pack (first lines above)."
+fi
+if grep -q 'ERROR' "$check_text"; then
+	grep 'ERROR' "$check_text" | head -n 5 >&2 || true
+	fail "check (f)/(g) failed: the check printed $(grep -c 'ERROR' "$check_text") line(s) with ERROR (first ones above)."
+fi
+if [ "$check_status" -ne 0 ] || ! grep -q '^export check: .* a game started$' "$check_text"; then
+	tail -n 5 "$check_text" >&2
+	fail "check (f)/(g) failed: the check exited with code $check_status without its success line (last lines above)."
+fi
+sed -n 's/^info: /check (f), (g): /p' "$check_text"
+echo "check (f), (g): $(sed -n 's/^export check: //p' "$check_text")"
+
 # (e) the exe runs. Its log and settings go to a fresh APPDATA, never the real user folder.
 if on_windows; then
 	app_data="$work/appdata"
@@ -106,12 +168,8 @@ if on_windows; then
 	fi
 	run_log="$work/run.log"
 	run_status=0
-	timeout_command=()
-	if command -v timeout >/dev/null 2>&1; then
-		timeout_command=(timeout "$RUN_TIMEOUT_SECONDS")
-	fi
 	# From the temporary folder, so that nothing of the project is next to the exe.
-	(cd "$work" && APPDATA="$app_data" "${timeout_command[@]+"${timeout_command[@]}"}" "$EXE" \
+	(cd "$work" && APPDATA="$app_data" "${run_timeout[@]+"${run_timeout[@]}"}" "$EXE" \
 		--headless --quit-after "$RUN_FRAMES") >"$run_log" 2>&1 || run_status=$?
 	if grep -q 'ERROR' "$run_log"; then
 		plain "$run_log" | grep 'ERROR' | head -n 5 >&2 || true
