@@ -1,10 +1,10 @@
 ---
 id: F-017
 title: Export builds — a Windows build for other people, developer tools off (slice 3, third part)
-status: CODE_REVIEW      # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
+status: DONE             # DRAFT | PLAN_REVIEW | PLAN_CHANGES | APPROVED | IN_PROGRESS | CODE_REVIEW | CODE_CHANGES | DONE | PARKED
 owner_now: Lucas         # who must act next: Planner | Auditor | Builder | Lucas
 created: 2026-11-21
-updated: 2026-11-21
+updated: 2026-11-22
 depends_on: [F-000, F-012, F-015, F-016, D-003, D-014, D-016]
 pillars: [1]
 department: Direction
