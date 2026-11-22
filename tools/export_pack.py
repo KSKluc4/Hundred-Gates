@@ -32,6 +32,8 @@ import zipfile
 MAGIC = b"GDPC"
 TRAILER_SIZE = 12  # the pack's size (8 bytes) and the magic (4 bytes)
 HEADER_SIZE = 4 + 4 + 12 + 4 + 8 + 8 + 64
+ENTRY_FIXED_SIZE = 8 + 8 + 16 + 4  # offset, size, md5, flags: after the path
+ENTRY_MIN_SIZE = 4 + ENTRY_FIXED_SIZE  # a path length, and no path
 SUPPORTED_FORMAT = 4
 FLAG_ENCRYPTED = 1  # PACK_DIR_ENCRYPTED
 
@@ -99,22 +101,31 @@ def _paths_in(pack):
     if flags & FLAG_ENCRYPTED:
         raise PackError("the pack's file table is encrypted")
     try:
-        (count,) = struct.unpack_from("<I", pack, dir_offset)
-        offset = dir_offset + 4
-        paths = []
-        for _ in range(count):
-            (name_length,) = struct.unpack_from("<I", pack, offset)
-            offset += 4
-            raw = pack[offset : offset + name_length]
-            if len(raw) != name_length:
-                raise PackError("the file table is cut short")
-            offset += name_length
-            paths.append(raw.rstrip(b"\0").decode("utf-8"))
-            offset += 8 + 8 + 16 + 4  # offset, size, md5, flags
-        if offset > len(pack):
-            raise PackError("the file table runs past the end of the pack")
-    except struct.error:
-        raise PackError("the file table is cut short") from None
+        return _read_entries(pack, dir_offset)
+    except (struct.error, OverflowError, UnicodeDecodeError, MemoryError):
+        raise PackError("the file table is cut short or not readable") from None
+
+
+def _read_entries(pack, dir_offset):
+    """The paths of the file table that starts at `dir_offset` in the pack."""
+    if dir_offset + 4 > len(pack):
+        raise PackError("the file table starts beyond the end of the pack")
+    (count,) = struct.unpack_from("<I", pack, dir_offset)
+    if count * ENTRY_MIN_SIZE > len(pack) - dir_offset - 4:
+        raise PackError("the file table holds more entries (%d) than the pack can" % count)
+    offset = dir_offset + 4
+    paths = []
+    for _ in range(count):
+        (name_length,) = struct.unpack_from("<I", pack, offset)
+        offset += 4
+        raw = pack[offset : offset + name_length]
+        if len(raw) != name_length:
+            raise PackError("the file table is cut short")
+        offset += name_length
+        paths.append(raw.rstrip(b"\0").decode("utf-8"))
+        offset += ENTRY_FIXED_SIZE
+    if offset > len(pack):
+        raise PackError("the file table runs past the end of the pack")
     return paths
 
 

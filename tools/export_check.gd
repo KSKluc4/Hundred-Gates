@@ -39,6 +39,7 @@ const INLINE_MARK: String = "::"
 const SKIPPED_PROPERTIES: Array[String] = ["resource_path"]
 const FLOW_STATE_ENUM: String = "State"
 const PLAYING_STATE: String = "PLAYING"
+const DEV_TOOLS_NODE: String = "DevTools"
 
 var _source_root: String = ""
 var _problems: PackedStringArray = PackedStringArray()
@@ -249,6 +250,7 @@ func _start_game() -> void:
 		_finish()
 		return
 	_source_kill_target = first_room.call("get_kill_target")
+	_check_dev_tools_are_off()
 	_main = main_scene.instantiate()
 	root.add_child(_main)
 	_shell = _main.get_node(SHELL_PATH)
@@ -282,6 +284,17 @@ func _start_game() -> void:
 		_finish()
 		return
 	town.emit_signal("floor_chosen", FLOOR_NUMBER, false)  # What the gate menu's choice emits.
+
+
+## CR-1: the build runs with the developer tools off, so the game started here must too. The
+## caller passes `-- --no-dev-tools`; if that is ever dropped, this says so.
+func _check_dev_tools_are_off() -> void:
+	if not root.has_node(DEV_TOOLS_NODE):
+		_problems.append("problem: (g) the autoload %s is not in the game" % DEV_TOOLS_NODE)
+	elif root.get_node(DEV_TOOLS_NODE).get("enabled"):
+		_problems.append(
+			"problem: (g) the developer tools are on in the check (--no-dev-tools is missing)"
+		)
 
 
 func _follow_floor() -> void:
@@ -330,8 +343,9 @@ func _check_first_room() -> void:
 		)
 	print(
 		(
-			"info: Start reached %s; floor %d, %s, kill target %d (source %d), after %d ticks"
+			"info: dev tools %s; Start reached %s; floor %d, %s, kill target %d (source %d), %d ticks"
 			% [
+				"on" if root.get_node(DEV_TOOLS_NODE).get("enabled") else "off",
 				_state_name(flow),
 				FLOOR_NUMBER,
 				room_path.trim_prefix("res://"),

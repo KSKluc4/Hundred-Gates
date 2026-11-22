@@ -21,7 +21,16 @@ CHECK_SCRIPT="$PROJECT_ROOT/tools/export_check.gd"
 CHECK_TIMEOUT_SECONDS=300
 
 work=""
-trap '[ -z "$work" ] || rm -rf "$work"' EXIT
+zip_written=0
+# A run that ends without the zip leaves no exe behind either: the exe of a failed run is not a
+# build (CR-2). The zip is written last, and the flag set right after it.
+cleanup() {
+	[ -z "$work" ] || rm -rf "$work"
+	if [ "$zip_written" -ne 1 ]; then
+		rm -f "${PROJECT_ROOT:?}/builds/windows/HundredGates.exe"
+	fi
+}
+trap cleanup EXIT
 
 fail() {
 	echo "error: $*" >&2
@@ -82,7 +91,11 @@ python="$(find_python)" || fail "no working Python found (tried .venv, python3, 
 version="$(project_version)" || fail "config/version in project.godot is missing or not a plain version."
 zip="$PROJECT_ROOT/builds/HundredGates-$version-windows.zip"
 
-godot_import "$godot"
+# What an earlier run left is removed first, so a run that stops early leaves no old build (CR-4).
+rm -f "${PROJECT_ROOT:?}/builds/windows/HundredGates.exe"
+rm -f "${PROJECT_ROOT:?}/builds/HundredGates-$version-windows.zip"
+
+godot_import "$godot" || fail "the import failed (Godot exited with a non-zero code)."
 
 # Godot keeps each converted data file in .godot/exported and reuses it while the .tres is
 # unchanged, though the script that defines its properties has changed (measured in F-017 T4: a
@@ -90,8 +103,6 @@ godot_import "$godot"
 rm -rf "${PROJECT_ROOT:?}/.godot/exported"
 
 mkdir -p "$PROJECT_ROOT/builds/windows"
-rm -f "${PROJECT_ROOT:?}/builds/windows/HundredGates.exe"
-rm -f "${PROJECT_ROOT:?}/builds/HundredGates-$version-windows.zip"
 
 work="$(mktemp -d)"
 log="$work/export.log"
@@ -126,6 +137,8 @@ echo "check (a): the export exited 0 with no ERROR line"
 # out of the exe into a .pck and the EDITOR binary runs tools/export_check.gd on it (the exe takes
 # no script). This comes before (e): it names what is wrong with the data, and it runs on every
 # system. The folders Godot writes to are all inside the temporary folder, never the real ones.
+# `-- --no-dev-tools` makes the game it starts run with the developer tools off, as the build does
+# (CR-1); the check script reports it if they are on.
 pck="$work/pack.pck"
 "$python" "$EXPORT_PACK" extract "$EXE" "$pck" >/dev/null || exit 1
 mkdir -p "$work/check_home/appdata" "$work/check_home/data" "$work/check_home/config"
@@ -137,7 +150,7 @@ check_status=0
 	XDG_CONFIG_HOME="$(native_path "$work/check_home/config")" \
 	EXPORT_CHECK_SOURCE="$(native_path "$PROJECT_ROOT")" \
 	"${check_timeout[@]+"${check_timeout[@]}"}" "$godot" --headless \
-	--main-pack "$(native_path "$pck")" -s "$(native_path "$CHECK_SCRIPT")") >"$check_log" 2>&1 || check_status=$?
+	--main-pack "$(native_path "$pck")" -s "$(native_path "$CHECK_SCRIPT")" 	-- --no-dev-tools) >"$check_log" 2>&1 || check_status=$?
 check_text="$work/check.txt"
 plain "$check_log" >"$check_text"
 if grep -q '^problem: (f)' "$check_text"; then
@@ -188,5 +201,10 @@ fi
 echo "README check: plain ASCII, no line over 78 characters"
 "$python" "$EXPORT_PACK" zip "$zip" "$EXE" "$README_SOURCE" || exit 1
 
+zip_written=1
 bytes="$(wc -c <"$zip" | tr -d ' ')"
-echo "Zip: $zip ($bytes bytes, $((bytes / 1048576)) MB)"
+zip_shown="$zip"
+if command -v cygpath >/dev/null 2>&1; then
+	zip_shown="$(cygpath -w "$zip")" # Explorer does not open /c/Users/...
+fi
+echo "Zip: $zip_shown ($bytes bytes, $((bytes / 1048576)) MB)"

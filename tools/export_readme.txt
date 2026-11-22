@@ -8,12 +8,16 @@ HOW TO START
   Click "More info", then "Run anyway". On a PC managed by a company or school
   that choice may be missing; use another PC.
 
+HOW TO PLAY
+  You start in the town. Walk up into the green gate at the top to enter
+  the tower. Clear every room of a floor, then beat its boss.
+  To stop: pause, choose "Quit to title", then "Quit". Or close the window.
+
 CONTROLS (keyboard and mouse)
   Move ........ W A S D or the arrow keys
   Aim ......... the mouse: you aim at the cursor
   Attack ...... left mouse button or J
   Dodge ....... Space
-  Interact .... E
   Pause ....... Escape
   In the menus: W S or Up Down move; Enter, Space or E choose; Escape goes
   back; the mouse can click.
@@ -23,7 +27,6 @@ CONTROLS (gamepad)
   Aim ......... right stick
   Attack ...... X button (the left one of the four)
   Dodge ....... A button (the bottom one)
-  Interact .... Y button (the top one)
   Pause ....... Start
   In the menus: stick or D-pad move; A or Y choose; B goes back.
 

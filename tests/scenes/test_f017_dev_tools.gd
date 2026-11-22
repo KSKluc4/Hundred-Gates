@@ -7,13 +7,15 @@ extends F015ShellTest
 ## the town, a floor in a fight, the pause menu). With it on, all of that works as it did.
 ## Every test that turns the switch off puts the old value back in after_each() (C10): a leaked
 ## `false` would fail the files that read the overlay, the keys and the text.
-## An action is pressed two ways (C3): every event bound to it, pressed and released between two
-## ticks, and an `InputEventAction`. The bound events are the InputMap's own, read in the test, so
-## an action added later is covered with no edit here.
+## An action is pressed three ways (C3, CR-6): every event bound to it, pressed and released between
+## two ticks; an `InputEventAction`; and every bound event held down across a physics tick and then
+## released, so a reader that polls `Input.is_action_pressed` each tick is reached too. The bound
+## events are the InputMap's own, read in the test, so an action added later is covered with no
+## edit here.
 
-enum Way { BOUND_EVENTS, ACTION_EVENT }
+enum Way { BOUND_EVENTS, ACTION_EVENT, HELD_EVENTS }
 
-const WAYS: Array[Way] = [Way.BOUND_EVENTS, Way.ACTION_EVENT]
+const WAYS: Array[Way] = [Way.BOUND_EVENTS, Way.ACTION_EVENT, Way.HELD_EVENTS]
 const OVERLAY_NODE: NodePath = ^"DebugOverlay"
 const DEBUG_ACTION_PREFIX: String = "debug_"
 const TOGGLE_ACTION: StringName = &"debug_toggle"
@@ -72,7 +74,9 @@ func _debug_actions() -> Array[StringName]:
 	for action: StringName in InputMap.get_actions():
 		if String(action).begins_with(DEBUG_ACTION_PREFIX):
 			names.append(action)
-	names.sort_custom(func(first: StringName, second: StringName) -> bool: return first < second)
+	names.sort_custom(
+		func(first: StringName, second: StringName) -> bool: return String(first) < String(second)
+	)
 	return names
 
 
@@ -86,6 +90,12 @@ func _press_debug(action: StringName, way: Way) -> void:
 				_send_bound(bound, false)
 		Way.ACTION_EVENT:
 			press_action(action)
+		Way.HELD_EVENTS:
+			for bound: InputEvent in InputMap.action_get_events(action):
+				_send_bound(bound, true)
+				await get_tree().physics_frame  # The key is down while a tick runs.
+				await get_tree().physics_frame
+				_send_bound(bound, false)
 
 
 ## The event as the action has it (the keycode and physical keycode it is bound with), pressed or
@@ -98,7 +108,12 @@ func _send_bound(bound: InputEvent, pressed: bool) -> void:
 
 
 func _way_name(way: Way) -> String:
-	return "the bound events" if way == Way.BOUND_EVENTS else "an InputEventAction"
+	match way:
+		Way.BOUND_EVENTS:
+			return "the bound events"
+		Way.ACTION_EVENT:
+			return "an InputEventAction"
+	return "the bound events held across ticks"
 
 
 ## The identity of every resource `Tunables` holds (and the value of anything else it holds).
